@@ -1,9 +1,10 @@
 package org.monogram.app.di
 
 import android.util.Log
-import com.bettergram.core.LogEvent
-import com.bettergram.core.LogLevel
-import com.bettergram.core.Logger
+import org.monogram.core.LogEvent
+import org.monogram.core.LogLevel
+import org.monogram.core.Logger
+import org.monogram.data.BuildConfig
 
 class LoggerImpl(
     override val isDebugEnabled: Boolean = BuildConfig.DEBUG,
