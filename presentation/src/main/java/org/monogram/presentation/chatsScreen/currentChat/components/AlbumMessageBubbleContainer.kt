@@ -71,17 +71,23 @@ fun AlbumMessageBubbleContainer(
     val screenWidth = configuration.screenWidthDp.dp
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    val maxWidth = when {
-        isChannel -> if (isLandscape) (screenWidth * 0.7f).coerceAtMost(600.dp) else (screenWidth * 0.94f).coerceAtMost(
-            500.dp
-        )
-        isLandscape -> (screenWidth * 0.6f).coerceAtMost(450.dp)
-        else -> (screenWidth * 0.85f).coerceAtMost(360.dp)
+    val maxWidth = remember(isChannel, isLandscape, screenWidth) {
+        when {
+            isChannel -> if (isLandscape) (screenWidth * 0.7f).coerceAtMost(600.dp) else (screenWidth * 0.94f).coerceAtMost(
+                500.dp
+            )
+
+            isLandscape -> (screenWidth * 0.6f).coerceAtMost(450.dp)
+            else -> (screenWidth * 0.85f).coerceAtMost(360.dp)
+        }
     }
 
-    val isSameSenderAbove = olderMsg?.senderId == firstMsg.senderId && !shouldShowDate(firstMsg, olderMsg)
-    val isSameSenderBelow =
+    val isSameSenderAbove = remember(olderMsg?.senderId, firstMsg.senderId, olderMsg?.date, firstMsg.date) {
+        olderMsg?.senderId == firstMsg.senderId && !shouldShowDate(firstMsg, olderMsg)
+    }
+    val isSameSenderBelow = remember(newerMsg?.senderId, lastMsg.senderId, newerMsg?.date, lastMsg.date) {
         newerMsg != null && newerMsg.senderId == lastMsg.senderId && !shouldShowDate(newerMsg, lastMsg)
+    }
 
     val topSpacing = if (isChannel && !isSameSenderAbove) 12.dp else 2.dp
 

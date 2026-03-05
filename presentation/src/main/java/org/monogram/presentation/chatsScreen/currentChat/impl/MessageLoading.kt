@@ -1,8 +1,10 @@
 package org.monogram.presentation.chatsScreen.currentChat.impl
 
+import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.withLock
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -14,10 +16,11 @@ private const val PAGE_SIZE = 50
 
 internal suspend fun DefaultChatComponent.updateMessages(newMessages: List<MessageModel>, replace: Boolean = false) {
     messageMutex.withLock {
+        val currentState = _state.value
         val adBlockEnabled = appPreferences.isAdBlockEnabled.value
         val keywords = appPreferences.adBlockKeywords.value
         val whitelistedChannels = appPreferences.adBlockWhitelistedChannels.value
-        val isChannel = _state.value.isChannel
+        val isChannel = currentState.isChannel
         val isWhitelisted = whitelistedChannels.contains(chatId)
 
         val filteredNewMessages = if (adBlockEnabled && isChannel && !isWhitelisted) {
@@ -38,24 +41,22 @@ internal suspend fun DefaultChatComponent.updateMessages(newMessages: List<Messa
             newMessages
         }
 
-        withContext(Dispatchers.Main) {
-            _state.value = _state.value.let { currentState ->
-                val currentList = if (replace) {
-                    currentState.messages.filter { it.sendingState is MessageSendingState.Pending }
-                } else {
-                    currentState.messages
+        _state.update { state ->
+            val currentList = if (replace) {
+                state.messages.filter { it.sendingState is MessageSendingState.Pending }
+            } else {
+                state.messages
+            }
+
+            val isComments = state.rootMessage != null
+            val mergedMessages = (currentList + filteredNewMessages)
+                .distinctBy { it.id }
+                .let {
+                    if (isComments) it.sortedBy { it.id }
+                    else it.sortedByDescending { it.id }
                 }
 
-                val isComments = currentState.rootMessage != null
-                val mergedMessages = (currentList + filteredNewMessages)
-                    .distinctBy { it.id }
-                    .let {
-                        if (isComments) it.sortedBy { it.id }
-                        else it.sortedByDescending { it.id }
-                    }
-
-                currentState.copy(messages = mergedMessages)
-            }
+            state.copy(messages = mergedMessages)
         }
     }
 }
@@ -67,15 +68,18 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
 
     cancelAllLoadingJobs()
     messageLoadingJob = scope.launch {
-        _state.value = _state.value.copy(
+        _state.update {
+            it.copy(
             isLoading = true,
             isOldestLoaded = false,
             isLatestLoaded = false
-        )
+            )
+        }
 
         try {
-            val threadId = _state.value.currentTopicId
-            val isComments = _state.value.rootMessage != null
+            val currentState = _state.value
+            val threadId = currentState.currentTopicId
+            val isComments = currentState.rootMessage != null
             val savedScrollPosition = if (threadId == null) cacheProvider.getChatScrollPosition(chatId) else 0L
 
             if (isComments && threadId != null) {
@@ -99,11 +103,9 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("DefaultChatComponent", "Failed to load messages", e)
         } finally {
-            if (coroutineContext[Job] === messageLoadingJob) {
-                _state.value = _state.value.copy(isLoading = false)
-            }
+            _state.update { it.copy(isLoading = false) }
         }
     }
 }
@@ -111,12 +113,14 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
 private suspend fun DefaultChatComponent.loadComments(threadId: Long) {
     val messages = repositoryMessage.getMessagesNewer(chatId, threadId, PAGE_SIZE, threadId)
     val reachedEnd = messages.size < PAGE_SIZE
-    _state.value = _state.value.copy(
+    _state.update {
+        it.copy(
         isAtBottom = reachedEnd,
         isLatestLoaded = reachedEnd,
         isOldestLoaded = true,
         scrollToMessageId = null
-    )
+        )
+    }
     updateMessages(messages, replace = true)
     if (!reachedEnd) {
         delay(200)
@@ -127,12 +131,14 @@ private suspend fun DefaultChatComponent.loadComments(threadId: Long) {
 private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     val messages = repositoryMessage.getMessagesOlder(chatId, 0, PAGE_SIZE, threadId)
     val isOldestLoaded = messages.size < PAGE_SIZE
-    _state.value = _state.value.copy(
+    _state.update {
+        it.copy(
         isAtBottom = true,
         isLatestLoaded = true,
         isOldestLoaded = isOldestLoaded,
         scrollToMessageId = null
-    )
+        )
+    }
     updateMessages(messages, replace = true)
     if (!isOldestLoaded) {
         delay(200)
@@ -143,13 +149,15 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
 private suspend fun DefaultChatComponent.loadAroundMessage(messageId: Long, threadId: Long?) {
     val messages = repositoryMessage.getMessagesAround(chatId, messageId, PAGE_SIZE, threadId)
     if (messages.isNotEmpty()) {
-        _state.value = _state.value.copy(
+        _state.update {
+            it.copy(
             isAtBottom = false,
             isLatestLoaded = false,
             isOldestLoaded = false,
             scrollToMessageId = messageId,
             highlightedMessageId = messageId
-        )
+            )
+        }
         updateMessages(messages, replace = true)
         delay(200)
         loadMoreMessages()
@@ -165,12 +173,13 @@ internal fun DefaultChatComponent.loadMoreMessages() {
     if (state.isLoadingOlder || (state.isOldestLoaded && !forceLoad)) return
 
     loadMoreJob?.cancel()
-    val job = scope.launch {
-        _state.value = _state.value.copy(isLoadingOlder = true)
+    loadMoreJob = scope.launch {
+        _state.update { it.copy(isLoadingOlder = true) }
         try {
-            val currentMessages = _state.value.messages
-            val isComments = _state.value.rootMessage != null
-            val threadId = _state.value.currentTopicId
+            val currentState = _state.value
+            val currentMessages = currentState.messages
+            val isComments = currentState.rootMessage != null
+            val threadId = currentState.currentTopicId
 
             val anchorId = if (isComments) {
                 currentMessages.firstOrNull { it.id > 0 }?.id ?: 0L
@@ -187,18 +196,13 @@ internal fun DefaultChatComponent.loadMoreMessages() {
                 updateMessages(olderMessages)
             }
 
-            if (coroutineContext[Job] === loadMoreJob) {
-                _state.value = _state.value.copy(isOldestLoaded = isOldestLoaded)
-            }
+            _state.update { it.copy(isOldestLoaded = isOldestLoaded) }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("DefaultChatComponent", "Failed to load more messages", e)
         } finally {
-            if (coroutineContext[Job] === loadMoreJob) {
-                _state.value = _state.value.copy(isLoadingOlder = false)
-            }
+            _state.update { it.copy(isLoadingOlder = false) }
         }
     }
-    loadMoreJob = job
 }
 
 internal fun DefaultChatComponent.loadNewerMessages() {
@@ -206,12 +210,13 @@ internal fun DefaultChatComponent.loadNewerMessages() {
     if (state.isLoadingNewer || state.isLatestLoaded) return
 
     loadNewerJob?.cancel()
-    val job = scope.launch {
-        _state.value = _state.value.copy(isLoadingNewer = true)
+    loadNewerJob = scope.launch {
+        _state.update { it.copy(isLoadingNewer = true) }
         try {
-            val currentMessages = _state.value.messages
-            val isComments = _state.value.rootMessage != null
-            val threadId = _state.value.currentTopicId
+            val currentState = _state.value
+            val currentMessages = currentState.messages
+            val isComments = currentState.rootMessage != null
+            val threadId = currentState.currentTopicId
 
             val anchorId = if (isComments) {
                 currentMessages.lastOrNull { it.id > 0 }?.id ?: return@launch
@@ -227,36 +232,31 @@ internal fun DefaultChatComponent.loadNewerMessages() {
                 updateMessages(newerMessages)
             }
 
-            if (coroutineContext[Job] === loadNewerJob) {
-                _state.value = _state.value.copy(isLatestLoaded = isLatestLoaded)
-            }
+            _state.update { it.copy(isLatestLoaded = isLatestLoaded) }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("DefaultChatComponent", "Failed to load newer messages", e)
         } finally {
-            if (coroutineContext[Job] === loadNewerJob) {
-                _state.value = _state.value.copy(isLoadingNewer = false)
-            }
+            _state.update { it.copy(isLoadingNewer = false) }
         }
     }
-    loadNewerJob = job
 }
 
 internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
     cancelAllLoadingJobs()
     messageLoadingJob = scope.launch {
-        _state.value = _state.value.copy(
+        _state.update {
+            it.copy(
             isLoading = true,
             isOldestLoaded = false,
             isLatestLoaded = false
-        )
+            )
+        }
         try {
             loadAroundMessage(messageId, _state.value.currentTopicId)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("DefaultChatComponent", "Failed to scroll to message", e)
         } finally {
-            if (coroutineContext[Job] === messageLoadingJob) {
-                _state.value = _state.value.copy(isLoading = false)
-            }
+            _state.update { it.copy(isLoading = false) }
         }
     }
 }
@@ -265,19 +265,19 @@ internal fun DefaultChatComponent.scrollToBottomInternal() {
     if (_state.value.isLoading) return
     cancelAllLoadingJobs()
     messageLoadingJob = scope.launch {
-        _state.value = _state.value.copy(
+        _state.update {
+            it.copy(
             isLoading = true,
             isOldestLoaded = false,
             isLatestLoaded = false
-        )
+            )
+        }
         try {
             loadBottomMessages(_state.value.currentTopicId)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("DefaultChatComponent", "Failed to scroll to bottom", e)
         } finally {
-            if (coroutineContext[Job] === messageLoadingJob) {
-                _state.value = _state.value.copy(isLoading = false)
-            }
+            _state.update { it.copy(isLoading = false) }
         }
     }
 }
@@ -292,21 +292,35 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.newMessageFlow
         .onEach { message ->
             if (message.chatId == chatId) {
-                val currentMessages = _state.value.messages
-                val exists = currentMessages.any { it.id == message.id }
+                _state.update { currentState ->
+                    val currentMessages = currentState.messages
+                    val exists = currentMessages.any { it.id == message.id }
 
-                if (exists) {
-                    val updated = currentMessages.map { if (it.id == message.id) message else it }
-                    _state.value = _state.value.copy(messages = updated)
-                } else {
-                    val state = _state.value
-                    val isCorrectThread =
-                        state.currentTopicId == null || message.threadId?.toLong() == state.currentTopicId
+                    if (exists) {
+                        val updated = currentMessages.map { if (it.id == message.id) message else it }
+                        currentState.copy(messages = updated)
+                    } else {
+                        val isCorrectThread =
+                            currentState.currentTopicId == null || message.threadId?.toLong() == currentState.currentTopicId
 
-                    if (isCorrectThread && (state.isAtBottom || state.isLatestLoaded || message.isOutgoing)) {
-                        updateMessages(listOf(message))
-                        if (state.isAtBottom || state.isLatestLoaded) {
-                            _state.value = _state.value.copy(isLatestLoaded = true)
+                        if (isCorrectThread && (currentState.isAtBottom || currentState.isLatestLoaded || message.isOutgoing)) {
+                            // We can't call updateMessages here because it's suspend and we are in onEach
+                            // But we can update the state directly or launch a new job
+                            // For simplicity and to avoid race conditions, let's update state here
+                            val isComments = currentState.rootMessage != null
+                            val mergedMessages = (currentMessages + message)
+                                .distinctBy { it.id }
+                                .let {
+                                    if (isComments) it.sortedBy { it.id }
+                                    else it.sortedByDescending { it.id }
+                                }
+
+                            currentState.copy(
+                                messages = mergedMessages,
+                                isLatestLoaded = if (currentState.isAtBottom || currentState.isLatestLoaded) true else currentState.isLatestLoaded
+                            )
+                        } else {
+                            currentState
                         }
                     }
                 }
@@ -317,16 +331,27 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.messageIdUpdateFlow
         .onEach { (cId, oldId, newMessage) ->
             if (cId == chatId) {
-                val currentMessages = _state.value.messages.toMutableList()
-                val index = currentMessages.indexOfFirst { it.id == oldId }
+                _state.update { currentState ->
+                    val currentMessages = currentState.messages.toMutableList()
+                    val index = currentMessages.indexOfFirst { it.id == oldId }
 
-                if (index != -1) {
-                    currentMessages[index] = newMessage
-                    _state.value = _state.value.copy(messages = currentMessages)
-                } else if (_state.value.isAtBottom || _state.value.isLatestLoaded || newMessage.isOutgoing) {
-                    updateMessages(listOf(newMessage))
-                    if (_state.value.isAtBottom || _state.value.isLatestLoaded) {
-                        _state.value = _state.value.copy(isLatestLoaded = true)
+                    if (index != -1) {
+                        currentMessages[index] = newMessage
+                        currentState.copy(messages = currentMessages)
+                    } else if (currentState.isAtBottom || currentState.isLatestLoaded || newMessage.isOutgoing) {
+                        val isComments = currentState.rootMessage != null
+                        val mergedMessages = (currentMessages + newMessage)
+                            .distinctBy { it.id }
+                            .let {
+                                if (isComments) it.sortedBy { it.id }
+                                else it.sortedByDescending { it.id }
+                            }
+                        currentState.copy(
+                            messages = mergedMessages,
+                            isLatestLoaded = if (currentState.isAtBottom || currentState.isLatestLoaded) true else currentState.isLatestLoaded
+                        )
+                    } else {
+                        currentState
                     }
                 }
             }
@@ -463,10 +488,14 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.messageDeletedFlow
         .onEach { (cId, messageIds) ->
             if (cId == chatId) {
-                val currentMessages = _state.value.messages.toMutableList()
-                val removed = currentMessages.removeAll { messageIds.contains(it.id) }
-                if (removed) {
-                    _state.value = _state.value.copy(messages = currentMessages)
+                _state.update { currentState ->
+                    val currentMessages = currentState.messages.toMutableList()
+                    val removed = currentMessages.removeAll { messageIds.contains(it.id) }
+                    if (removed) {
+                        currentState.copy(messages = currentMessages)
+                    } else {
+                        currentState
+                    }
                 }
             }
         }
@@ -489,18 +518,22 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.messageReadFlow
         .onEach { readUpdate ->
             if (readUpdate.chatId == chatId) {
-                val currentMessages = _state.value.messages
-                var hasChanges = false
-                val updatedMessages = currentMessages.map { message ->
-                    if (readUpdate is ReadUpdate.Outbox && message.isOutgoing && !message.isRead && message.id <= readUpdate.messageId) {
-                        hasChanges = true
-                        message.copy(isRead = true)
-                    } else {
-                        message
+                _state.update { currentState ->
+                    val currentMessages = currentState.messages
+                    var hasChanges = false
+                    val updatedMessages = currentMessages.map { message ->
+                        if (readUpdate is ReadUpdate.Outbox && message.isOutgoing && !message.isRead && message.id <= readUpdate.messageId) {
+                            hasChanges = true
+                            message.copy(isRead = true)
+                        } else {
+                            message
+                        }
                     }
-                }
-                if (hasChanges) {
-                    _state.value = _state.value.copy(messages = updatedMessages)
+                    if (hasChanges) {
+                        currentState.copy(messages = updatedMessages)
+                    } else {
+                        currentState
+                    }
                 }
             }
         }
@@ -509,13 +542,17 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
 
 private inline fun DefaultChatComponent.updateMessageContent(
     messageId: Long,
-    transform: (MessageModel) -> MessageModel
+    crossinline transform: (MessageModel) -> MessageModel
 ) {
-    val currentMessages = _state.value.messages.toMutableList()
-    val index = currentMessages.indexOfFirst { it.id == messageId }
-    if (index != -1) {
-        currentMessages[index] = transform(currentMessages[index])
-        _state.value = _state.value.copy(messages = currentMessages)
+    _state.update { currentState ->
+        val currentMessages = currentState.messages.toMutableList()
+        val index = currentMessages.indexOfFirst { it.id == messageId }
+        if (index != -1) {
+            currentMessages[index] = transform(currentMessages[index])
+            currentState.copy(messages = currentMessages)
+        } else {
+            currentState
+        }
     }
 }
 
@@ -524,7 +561,7 @@ internal fun DefaultChatComponent.loadDraft() {
         val threadId = _state.value.currentTopicId
         val draft = repositoryMessage.getChatDraft(chatId, threadId)
         if (!draft.isNullOrEmpty()) {
-            _state.value = _state.value.copy(draftText = draft)
+            _state.update { it.copy(draftText = draft) }
         }
     }
 }

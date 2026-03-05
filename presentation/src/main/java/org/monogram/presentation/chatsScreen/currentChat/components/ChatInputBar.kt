@@ -3,7 +3,6 @@ package org.monogram.presentation.chatsScreen.currentChat.components
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddCircleOutline
@@ -12,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
@@ -30,67 +30,88 @@ import org.monogram.presentation.chatsScreen.currentChat.components.inputbar.*
 import org.monogram.presentation.stickers.ui.menu.StickerEmojiMenu
 import org.monogram.presentation.util.AppPreferences
 
-private const val CUSTOM_EMOJI_TAG = "custom_emoji"
-private const val MENTION_TAG = "mention"
+@Immutable
+data class ChatInputBarState(
+    val replyMessage: MessageModel? = null,
+    val editingMessage: MessageModel? = null,
+    val draftText: String = "",
+    val pendingMediaPaths: List<String> = emptyList(),
+    val isClosed: Boolean = false,
+    val permissions: ChatPermissionsModel = ChatPermissionsModel(),
+    val isAdmin: Boolean = false,
+    val isChannel: Boolean = false,
+    val isBot: Boolean = false,
+    val botCommands: List<BotCommandModel> = emptyList(),
+    val botMenuButton: BotMenuButtonModel = BotMenuButtonModel.Default,
+    val replyMarkup: ReplyMarkupModel? = null,
+    val mentionSuggestions: List<UserModel> = emptyList(),
+    val inlineBotResults: InlineBotResultsModel? = null,
+    val isInlineBotLoading: Boolean = false,
+)
 
-@OptIn(ExperimentalFoundationApi::class)
+@Immutable
+data class ChatInputBarActions(
+    val onSend: (String, List<MessageEntity>) -> Unit,
+    val onStickerClick: (String) -> Unit = {},
+    val onGifClick: (GifModel) -> Unit = {},
+    val onAttachClick: () -> Unit = {},
+    val onCameraClick: () -> Unit = {},
+    val onSendVoice: (String, Int, ByteArray) -> Unit = { _, _, _ -> },
+    val onCancelReply: () -> Unit = {},
+    val onCancelEdit: () -> Unit = {},
+    val onSaveEdit: (String, List<MessageEntity>) -> Unit = { _, _ -> },
+    val onDraftChange: (String) -> Unit = {},
+    val onTyping: () -> Unit = {},
+    val onCancelMedia: () -> Unit = {},
+    val onSendMedia: (List<String>, String) -> Unit = { _, _ -> },
+    val onMediaOrderChange: (List<String>) -> Unit = {},
+    val onMediaClick: (String) -> Unit = {},
+    val onShowBotCommands: () -> Unit = {},
+    val onReplyMarkupButtonClick: (KeyboardButtonModel) -> Unit = {},
+    val onOpenMiniApp: (String, String) -> Unit = { _, _ -> },
+    val onMentionQueryChange: (String?) -> Unit = {},
+    val onInlineQueryChange: (String, String) -> Unit = { _, _ -> },
+    val onLoadMoreInlineResults: (String) -> Unit = {},
+    val onSendInlineResult: (String) -> Unit = {},
+)
+
 @Composable
 fun ChatInputBar(
-    onSend: (String, List<MessageEntity>) -> Unit,
-    onStickerClick: (String) -> Unit = {},
-    onGifClick: (GifModel) -> Unit = {},
-    onAttachClick: () -> Unit = {},
-    onCameraClick: () -> Unit = {},
-    onSendVoice: (String, Int, ByteArray) -> Unit = { _, _, _ -> },
-    replyMessage: MessageModel? = null,
-    onCancelReply: () -> Unit = {},
-    editingMessage: MessageModel? = null,
-    onCancelEdit: () -> Unit = {},
-    onSaveEdit: (String, List<MessageEntity>) -> Unit = { _, _ -> },
-    draftText: String = "",
-    onDraftChange: (String) -> Unit = {},
-    onTyping: () -> Unit = {},
-    pendingMediaPaths: List<String> = emptyList(),
-    onCancelMedia: () -> Unit = {},
-    onSendMedia: (List<String>, String) -> Unit = { _, _ -> },
-    onMediaOrderChange: (List<String>) -> Unit = {},
-    onMediaClick: (String) -> Unit = {},
-    isClosed: Boolean = false,
-    permissions: ChatPermissionsModel = ChatPermissionsModel(),
-    isAdmin: Boolean = false,
-    isChannel: Boolean = false,
-    isBot: Boolean = false,
-    botCommands: List<BotCommandModel> = emptyList(),
-    botMenuButton: BotMenuButtonModel = BotMenuButtonModel.Default,
-    onShowBotCommands: () -> Unit = {},
-    replyMarkup: ReplyMarkupModel? = null,
-    onReplyMarkupButtonClick: (KeyboardButtonModel) -> Unit = {},
-    onOpenMiniApp: (String, String) -> Unit = { _, _ -> },
-    mentionSuggestions: List<UserModel> = emptyList(),
-    onMentionQueryChange: (String?) -> Unit = {},
-    inlineBotResults: InlineBotResultsModel? = null,
-    isInlineBotLoading: Boolean = false,
-    onInlineQueryChange: (String, String) -> Unit = { _, _ -> },
-    onLoadMoreInlineResults: (String) -> Unit = {},
-    onSendInlineResult: (String) -> Unit = {},
+    state: ChatInputBarState,
+    actions: ChatInputBarActions,
     appPreferences: AppPreferences,
     videoPlayerPool: VideoPlayerPool,
     stickerRepository: StickerRepository
 ) {
-    if (isClosed) {
+    if (state.isClosed) {
         ClosedTopicBar()
         return
     }
 
+    val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
-    val emojiFontFamily = getEmojiFontFamily(emojiStyle)
+    val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
 
-    val canWriteText = if (isChannel) true else (isAdmin || permissions.canSendBasicMessages)
-    val canSendMedia = if (isChannel) true else (isAdmin || (permissions.canSendPhotos || permissions.canSendVideos || permissions.canSendDocuments))
-    val canSendStickers = if (isChannel) true else (isAdmin || permissions.canSendOtherMessages)
-    val canSendVoice = if (isChannel) true else (isAdmin || permissions.canSendVoiceNotes)
+    val canWriteText = remember(state.isChannel, state.isAdmin, state.permissions.canSendBasicMessages) {
+        if (state.isChannel) true else (state.isAdmin || state.permissions.canSendBasicMessages)
+    }
+    val canSendMedia = remember(
+        state.isChannel,
+        state.isAdmin,
+        state.permissions.canSendPhotos,
+        state.permissions.canSendVideos,
+        state.permissions.canSendDocuments
+    ) {
+        if (state.isChannel) true else (state.isAdmin || (state.permissions.canSendPhotos || state.permissions.canSendVideos || state.permissions.canSendDocuments))
+    }
+    val canSendStickers = remember(state.isChannel, state.isAdmin, state.permissions.canSendOtherMessages) {
+        if (state.isChannel) true else (state.isAdmin || state.permissions.canSendOtherMessages)
+    }
+    val canSendVoice = remember(state.isChannel, state.isAdmin, state.permissions.canSendVoiceNotes) {
+        if (state.isChannel) true else (state.isAdmin || state.permissions.canSendVoiceNotes)
+    }
 
-    var textValue by remember { mutableStateOf(TextFieldValue(draftText)) }
+    var textValue by remember { mutableStateOf(TextFieldValue(state.draftText)) }
     var isStickerMenuVisible by remember { mutableStateOf(false) }
     var isVideoMessageMode by remember { mutableStateOf(false) }
     var isGifSearchFocused by remember { mutableStateOf(false) }
@@ -104,18 +125,18 @@ fun ChatInputBar(
 
     var lastEditingMessageId by remember { mutableStateOf<Long?>(null) }
 
-    val voiceRecorder = rememberVoiceRecorder(onRecordingFinished = onSendVoice)
-    voiceRecorder.UpdateLoop()
+    val voiceRecorder = rememberVoiceRecorder(onRecordingFinished = actions.onSendVoice)
 
-    val filteredCommands = remember(textValue.text, botCommands) {
+    val filteredCommands = remember(textValue.text, state.botCommands) {
         if (textValue.text.startsWith("/")) {
             val query = textValue.text.substring(1).lowercase()
-            botCommands.filter { it.command.lowercase().startsWith(query) }
+            state.botCommands.filter { it.command.lowercase().startsWith(query) }
         } else {
             emptyList()
         }
     }
 
+    val currentOnMentionQueryChange by rememberUpdatedState(actions.onMentionQueryChange)
     LaunchedEffect(textValue.text, textValue.selection) {
         val text = textValue.text
         val selection = textValue.selection
@@ -126,21 +147,22 @@ fun ChatInputBar(
                 if (isStartOfWord) {
                     val query = text.substring(lastAt + 1, selection.start)
                     if (!query.contains(' ')) {
-                        onMentionQueryChange(query)
+                        currentOnMentionQueryChange(query)
                     } else {
-                        onMentionQueryChange(null)
+                        currentOnMentionQueryChange(null)
                     }
                 } else {
-                    onMentionQueryChange(null)
+                    currentOnMentionQueryChange(null)
                 }
             } else {
-                onMentionQueryChange(null)
+                currentOnMentionQueryChange(null)
             }
         } else {
-            onMentionQueryChange(null)
+            currentOnMentionQueryChange(null)
         }
     }
 
+    val currentOnInlineQueryChange by rememberUpdatedState(actions.onInlineQueryChange)
     LaunchedEffect(textValue.text) {
         val text = textValue.text
         if (text.startsWith("@") && text.contains(" ")) {
@@ -148,48 +170,48 @@ fun ChatInputBar(
             val botUsername = parts[0].substring(1)
             val query = parts[1]
             if (botUsername.isNotEmpty()) {
-                onInlineQueryChange(botUsername, query)
+                currentOnInlineQueryChange(botUsername, query)
             }
         }
     }
 
-    LaunchedEffect(draftText) {
-        if (textValue.text.isEmpty() && draftText.isNotEmpty()) {
-            textValue = TextFieldValue(draftText, TextRange(draftText.length))
+    LaunchedEffect(state.draftText) {
+        if (textValue.text.isEmpty() && state.draftText.isNotEmpty()) {
+            textValue = TextFieldValue(state.draftText, TextRange(state.draftText.length))
         }
     }
 
+    val currentOnDraftChange by rememberUpdatedState(actions.onDraftChange)
+    val currentOnTyping by rememberUpdatedState(actions.onTyping)
     LaunchedEffect(textValue.text) {
-        if (editingMessage == null && textValue.text != draftText) {
-            onDraftChange(textValue.text)
+        if (state.editingMessage == null && textValue.text != state.draftText) {
+            currentOnDraftChange(textValue.text)
         }
         if (textValue.text.isNotEmpty()) {
-            onTyping()
+            currentOnTyping()
         }
     }
 
-    LaunchedEffect(editingMessage) {
+    LaunchedEffect(state.editingMessage) {
+        val editingMessage = state.editingMessage
         if (editingMessage != null) {
             if (editingMessage.id != lastEditingMessageId) {
                 val content = editingMessage.content
                 if (content is MessageContent.Text) {
                     knownCustomEmojis.clear()
                     content.entities.forEach { entity ->
-                        when (val type = entity.type) {
-                            is MessageEntityType.CustomEmoji -> {
-                                if (type.path != null) {
-                                    knownCustomEmojis[type.emojiId] = StickerModel(
-                                        id = type.emojiId,
-                                        width = 0,
-                                        height = 0,
-                                        emoji = "",
-                                        path = type.path,
-                                        format = StickerFormat.UNKNOWN
-                                    )
-                                }
+                        if (entity.type is MessageEntityType.CustomEmoji) {
+                            val type = entity.type as MessageEntityType.CustomEmoji
+                            if (type.path != null) {
+                                knownCustomEmojis[type.emojiId] = StickerModel(
+                                    id = type.emojiId,
+                                    width = 0,
+                                    height = 0,
+                                    emoji = "",
+                                    path = type.path,
+                                    format = StickerFormat.UNKNOWN
+                                )
                             }
-
-                            else -> {}
                         }
                     }
 
@@ -227,20 +249,20 @@ fun ChatInputBar(
             }
         } else {
             if (lastEditingMessageId != null) {
-                textValue = TextFieldValue(draftText, TextRange(draftText.length))
+                textValue = TextFieldValue(state.draftText, TextRange(state.draftText.length))
                 lastEditingMessageId = null
                 knownCustomEmojis.clear()
             }
         }
     }
 
-    BackHandler(enabled = isStickerMenuVisible || pendingMediaPaths.isNotEmpty()) {
+    BackHandler(enabled = isStickerMenuVisible || state.pendingMediaPaths.isNotEmpty()) {
         if (isGifSearchFocused) {
             focusManager.clearFocus()
         } else if (isStickerMenuVisible) {
             isStickerMenuVisible = false
-        } else if (pendingMediaPaths.isNotEmpty()) {
-            onCancelMedia()
+        } else if (state.pendingMediaPaths.isNotEmpty()) {
+            actions.onCancelMedia()
         }
     }
 
@@ -254,23 +276,23 @@ fun ChatInputBar(
                 .imePadding()
         ) {
             InputPreviewSection(
-                editingMessage = editingMessage,
-                replyMessage = replyMessage,
-                pendingMediaPaths = pendingMediaPaths,
-                onCancelEdit = onCancelEdit,
-                onCancelReply = onCancelReply,
-                onCancelMedia = onCancelMedia,
-                onMediaOrderChange = onMediaOrderChange,
-                onMediaClick = onMediaClick
+                editingMessage = state.editingMessage,
+                replyMessage = state.replyMessage,
+                pendingMediaPaths = state.pendingMediaPaths,
+                onCancelEdit = actions.onCancelEdit,
+                onCancelReply = actions.onCancelReply,
+                onCancelMedia = actions.onCancelMedia,
+                onMediaOrderChange = actions.onMediaOrderChange,
+                onMediaClick = actions.onMediaClick
             )
 
             AnimatedVisibility(
-                visible = mentionSuggestions.isNotEmpty(),
+                visible = state.mentionSuggestions.isNotEmpty(),
                 enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
                 exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
             ) {
                 MentionSuggestions(
-                    suggestions = mentionSuggestions,
+                    suggestions = state.mentionSuggestions,
                     onMentionClick = { user ->
                         val text = textValue.text
                         val selection = textValue.selection
@@ -315,7 +337,7 @@ fun ChatInputBar(
                                 selection = TextRange(lastAt + mentionText.length + 2)
                             )
                         }
-                        onMentionQueryChange(null)
+                        actions.onMentionQueryChange(null)
                     },
                     videoPlayerPool = videoPlayerPool
                 )
@@ -329,7 +351,7 @@ fun ChatInputBar(
                 BotCommandSuggestions(
                     commands = filteredCommands,
                     onCommandClick = { command ->
-                        onSend("/$command", emptyList())
+                        actions.onSend("/$command", emptyList())
                         textValue = TextFieldValue("")
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -337,25 +359,25 @@ fun ChatInputBar(
             }
 
             AnimatedVisibility(
-                visible = (inlineBotResults != null && (inlineBotResults.results.isNotEmpty() || inlineBotResults.switchPmText != null)) || isInlineBotLoading,
+                visible = (state.inlineBotResults != null && (state.inlineBotResults.results.isNotEmpty() || state.inlineBotResults.switchPmText != null)) || state.isInlineBotLoading,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
                 InlineBotResults(
-                    inlineBotResults = inlineBotResults,
-                    isLoading = isInlineBotLoading,
+                    inlineBotResults = state.inlineBotResults,
+                    isLoading = state.isInlineBotLoading,
                     onResultClick = { resultId ->
-                        onSendInlineResult(resultId)
+                        actions.onSendInlineResult(resultId)
                         textValue = TextFieldValue("")
                     },
                     onSwitchPmClick = { text ->
-                        onOpenMiniApp(
+                        actions.onOpenMiniApp(
                             text,
                             "switch_pm"
                         )
                     },
                     onLoadMore = { offset ->
-                        onLoadMoreInlineResults(offset)
+                        actions.onLoadMoreInlineResults(offset)
                     }
                 )
             }
@@ -377,10 +399,10 @@ fun ChatInputBar(
                         exit = fadeOut() + shrinkHorizontally()
                     ) {
                         InputBarLeadingIcons(
-                            editingMessage = editingMessage,
-                            pendingMediaPaths = pendingMediaPaths,
+                            editingMessage = state.editingMessage,
+                            pendingMediaPaths = state.pendingMediaPaths,
                             canSendMedia = canSendMedia,
-                            onAttachClick = onAttachClick
+                            onAttachClick = actions.onAttachClick
                         )
                     }
 
@@ -407,9 +429,9 @@ fun ChatInputBar(
                                 InputTextFieldContainer(
                                     textValue = textValue,
                                     onValueChange = { textValue = it },
-                                    isBot = isBot,
-                                    botMenuButton = botMenuButton,
-                                    botCommands = botCommands,
+                                    isBot = state.isBot,
+                                    botMenuButton = state.botMenuButton,
+                                    botCommands = state.botCommands,
                                     canSendStickers = canSendStickers,
                                     canWriteText = canWriteText,
                                     isStickerMenuVisible = isStickerMenuVisible,
@@ -417,12 +439,12 @@ fun ChatInputBar(
                                         isStickerMenuVisible = !isStickerMenuVisible
                                         if (isStickerMenuVisible) focusManager.clearFocus()
                                     },
-                                    onShowBotCommands = onShowBotCommands,
-                                    onOpenMiniApp = onOpenMiniApp,
+                                    onShowBotCommands = actions.onShowBotCommands,
+                                    onOpenMiniApp = actions.onOpenMiniApp,
                                     knownCustomEmojis = knownCustomEmojis,
                                     emojiFontFamily = emojiFontFamily,
                                     focusRequester = focusRequester,
-                                    pendingMediaPaths = pendingMediaPaths,
+                                    pendingMediaPaths = state.pendingMediaPaths,
                                     onFocus = { isStickerMenuVisible = false },
                                     modifier = Modifier.fillMaxWidth()
                                 )
@@ -435,17 +457,17 @@ fun ChatInputBar(
 
                         InputBarSendButton(
                             textValue = textValue,
-                            editingMessage = editingMessage,
-                            pendingMediaPaths = pendingMediaPaths,
+                            editingMessage = state.editingMessage,
+                            pendingMediaPaths = state.pendingMediaPaths,
                             canWriteText = canWriteText,
                             canSendVoice = canSendVoice,
                             canSendMedia = canSendMedia,
                             isVideoMessageMode = isVideoMessageMode,
                             knownCustomEmojis = knownCustomEmojis,
-                            onSend = onSend,
-                            onSaveEdit = onSaveEdit,
-                            onSendMedia = onSendMedia,
-                            onCameraClick = onCameraClick,
+                            onSend = actions.onSend,
+                            onSaveEdit = actions.onSaveEdit,
+                            onSendMedia = actions.onSendMedia,
+                            onCameraClick = actions.onCameraClick,
                             onVideoModeToggle = { isVideoMessageMode = !isVideoMessageMode },
                             onTextValueChange = { textValue = it },
                             onKnownEmojisClear = { knownCustomEmojis.clear() },
@@ -458,14 +480,14 @@ fun ChatInputBar(
             }
 
             AnimatedVisibility(
-                visible = replyMarkup is ReplyMarkupModel.ShowKeyboard && textValue.text.isEmpty() && !isStickerMenuVisible && !isKeyboardVisible,
+                visible = state.replyMarkup is ReplyMarkupModel.ShowKeyboard && textValue.text.isEmpty() && !isStickerMenuVisible && !isKeyboardVisible,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
             ) {
                 KeyboardMarkupView(
-                    markup = replyMarkup as ReplyMarkupModel.ShowKeyboard,
-                    onButtonClick = onReplyMarkupButtonClick,
-                    onOpenMiniApp = onOpenMiniApp
+                    markup = state.replyMarkup as ReplyMarkupModel.ShowKeyboard,
+                    onButtonClick = actions.onReplyMarkupButtonClick,
+                    onOpenMiniApp = actions.onOpenMiniApp
                 )
             }
 
@@ -482,7 +504,7 @@ fun ChatInputBar(
             ) {
                 StickerEmojiMenu(
                     onStickerSelected = { sticker ->
-                        onStickerClick(sticker)
+                        actions.onStickerClick(sticker)
                     },
                     onEmojiSelected = { emoji, sticker ->
                         val currentText = textValue.annotatedString
@@ -510,7 +532,7 @@ fun ChatInputBar(
                         )
                     },
                     onGifSelected = { gif ->
-                        onGifClick(gif)
+                        actions.onGifClick(gif)
                     },
                     onSearchFocused = { focused ->
                         isGifSearchFocused = focused
@@ -566,10 +588,4 @@ private fun InputBarLeadingIcons(
     } else if (!canSendMedia) {
         Spacer(modifier = Modifier.width(12.dp))
     }
-}
-
-private fun formatDuration(seconds: Int): String {
-    val m = seconds / 60
-    val s = seconds % 60
-    return String.format("%02d:%02d", m, s)
 }

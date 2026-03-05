@@ -74,7 +74,14 @@ fun ChatContentList(
     val isComments = state.rootMessage != null
     val isScrollingFast = rememberIsScrollingFast(scrollState)
 
-    LaunchedEffect(scrollState, groupedMessages.size) {
+    LaunchedEffect(
+        scrollState,
+        groupedMessages.size,
+        state.isLoading,
+        state.isLatestLoaded,
+        state.isOldestLoaded,
+        state.isAtBottom
+    ) {
         snapshotFlow { scrollState.layoutInfo.visibleItemsInfo }
             .collect { visibleItems ->
                 if (visibleItems.isEmpty()) return@collect
@@ -148,8 +155,8 @@ fun ChatContentList(
                     }
                 }
             ) { index, item ->
-                val olderMsg = getMessageAt(groupedMessages, index - 1)
-                val newerMsg = getMessageAt(groupedMessages, index + 1)
+                val olderMsg = remember(groupedMessages, index) { getMessageAt(groupedMessages, index - 1) }
+                val newerMsg = remember(groupedMessages, index) { getMessageAt(groupedMessages, index + 1) }
 
                 MessageRowItem(
                     item = item,
@@ -213,8 +220,8 @@ fun ChatContentList(
                     }
                 }
             ) { index, item ->
-                val olderMsg = getMessageAt(groupedMessages, index + 1)
-                val newerMsg = getMessageAt(groupedMessages, index - 1)
+                val olderMsg = remember(groupedMessages, index) { getMessageAt(groupedMessages, index + 1) }
+                val newerMsg = remember(groupedMessages, index) { getMessageAt(groupedMessages, index - 1) }
 
                 MessageRowItem(
                     item = item,
@@ -278,8 +285,9 @@ private fun MessageRowItem(
     videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
-    val mainMsg =
+    val mainMsg = remember(item) {
         if (item is GroupedMessageItem.Single) item.message else (item as GroupedMessageItem.Album).messages.last()
+    }
 
     val scale = remember {
         Animatable(

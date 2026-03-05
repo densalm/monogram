@@ -1,10 +1,11 @@
 package org.monogram.presentation.chatsScreen.currentChat.impl
 
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageReactionModel
 import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
-import kotlinx.coroutines.launch
 
 internal fun DefaultChatComponent.handleMessageVisible(messageId: Long) {
     scope.launch {
@@ -31,70 +32,73 @@ internal fun DefaultChatComponent.handleSaveEditedMessage(text: String, entities
 }
 
 internal fun DefaultChatComponent.handleDraftChange(text: String) {
-    _state.value = _state.value.copy(draftText = text)
+    _state.update { it.copy(draftText = text) }
     scope.launch {
-        val threadId = _state.value.currentTopicId
-        repositoryMessage.saveChatDraft(chatId, text, _state.value.replyMessage?.id, threadId)
+        val currentState = _state.value
+        val threadId = currentState.currentTopicId
+        repositoryMessage.saveChatDraft(chatId, text, currentState.replyMessage?.id, threadId)
     }
 }
 
 internal fun DefaultChatComponent.handleSendReaction(messageId: Long, reaction: String) {
-    val currentMessages = _state.value.messages.toMutableList()
-    val index = currentMessages.indexOfFirst { it.id == messageId }
-    if (index == -1) return
+    _state.update { currentState ->
+        val currentMessages = currentState.messages.toMutableList()
+        val index = currentMessages.indexOfFirst { it.id == messageId }
+        if (index == -1) return@update currentState
 
-    val message = currentMessages[index]
-    val isCustom = reaction.all { it.isDigit() }
-    val emoji = if (isCustom) null else reaction
-    val customEmojiId = if (isCustom) reaction.toLongOrNull() else null
+        val message = currentMessages[index]
+        val isCustom = reaction.all { it.isDigit() }
+        val emoji = if (isCustom) null else reaction
+        val customEmojiId = if (isCustom) reaction.toLongOrNull() else null
 
-    val existingReaction = message.reactions.find {
-        (it.emoji != null && it.emoji == emoji) || (it.customEmojiId != null && it.customEmojiId == customEmojiId)
-    }
+        val existingReaction = message.reactions.find {
+            (it.emoji != null && it.emoji == emoji) || (it.customEmojiId != null && it.customEmojiId == customEmojiId)
+        }
 
-    val isChosen = existingReaction?.isChosen ?: false
+        val isChosen = existingReaction?.isChosen ?: false
 
-    val newReactions = message.reactions.toMutableList()
-    if (isChosen) {
-        val reactionToUpdate = existingReaction!!
-        if (reactionToUpdate.count > 1) {
-            val reactionIndex = newReactions.indexOf(reactionToUpdate)
-            if (reactionIndex != -1) {
-                newReactions[reactionIndex] = reactionToUpdate.copy(
-                    count = reactionToUpdate.count - 1,
-                    isChosen = false
-                )
+        val newReactions = message.reactions.toMutableList()
+        if (isChosen) {
+            val reactionToUpdate = existingReaction!!
+            if (reactionToUpdate.count > 1) {
+                val reactionIndex = newReactions.indexOf(reactionToUpdate)
+                if (reactionIndex != -1) {
+                    newReactions[reactionIndex] = reactionToUpdate.copy(
+                        count = reactionToUpdate.count - 1,
+                        isChosen = false
+                    )
+                }
+            } else {
+                newReactions.remove(reactionToUpdate)
+            }
+            scope.launch {
+                repositoryMessage.removeMessageReaction(chatId, messageId, reaction)
             }
         } else {
-            newReactions.remove(reactionToUpdate)
-        }
-        scope.launch {
-            repositoryMessage.removeMessageReaction(chatId, messageId, reaction)
-        }
-    } else {
-        if (existingReaction != null) {
-            val reactionIndex = newReactions.indexOf(existingReaction)
-            if (reactionIndex != -1) {
-                newReactions[reactionIndex] = existingReaction.copy(
-                    count = existingReaction.count + 1,
-                    isChosen = true
+            if (existingReaction != null) {
+                val reactionIndex = newReactions.indexOf(existingReaction)
+                if (reactionIndex != -1) {
+                    newReactions[reactionIndex] = existingReaction.copy(
+                        count = existingReaction.count + 1,
+                        isChosen = true
+                    )
+                }
+            } else {
+                newReactions.add(
+                    MessageReactionModel(
+                        emoji = emoji,
+                        customEmojiId = customEmojiId,
+                        count = 1,
+                        isChosen = true
+                    )
                 )
             }
-        } else {
-            newReactions.add(
-                MessageReactionModel(
-                    emoji = emoji,
-                    customEmojiId = customEmojiId,
-                    count = 1,
-                    isChosen = true
-                )
-            )
+            scope.launch {
+                repositoryMessage.addMessageReaction(chatId, messageId, reaction)
+            }
         }
-        scope.launch {
-            repositoryMessage.addMessageReaction(chatId, messageId, reaction)
-        }
-    }
 
-    currentMessages[index] = message.copy(reactions = newReactions)
-    _state.value = _state.value.copy(messages = currentMessages)
+        currentMessages[index] = message.copy(reactions = newReactions)
+        currentState.copy(messages = currentMessages)
+    }
 }

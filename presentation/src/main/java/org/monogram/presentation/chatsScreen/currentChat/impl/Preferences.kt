@@ -1,23 +1,23 @@
 package org.monogram.presentation.chatsScreen.currentChat.impl
 
-import org.monogram.domain.models.WallpaperModel
-import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
-
 
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
+import org.monogram.domain.models.WallpaperModel
+import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
 
 internal fun DefaultChatComponent.observePreferences(availableWallpapers: List<WallpaperModel>) {
     appPreferences.fontSize
         .onEach { size ->
-            _state.value = _state.value.copy(fontSize = size)
+            _state.update { it.copy(fontSize = size) }
         }
         .launchIn(scope)
 
     appPreferences.bubbleRadius
         .onEach { radius ->
-            _state.value = _state.value.copy(bubbleRadius = radius)
+            _state.update { it.copy(bubbleRadius = radius) }
         }
         .launchIn(scope)
 
@@ -46,75 +46,75 @@ internal fun DefaultChatComponent.observePreferences(availableWallpapers: List<W
             null
         }
 
-        _state.value.copy(
-            wallpaper = wallpaper,
-            wallpaperModel = model,
-            isWallpaperBlurred = blurred,
-            wallpaperBlurIntensity = intensity,
-            isWallpaperMoving = moving,
-            wallpaperDimming = dimming,
-            isWallpaperGrayscale = grayscale
-        )
-    }.onEach { newState ->
-        _state.value = newState
+        _state.update { currentState ->
+            currentState.copy(
+                wallpaper = wallpaper,
+                wallpaperModel = model,
+                isWallpaperBlurred = blurred,
+                wallpaperBlurIntensity = intensity,
+                isWallpaperMoving = moving,
+                wallpaperDimming = dimming,
+                isWallpaperGrayscale = grayscale
+            )
+        }
     }.launchIn(scope)
 
     appPreferences.isPlayerGesturesEnabled
         .onEach { enabled ->
-            _state.value = _state.value.copy(isPlayerGesturesEnabled = enabled)
+            _state.update { it.copy(isPlayerGesturesEnabled = enabled) }
         }
         .launchIn(scope)
 
     appPreferences.isPlayerDoubleTapSeekEnabled
         .onEach { enabled ->
-            _state.value = _state.value.copy(isPlayerDoubleTapSeekEnabled = enabled)
+            _state.update { it.copy(isPlayerDoubleTapSeekEnabled = enabled) }
         }
         .launchIn(scope)
 
     appPreferences.playerSeekDuration
         .onEach { duration ->
-            _state.value = _state.value.copy(playerSeekDuration = duration)
+            _state.update { it.copy(playerSeekDuration = duration) }
         }
         .launchIn(scope)
 
     appPreferences.isPlayerZoomEnabled
         .onEach { enabled ->
-            _state.value = _state.value.copy(isPlayerZoomEnabled = enabled)
+            _state.update { it.copy(isPlayerZoomEnabled = enabled) }
         }
         .launchIn(scope)
 
-    appPreferences.autoDownloadMobile.onEach {
-        _state.value = _state.value.copy(autoDownloadMobile = it)
+    appPreferences.autoDownloadMobile.onEach { value ->
+        _state.update { it.copy(autoDownloadMobile = value) }
     }.launchIn(scope)
 
-    appPreferences.autoDownloadWifi.onEach {
-        _state.value = _state.value.copy(autoDownloadWifi = it)
+    appPreferences.autoDownloadWifi.onEach { value ->
+        _state.update { it.copy(autoDownloadWifi = value) }
     }.launchIn(scope)
 
-    appPreferences.autoDownloadRoaming.onEach {
-        _state.value = _state.value.copy(autoDownloadRoaming = it)
+    appPreferences.autoDownloadRoaming.onEach { value ->
+        _state.update { it.copy(autoDownloadRoaming = value) }
     }.launchIn(scope)
 
-    appPreferences.autoDownloadFiles.onEach {
-        _state.value = _state.value.copy(autoDownloadFiles = it)
+    appPreferences.autoDownloadFiles.onEach { value ->
+        _state.update { it.copy(autoDownloadFiles = value) }
     }.launchIn(scope)
 
-    appPreferences.autoplayGifs.onEach {
-        _state.value = _state.value.copy(autoplayGifs = it)
+    appPreferences.autoplayGifs.onEach { value ->
+        _state.update { it.copy(autoplayGifs = value) }
     }.launchIn(scope)
 
-    appPreferences.autoplayVideos.onEach {
-        _state.value = _state.value.copy(autoplayVideos = it)
+    appPreferences.autoplayVideos.onEach { value ->
+        _state.update { it.copy(autoplayVideos = value) }
     }.launchIn(scope)
 
-    appPreferences.showLinkPreviews.onEach {
-        _state.value = _state.value.copy(showLinkPreviews = it)
+    appPreferences.showLinkPreviews.onEach { value ->
+        _state.update { it.copy(showLinkPreviews = value) }
     }.launchIn(scope)
 
     combine(appPreferences.isChatAnimationsEnabled, appPreferences.isPowerSavingMode) { enabled, powerSaving ->
         if (powerSaving) false else enabled
-    }.onEach {
-        _state.value = _state.value.copy(isChatAnimationsEnabled = it)
+    }.onEach { value ->
+        _state.update { it.copy(isChatAnimationsEnabled = value) }
     }.launchIn(scope)
 
     combine(appPreferences.isAdBlockEnabled, appPreferences.adBlockKeywords) { enabled, keywords ->
@@ -136,7 +136,7 @@ internal fun DefaultChatComponent.loadWallpapers(onLoaded: (List<WallpaperModel>
             } else {
                 null
             }
-            _state.value = _state.value.copy(wallpaperModel = model)
+            _state.update { it.copy(wallpaperModel = model) }
         }
         .launchIn(scope)
 }

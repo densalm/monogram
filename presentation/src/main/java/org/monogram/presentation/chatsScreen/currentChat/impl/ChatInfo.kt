@@ -1,20 +1,20 @@
 package org.monogram.presentation.chatsScreen.currentChat.impl
 
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.ChatType
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
 import org.monogram.presentation.util.getUserStatusText
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 
 internal fun DefaultChatComponent.loadChatInfo() {
     scope.launch {
         val chat = chatsListRepository.getChatById(chatId)
         if (chat != null) {
             updateChatState(chat)
-            if (chat.viewAsTopics && state.value.topics.isEmpty()) {
+            if (chat.viewAsTopics && _state.value.topics.isEmpty()) {
                 loadTopics()
             }
 
@@ -22,11 +22,13 @@ internal fun DefaultChatComponent.loadChatInfo() {
             if (isBot) {
                 val botInfo = userRepository.getBotInfo(chatId)
                 if (botInfo != null) {
-                    _state.value = _state.value.copy(
+                    _state.update {
+                        it.copy(
                         botCommands = botInfo.commands,
                         botMenuButton = botInfo.menuButton,
                         isBot = true
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -50,10 +52,10 @@ internal fun DefaultChatComponent.loadChatInfo() {
                     old.isMember == new.isMember
         }
         .onEach { chat ->
-            val wasTopics = state.value.viewAsTopics
+            val wasTopics = _state.value.viewAsTopics
             updateChatState(chat)
             if (chat.viewAsTopics) {
-                if (state.value.topics.isEmpty()) {
+                if (_state.value.topics.isEmpty()) {
                     loadTopics()
                 }
             } else if (wasTopics) {
@@ -65,20 +67,20 @@ internal fun DefaultChatComponent.loadChatInfo() {
     chatsListRepository.forumTopicsFlow
         .filter { it.first == chatId }
         .onEach { (_, topics) ->
-            _state.value = _state.value.copy(topics = topics)
+            _state.update { it.copy(topics = topics) }
         }
         .launchIn(scope)
 }
 
 internal fun DefaultChatComponent.loadTopics() {
-    if (state.value.isLoadingTopics) return
+    if (_state.value.isLoadingTopics) return
     scope.launch {
-        _state.value = _state.value.copy(isLoadingTopics = true)
+        _state.update { it.copy(isLoadingTopics = true) }
         try {
             val topics = chatsListRepository.getForumTopics(chatId)
-            _state.value = _state.value.copy(topics = topics)
+            _state.update { it.copy(topics = topics) }
         } finally {
-            _state.value = _state.value.copy(isLoadingTopics = false)
+            _state.update { it.copy(isLoadingTopics = false) }
         }
     }
 }
@@ -89,41 +91,45 @@ internal fun DefaultChatComponent.observeUserUpdates() {
         userRepository.getUserFlow(chatId).collectLatest { user ->
             if (user != null) {
                 val isBot = user.type == UserTypeEnum.BOT
-                _state.value = _state.value.copy(
+                _state.update {
+                    it.copy(
                     isOnline = !isBot && user.userStatus == UserStatusType.ONLINE,
                     isVerified = user.isVerified,
                     userStatus = getUserStatusText(user),
                     chatPersonalAvatar = user.personalAvatarPath
-                )
+                    )
+                }
             }
         }
     }
 }
 
 internal fun DefaultChatComponent.updateChatState(chat: ChatModel) {
-    val isDetailedInfoMissing = (chat.isGroup || chat.isChannel) && chat.memberCount == 0
-    val canWrite = if (chat.isAdmin) true else chat.permissions.canSendBasicMessages
+    _state.update { currentState ->
+        val isDetailedInfoMissing = (chat.isGroup || chat.isChannel) && chat.memberCount == 0
+        val canWrite = if (chat.isAdmin) true else chat.permissions.canSendBasicMessages
 
-    _state.value = _state.value.copy(
-        chatTitle = chat.title,
-        chatAvatar = chat.avatarPath,
-        chatPersonalAvatar = chat.personalAvatarPath,
-        chatEmojiStatus = chat.emojiStatusPath,
-        isGroup = chat.isGroup,
-        isChannel = chat.isChannel,
-        isVerified = if (chat.isGroup || chat.isChannel) chat.isVerified else (chat.isVerified || _state.value.isVerified),
-        canWrite = canWrite,
-        isAdmin = chat.isAdmin,
-        memberCount = if (!isDetailedInfoMissing) chat.memberCount else _state.value.memberCount,
-        onlineCount = if (!isDetailedInfoMissing) chat.onlineCount else _state.value.onlineCount,
-        unreadCount = chat.unreadCount,
-        unreadMentionCount = chat.unreadMentionCount,
-        unreadReactionCount = chat.unreadReactionCount,
-        userStatus = chat.userStatus,
-        typingAction = chat.typingAction,
-        viewAsTopics = chat.viewAsTopics,
-        isMuted = chat.isMuted,
-        permissions = chat.permissions,
-        isMember = chat.isMember
-    )
+        currentState.copy(
+            chatTitle = chat.title,
+            chatAvatar = chat.avatarPath,
+            chatPersonalAvatar = chat.personalAvatarPath,
+            chatEmojiStatus = chat.emojiStatusPath,
+            isGroup = chat.isGroup,
+            isChannel = chat.isChannel,
+            isVerified = if (chat.isGroup || chat.isChannel) chat.isVerified else (chat.isVerified || currentState.isVerified),
+            canWrite = canWrite,
+            isAdmin = chat.isAdmin,
+            memberCount = if (!isDetailedInfoMissing) chat.memberCount else currentState.memberCount,
+            onlineCount = if (!isDetailedInfoMissing) chat.onlineCount else currentState.onlineCount,
+            unreadCount = chat.unreadCount,
+            unreadMentionCount = chat.unreadMentionCount,
+            unreadReactionCount = chat.unreadReactionCount,
+            userStatus = chat.userStatus,
+            typingAction = chat.typingAction,
+            viewAsTopics = chat.viewAsTopics,
+            isMuted = chat.isMuted,
+            permissions = chat.permissions,
+            isMember = chat.isMember
+        )
+    }
 }

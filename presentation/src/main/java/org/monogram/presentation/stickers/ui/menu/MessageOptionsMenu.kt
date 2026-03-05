@@ -30,6 +30,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -511,8 +512,9 @@ private fun ReactionsRow(
 ) {
     val haptic = LocalHapticFeedback.current
 
+    val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
-    val emojiFontFamily = getEmojiFontFamily(emojiStyle)
+    val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
     var availableReactions by remember { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(message.chatId, message.id) {

@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -54,8 +55,9 @@ fun buildAnnotatedMessageTextWithEmoji(
     revealedSpoilers: List<Int> = emptyList(),
     appPreferences: AppPreferences = koinInject()
 ): AnnotatedString {
+    val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
-    val emojiFontFamily = getEmojiFontFamily(emojiStyle)
+    val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
 
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)

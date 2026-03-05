@@ -6,10 +6,10 @@ import androidx.compose.ui.text.AnnotatedString
 import com.arkivanov.essenty.lifecycle.doOnResume
 import com.arkivanov.essenty.lifecycle.doOnStart
 import com.arkivanov.essenty.lifecycle.doOnStop
-import org.monogram.core.DispatcherProvider
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
+import org.monogram.core.DispatcherProvider
 import org.monogram.domain.managers.DistrManager
 import org.monogram.domain.models.*
 import org.monogram.domain.repository.*
@@ -33,21 +33,21 @@ class DefaultChatComponent(
     private val initialMessageId: Long? = null
 ) : ChatComponent, AppComponentContext by context {
 
-    val settingsRepository: SettingsRepository = container.repositories.settingsRepository
+    internal val settingsRepository: SettingsRepository = container.repositories.settingsRepository
     override val downloadUtils: IDownloadUtils = container.utils.downloadUtils()
-    val userRepository: UserRepository = container.repositories.userRepository
+    internal val userRepository: UserRepository = container.repositories.userRepository
     override val stickerRepository: StickerRepository = container.repositories.stickerRepository
-    val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
-    val botPreferences: BotPreferencesProvider = container.preferences.botPreferencesProvider
-    val toastMessageDisplayer: MessageDisplayer = container.utils.messageDisplayer()
-    val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
+    internal val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
+    internal val botPreferences: BotPreferencesProvider = container.preferences.botPreferencesProvider
+    internal val toastMessageDisplayer: MessageDisplayer = container.utils.messageDisplayer()
+    internal val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
     override val repositoryMessage: MessageRepository = container.repositories.messageRepository
     override val appPreferences: AppPreferences = container.preferences.appPreferences
-    val cacheProvider: CacheProvider = container.cacheProvider
+    internal val cacheProvider: CacheProvider = container.cacheProvider
     override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
-    val cacheController: CacheController = container.utils.cacheController
-    val distrManager: DistrManager = container.utils.distrManager()
-    val dispatcherProvider: DispatcherProvider = container.utils.dispatcherProvider
+    internal val cacheController: CacheController = container.utils.cacheController
+    internal val distrManager: DistrManager = container.utils.distrManager()
+    internal val dispatcherProvider: DispatcherProvider = container.utils.dispatcherProvider
 
     val scope = componentScope
     val messageMutex = Mutex()
@@ -153,31 +153,33 @@ class DefaultChatComponent(
         autoLoadJob?.cancel()
         autoLoadJob = scope.launch {
             while (isActive) {
-                val state = _state.value
-                if (initialMessageId == null && state.messages.size <= 1 && !state.isLoading && !state.isLoadingOlder) {
+                val currentState = _state.value
+                if (initialMessageId == null && currentState.messages.size <= 1 && !currentState.isLoading && !currentState.isLoadingOlder) {
                     Log.d("DefaultChatComponent", "Auto-loading messages...")
                     loadMessages()
                 }
-                delay(2000)
+                delay(5000)
             }
         }
     }
 
     private fun handleResume(initialMessageId: Long?) {
-        if (!_state.value.viewAsTopics) {
+        val currentState = _state.value
+        if (!currentState.viewAsTopics) {
             if (initialMessageId != null) {
                 scrollToMessage(initialMessageId)
-            } else if (_state.value.messages.isEmpty()) {
+            } else if (currentState.messages.isEmpty()) {
                 loadMessages()
             }
-        } else if (_state.value.messages.size <= 1 && _state.value.currentTopicId == null) {
+        } else if (currentState.messages.size <= 1 && currentState.currentTopicId == null) {
             loadMessages()
         }
     }
 
     private fun loadMembers() {
         scope.launch {
-            if (_state.value.isGroup || _state.value.isChannel) {
+            val currentState = _state.value
+            if (currentState.isGroup || currentState.isChannel) {
                 try {
                     allMembers = userRepository.getChatMembers(chatId, 0, 200, ChatMembersFilter.Recent)
                         .map { it.user }
@@ -349,7 +351,8 @@ class DefaultChatComponent(
 
     override fun onDownloadHighRes(messageId: Long) {
         scope.launch {
-            val message = _state.value.messages.find { it.id == messageId } ?: return@launch
+            val currentState = _state.value
+            val message = currentState.messages.find { it.id == messageId } ?: return@launch
             val highResId = repositoryMessage.getHighResFileId(chatId, messageId) ?: return@launch
             if (highResId == 0) return@launch
 
@@ -396,8 +399,9 @@ class DefaultChatComponent(
     }
 
     override fun updateScrollPosition(messageId: Long) {
-        if (_state.value.currentTopicId != null) return
-        val toSave = if (_state.value.isAtBottom) 0L else messageId
+        val currentState = _state.value
+        if (currentState.currentTopicId != null) return
+        val toSave = if (currentState.isAtBottom) 0L else messageId
         cacheProvider.saveChatScrollPosition(chatId, toSave)
         if (toSave != 0L) {
             _state.update { it.copy(lastScrollPosition = toSave) }

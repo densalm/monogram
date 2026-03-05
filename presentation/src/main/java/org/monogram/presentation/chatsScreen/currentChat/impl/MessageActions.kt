@@ -20,11 +20,12 @@ import java.io.FileOutputStream
 
 internal fun DefaultChatComponent.handleSendMessage(text: String, entities: List<MessageEntity>) {
     scope.launch {
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendMessage(chatId, text, replyId, entities, threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -32,11 +33,12 @@ internal fun DefaultChatComponent.handleSendMessage(text: String, entities: List
 
 internal fun DefaultChatComponent.handleSendSticker(stickerId: String) {
     scope.launch {
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendSticker(chatId, stickerId, replyToMsgId = replyId, threadId = threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -63,11 +65,12 @@ internal fun DefaultChatComponent.handleSendPhoto(photoPath: String, caption: St
             photoPath
         }
 
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendPhoto(chatId, finalPath, caption = caption, replyToMsgId = replyId, threadId = threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -90,12 +93,13 @@ internal fun DefaultChatComponent.handleSendVideo(videoPath: String, caption: St
         } else {
             videoPath
         }
-        
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendVideo(chatId, finalPath, caption = caption, replyToMsgId = replyId, threadId = threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -103,11 +107,12 @@ internal fun DefaultChatComponent.handleSendVideo(videoPath: String, caption: St
 
 internal fun DefaultChatComponent.handleSendGif(gif: GifModel) {
     scope.launch {
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendGif(chatId, gif.fileId.toString(), replyToMsgId = replyId, threadId = threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -115,11 +120,12 @@ internal fun DefaultChatComponent.handleSendGif(gif: GifModel) {
 
 internal fun DefaultChatComponent.handleSendGifFile(path: String, caption: String) {
     scope.launch {
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendGifFile(chatId, path, caption = caption, replyToMsgId = replyId, threadId = threadId)
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -167,9 +173,10 @@ internal fun DefaultChatComponent.handleSendAlbum(paths: List<String>, caption: 
                 else -> path
             }
         }
-        
-        val replyId = _state.value.replyMessage?.id
-        val threadId = _state.value.currentTopicId
+
+        val currentState = _state.value
+        val replyId = currentState.replyMessage?.id
+        val threadId = currentState.currentTopicId
         repositoryMessage.sendAlbum(
             chatId,
             processedPaths,
@@ -178,7 +185,7 @@ internal fun DefaultChatComponent.handleSendAlbum(paths: List<String>, caption: 
             threadId = threadId
         )
         onCancelReply()
-        if (!_state.value.isAtBottom) {
+        if (!currentState.isAtBottom) {
             onScrollToBottom()
         }
     }
@@ -215,8 +222,9 @@ internal fun DefaultChatComponent.handleSendVoice(path: String, duration: Int, w
 }
 
 internal fun DefaultChatComponent.handleCopySelectedMessages(clipboardManager: ClipboardManager) {
-    val selectedIds = _state.value.selectedMessageIds
-    val selectedMessages = _state.value.messages
+    val currentState = _state.value
+    val selectedIds = currentState.selectedMessageIds
+    val selectedMessages = currentState.messages
         .filter { selectedIds.contains(it.id) }
         .sortedBy { it.id }
 

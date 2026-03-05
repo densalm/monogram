@@ -13,6 +13,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -52,7 +53,8 @@ fun InputTextFieldContainer(
             verticalAlignment = Alignment.Bottom,
             modifier = Modifier.padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
         ) {
-            if (isBot && textValue.text.isEmpty()) {
+            val showBotActions = remember(isBot, textValue.text) { isBot && textValue.text.isEmpty() }
+            if (showBotActions) {
                 BotInputActions(
                     botMenuButton = botMenuButton,
                     botCommands = botCommands,

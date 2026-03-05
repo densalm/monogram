@@ -36,8 +36,8 @@ import org.monogram.domain.models.StickerModel
 import org.monogram.presentation.chatsScreen.currentChat.components.chats.addEmojiStyle
 import org.monogram.presentation.stickers.ui.view.StickerImage
 
-private const val CUSTOM_EMOJI_TAG = "custom_emoji"
-private const val MENTION_TAG = "mention"
+internal const val CUSTOM_EMOJI_TAG = "custom_emoji"
+internal const val MENTION_TAG = "mention"
 
 @Composable
 fun InputTextField(

@@ -76,15 +76,21 @@ fun MessageBubbleContainer(
     val screenWidth = configuration.screenWidthDp.dp
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    val maxWidth = if (isLandscape) {
-        (screenWidth * 0.6f).coerceAtMost(450.dp)
-    } else {
-        (screenWidth * 0.85f).coerceAtMost(360.dp)
+    val maxWidth = remember(isLandscape, screenWidth) {
+        if (isLandscape) {
+            (screenWidth * 0.6f).coerceAtMost(450.dp)
+        } else {
+            (screenWidth * 0.85f).coerceAtMost(360.dp)
+        }
     }
 
     val isOutgoing = msg.isOutgoing
-    val isSameSenderAbove = olderMsg?.senderId == msg.senderId && !shouldShowDate(msg, olderMsg)
-    val isSameSenderBelow = newerMsg != null && newerMsg.senderId == msg.senderId && !shouldShowDate(newerMsg, msg)
+    val isSameSenderAbove = remember(olderMsg?.senderId, msg.senderId, olderMsg?.date, msg.date) {
+        olderMsg?.senderId == msg.senderId && !shouldShowDate(msg, olderMsg)
+    }
+    val isSameSenderBelow = remember(newerMsg?.senderId, msg.senderId, newerMsg?.date, msg.date) {
+        newerMsg != null && newerMsg.senderId == msg.senderId && !shouldShowDate(newerMsg, msg)
+    }
 
     val topSpacing = if (!isSameSenderAbove) 8.dp else 2.dp
 
@@ -268,21 +274,25 @@ private fun MessageContentSelector(
     isAnyViewerOpen: Boolean = false
 ) {
     val nextMsgText = (newerMsg?.content as? MessageContent.Text)?.text
-    val currentCaption = when (val c = msg.content) {
-        is MessageContent.Photo -> c.caption
-        is MessageContent.Video -> c.caption
-        is MessageContent.Gif -> c.caption
-        is MessageContent.Document -> c.caption
-        is MessageContent.Audio -> c.caption
-        else -> null
+    val currentCaption = remember(msg.content) {
+        when (val c = msg.content) {
+            is MessageContent.Photo -> c.caption
+            is MessageContent.Video -> c.caption
+            is MessageContent.Gif -> c.caption
+            is MessageContent.Document -> c.caption
+            is MessageContent.Audio -> c.caption
+            else -> null
+        }
     }
-    val currentEntities = when (val c = msg.content) {
-        is MessageContent.Photo -> c.entities
-        is MessageContent.Video -> c.entities
-        is MessageContent.Gif -> c.entities
-        is MessageContent.Document -> c.entities
-        is MessageContent.Audio -> c.entities
-        else -> emptyList()
+    val currentEntities = remember(msg.content) {
+        when (val c = msg.content) {
+            is MessageContent.Photo -> c.entities
+            is MessageContent.Video -> c.entities
+            is MessageContent.Gif -> c.entities
+            is MessageContent.Document -> c.entities
+            is MessageContent.Audio -> c.entities
+            else -> emptyList()
+        }
     }
 
     val isCaptionSameAsNext = currentCaption != null && currentCaption.isNotEmpty() && currentCaption == nextMsgText

@@ -47,8 +47,12 @@ fun ChatContentTopBar(
     var showDeleteSheet by remember { mutableStateOf(false) }
 
     if (showDeleteSheet) {
-        val selectedMessages = state.messages.filter { it.id in state.selectedMessageIds }
-        val canRevoke = selectedMessages.any { it.canBeDeletedForAllUsers }
+        val selectedMessages = remember(state.messages, state.selectedMessageIds) {
+            state.messages.filter { it.id in state.selectedMessageIds }
+        }
+        val canRevoke = remember(selectedMessages) {
+            selectedMessages.any { it.canBeDeletedForAllUsers }
+        }
 
         DeleteMessagesSheet(
             count = state.selectedMessageIds.size,
@@ -180,27 +184,40 @@ fun ChatContentTopBar(
                     }
                 )
             } else {
-                val statusText = when {
-                    state.typingAction != null -> state.typingAction
-                    state.isChannel -> "${state.memberCount} subscribers"
-                    state.isGroup -> {
-                        if (state.onlineCount > 0) {
-                            "${state.memberCount} members, ${state.onlineCount} online"
-                        } else {
-                            "${state.memberCount} members"
+                val statusText = remember(
+                    state.typingAction,
+                    state.isChannel,
+                    state.isGroup,
+                    state.memberCount,
+                    state.onlineCount,
+                    state.userStatus
+                ) {
+                    when {
+                        state.typingAction != null -> state.typingAction
+                        state.isChannel -> "${state.memberCount} subscribers"
+                        state.isGroup -> {
+                            if (state.onlineCount > 0) {
+                                "${state.memberCount} members, ${state.onlineCount} online"
+                            } else {
+                                "${state.memberCount} members"
+                            }
                         }
+
+                        else -> state.userStatus
                     }
-
-                    else -> state.userStatus
                 }
-                val currentTopic = if (state.currentTopicId != null) {
-                    state.topics.find { it.id.toLong() == state.currentTopicId }
-                } else null
+                val currentTopic = remember(state.currentTopicId, state.topics) {
+                    if (state.currentTopicId != null) {
+                        state.topics.find { it.id.toLong() == state.currentTopicId }
+                    } else null
+                }
 
-                val title = when {
-                    currentTopic != null -> currentTopic.name
-                    state.rootMessage != null -> "Thread"
-                    else -> state.chatTitle
+                val title = remember(currentTopic, state.rootMessage, state.chatTitle) {
+                    when {
+                        currentTopic != null -> currentTopic.name
+                        state.rootMessage != null -> "Thread"
+                        else -> state.chatTitle
+                    }
                 }
                 val topicEmojiPath = currentTopic?.iconCustomEmojiPath
 

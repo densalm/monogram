@@ -9,7 +9,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import java.io.File
 import kotlin.math.log10
 
@@ -20,15 +19,23 @@ fun rememberVoiceRecorder(
     val context = LocalContext.current
     val state = remember { VoiceRecorderState(context) }
 
+    LaunchedEffect(onRecordingFinished) {
+        state.onRecordingFinished = onRecordingFinished
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             state.stopRecording(cancel = true)
         }
     }
 
-    return state.apply {
-        this.onRecordingFinished = onRecordingFinished
+    LaunchedEffect(state.isRecording) {
+        if (state.isRecording) {
+            state.runUpdateLoop()
+        }
     }
+
+    return state
 }
 
 class VoiceRecorderState(private val context: Context) {
@@ -63,7 +70,6 @@ class VoiceRecorderState(private val context: Context) {
         }
 
         try {
-            // OGG/OPUS is only natively supported from Android 10 (API 29)
             val supportsOggOpus = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             val extension = if (supportsOggOpus) "ogg" else "m4a"
 
@@ -71,7 +77,6 @@ class VoiceRecorderState(private val context: Context) {
             currentFile = file
             waveform.clear()
 
-            // MediaRecorder(Context) is API 31+, fallback to parameterless constructor for older APIs
             mediaRecorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 MediaRecorder(context)
             } else {
@@ -87,11 +92,10 @@ class VoiceRecorderState(private val context: Context) {
                     setAudioEncodingBitRate(320000)
                     setAudioSamplingRate(48000)
                 } else {
-                    // Fallback to AAC in an MP4 container for Android 6.0 - 9.0
                     setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                    setAudioEncodingBitRate(320000) // 320 kbps
-                    setAudioSamplingRate(48000) // 48 kHz
+                    setAudioEncodingBitRate(320000)
+                    setAudioSamplingRate(48000)
                 }
 
                 setOutputFile(file.absolutePath)
@@ -111,15 +115,18 @@ class VoiceRecorderState(private val context: Context) {
     }
 
     private fun releaseResources() {
-        try {
-            mediaRecorder?.stop()
-        } catch (e: Exception) {
-            // Ignore: stop() can fail if called too soon after start()
-        }
-        try {
-            mediaRecorder?.release()
-        } catch (e: Exception) {
-            // Ignore
+        mediaRecorder?.let { recorder ->
+            try {
+                recorder.stop()
+            } catch (e: Exception) {
+                // Ignore: stop() can fail if called too soon after start()
+            } finally {
+                try {
+                    recorder.release()
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
         }
         mediaRecorder = null
     }
@@ -131,48 +138,48 @@ class VoiceRecorderState(private val context: Context) {
     }
 
     fun stopRecording(cancel: Boolean = false) {
-        val wasRecording = isRecording
+        if (!isRecording) return
+
         val capturedDurationMillis = durationMillis
+        val wasRecording = isRecording
+        val file = currentFile
 
         releaseResources()
         isRecording = false
         isLocked = false
+        currentFile = null
 
-        if (wasRecording && !cancel && currentFile != null) {
+        if (wasRecording && !cancel && file != null) {
             val durationSec = (capturedDurationMillis / 1000).toInt()
             if (durationSec >= 1) {
-                onRecordingFinished?.invoke(currentFile!!.absolutePath, durationSec, waveform.toByteArray())
+                onRecordingFinished?.invoke(file.absolutePath, durationSec, waveform.toByteArray())
             } else {
-                currentFile?.delete()
+                file.delete()
             }
         } else {
-            currentFile?.delete()
+            file?.delete()
         }
-        currentFile = null
     }
 
-    @Composable
-    fun UpdateLoop() {
-        LaunchedEffect(isRecording) {
-            while (isActive && isRecording) {
-                durationMillis = System.currentTimeMillis() - startTime
+    suspend fun runUpdateLoop() {
+        while (isRecording) {
+            durationMillis = System.currentTimeMillis() - startTime
 
-                val maxAmp = try {
-                    mediaRecorder?.maxAmplitude ?: 0
-                } catch (e: Exception) {
-                    0
-                }
-                
-                amplitude = if (maxAmp > 0) {
-                    (20 * log10(maxAmp.toDouble() / 32767.0)).toFloat().coerceIn(-60f, 0f)
-                } else -60f
-
-                // Map -60..0 to 0..31 for TDLib waveform
-                val normalized = ((amplitude + 60) / 60 * 31).toInt().coerceIn(0, 31)
-                waveform.add(normalized.toByte())
-
-                delay(100)
+            val maxAmp = try {
+                mediaRecorder?.maxAmplitude ?: 0
+            } catch (e: Exception) {
+                0
             }
+
+            amplitude = if (maxAmp > 0) {
+                (20 * log10(maxAmp.toDouble() / 32767.0)).toFloat().coerceIn(-60f, 0f)
+            } else -60f
+
+            // Map -60..0 to 0..31 for TDLib waveform
+            val normalized = ((amplitude + 60) / 60 * 31).toInt().coerceIn(0, 31)
+            waveform.add(normalized.toByte())
+
+            delay(100)
         }
     }
 }

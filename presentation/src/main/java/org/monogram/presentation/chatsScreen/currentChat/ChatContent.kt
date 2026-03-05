@@ -44,9 +44,7 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.ReplyMarkupModel
 import org.monogram.presentation.chatsScreen.currentChat.chatContent.*
-import org.monogram.presentation.chatsScreen.currentChat.components.AdvancedCircularRecorderScreen
-import org.monogram.presentation.chatsScreen.currentChat.components.ChatInputBar
-import org.monogram.presentation.chatsScreen.currentChat.components.StickerSetSheet
+import org.monogram.presentation.chatsScreen.currentChat.components.*
 import org.monogram.presentation.chatsScreen.currentChat.components.chats.BotCommandsSheet
 import org.monogram.presentation.chatsScreen.currentChat.components.chats.LocalLinkHandler
 import org.monogram.presentation.chatsScreen.currentChat.components.chats.PollVotersSheet
@@ -93,7 +91,9 @@ fun ChatContent(
     var editingPhotoPath by remember { mutableStateOf<String?>(null) }
     var editingVideoPath by remember { mutableStateOf<String?>(null) }
 
-    val groupedMessages = remember(state.messages) { groupMessagesByAlbum(state.messages.distinctBy { it.id }) }
+    val groupedMessages = remember(state.messages) {
+        groupMessagesByAlbum(state.messages)
+    }
     val isComments = state.rootMessage != null
     val isForumList = state.viewAsTopics && state.currentTopicId == null
 
@@ -108,32 +108,30 @@ fun ChatContent(
             editingVideoPath != null ||
             isRecordingVideo
 
-    val scrollToMessage = remember(groupedMessages, state.isLoading, state.isChatAnimationsEnabled) {
-        { msg: MessageModel ->
-            val index = groupedMessages.indexOfFirst { item ->
-                when (item) {
-                    is GroupedMessageItem.Single -> item.message.id == msg.id
-                    is GroupedMessageItem.Album -> item.messages.any { it.id == msg.id }
-                }
-            }
-            if (index != -1) {
-                coroutineScope.launch {
-                    val targetIndex = if (isComments) {
-                        if (state.rootMessage != null) index + 1 else index
-                    } else index
-
-                    if (state.isChatAnimationsEnabled) {
-                        scrollState.animateScrollToItem(targetIndex)
-                    } else {
-                        scrollState.scrollToItem(targetIndex)
-                    }
-                }
-            } else {
-                component.onClearMessages()
-                component.onPinnedMessageClick(msg)
+    val scrollToMessageState = rememberUpdatedState(newValue = { msg: MessageModel ->
+        val index = groupedMessages.indexOfFirst { item ->
+            when (item) {
+                is GroupedMessageItem.Single -> item.message.id == msg.id
+                is GroupedMessageItem.Album -> item.messages.any { it.id == msg.id }
             }
         }
-    }
+        if (index != -1) {
+            coroutineScope.launch {
+                val targetIndex = if (isComments) {
+                    if (state.rootMessage != null) index + 1 else index
+                } else index
+
+                if (state.isChatAnimationsEnabled) {
+                    scrollState.animateScrollToItem(targetIndex)
+                } else {
+                    scrollState.scrollToItem(targetIndex)
+                }
+            }
+        } else {
+            component.onClearMessages()
+            component.onPinnedMessageClick(msg)
+        }
+    })
 
     LaunchedEffect(Unit) { isVisible = true }
 
@@ -162,7 +160,7 @@ fun ChatContent(
     }
 
     // Scroll to message when requested by component
-    LaunchedEffect(state.scrollToMessageId, groupedMessages, state.isChatAnimationsEnabled) {
+    LaunchedEffect(state.scrollToMessageId, groupedMessages) {
         state.scrollToMessageId?.let { id ->
             val index = groupedMessages.indexOfFirst { item ->
                 if (id == state.currentTopicId) {
@@ -192,7 +190,7 @@ fun ChatContent(
     // Update bottom status and save scroll position
     LaunchedEffect(
         scrollState.firstVisibleItemIndex,
-        scrollState.layoutInfo.visibleItemsInfo,
+        scrollState.layoutInfo.visibleItemsInfo.size,
         scrollState.isScrollInProgress,
         state.isLatestLoaded
     ) {
@@ -228,7 +226,7 @@ fun ChatContent(
     }
 
     // Performance: Update visible range for repository
-    LaunchedEffect(scrollState.firstVisibleItemIndex, scrollState.layoutInfo.visibleItemsInfo, groupedMessages) {
+    LaunchedEffect(scrollState.firstVisibleItemIndex, scrollState.layoutInfo.visibleItemsInfo.size, groupedMessages) {
         val visibleItems = scrollState.layoutInfo.visibleItemsInfo
         if (visibleItems.isNotEmpty()) {
             val visibleIds = mutableListOf<Long>()
@@ -409,85 +407,94 @@ fun ChatContent(
                             component = component,
                             contentAlpha = contentAlpha,
                             onBack = { keyboardController?.hide(); component.onBackClicked() },
-                            onPinnedMessageClick = { msg -> scrollToMessage(msg) },
+                            onPinnedMessageClick = { msg -> scrollToMessageState.value(msg) },
                             showBack = !isTablet
                         )
                     },
                     bottomBar = {
                         if (showInputBar) {
-                            ChatInputBar(
-                                onSend = { text, entities -> component.onSendMessage(text, entities) },
-                                onStickerClick = { component.onSendSticker(it) },
-                                onGifClick = { component.onSendGif(it) },
-                                onAttachClick = {
-                                    pickMedia.launch(
-                                        PickVisualMediaRequest(
-                                            ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                            val inputBarState = remember(state, pendingMediaPaths) {
+                                ChatInputBarState(
+                                    replyMessage = state.replyMessage,
+                                    editingMessage = state.editingMessage,
+                                    draftText = state.draftText,
+                                    pendingMediaPaths = pendingMediaPaths,
+                                    isClosed = state.topics.find { it.id.toLong() == state.currentTopicId }?.isClosed
+                                        ?: false,
+                                    permissions = state.permissions,
+                                    isAdmin = state.isAdmin,
+                                    isChannel = state.isChannel,
+                                    isBot = state.isBot,
+                                    botCommands = state.botCommands,
+                                    botMenuButton = state.botMenuButton,
+                                    replyMarkup = state.messages.firstOrNull { it.replyMarkup is ReplyMarkupModel.ShowKeyboard }?.replyMarkup,
+                                    mentionSuggestions = state.mentionSuggestions,
+                                    inlineBotResults = state.inlineBotResults,
+                                    isInlineBotLoading = state.isInlineBotLoading
+                                )
+                            }
+
+                            val inputBarActions = remember(component, pendingMediaPaths) {
+                                ChatInputBarActions(
+                                    onSend = { text, entities -> component.onSendMessage(text, entities) },
+                                    onStickerClick = { component.onSendSticker(it) },
+                                    onGifClick = { component.onSendGif(it) },
+                                    onAttachClick = {
+                                        pickMedia.launch(
+                                            PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                                            )
                                         )
-                                    )
-                                },
-                                onCameraClick = { isRecordingVideo = true },
-                                onSendVoice = { path, duration, waveform ->
-                                    component.onSendVoice(path, duration, waveform)
-                                },
-                                replyMessage = state.replyMessage,
-                                onCancelReply = { component.onCancelReply() },
-                                editingMessage = state.editingMessage,
-                                onCancelEdit = { component.onCancelEdit() },
-                                onSaveEdit = { t, e -> component.onSaveEditedMessage(t, e) },
-                                draftText = state.draftText,
-                                onDraftChange = { component.onDraftChange(it) },
-                                onTyping = { component.onTyping() },
-                                pendingMediaPaths = pendingMediaPaths,
-                                onCancelMedia = { pendingMediaPaths = emptyList() },
-                                onSendMedia = { paths, caption ->
-                                    if (paths.size > 1) component.onSendAlbum(paths, caption)
-                                    else paths.firstOrNull()?.let {
-                                        if (it.endsWith(".mp4")) component.onSendVideo(it, caption)
-                                        else component.onSendPhoto(it, caption)
-                                    }
-                                    pendingMediaPaths = emptyList()
-                                },
-                                onMediaOrderChange = { pendingMediaPaths = it },
-                                onMediaClick = { path ->
-                                    if (path.endsWith(".mp4")) {
-                                        editingVideoPath = path
-                                    } else {
-                                        editingPhotoPath = path
-                                    }
-                                },
-                                isClosed = state.topics.find { it.id.toLong() == state.currentTopicId }?.isClosed
-                                    ?: false,
-                                permissions = state.permissions,
-                                isAdmin = state.isAdmin,
-                                isChannel = state.isChannel,
-                                isBot = state.isBot,
-                                botCommands = state.botCommands,
-                                botMenuButton = state.botMenuButton,
-                                onShowBotCommands = { component.onShowBotCommands() },
-                                replyMarkup = state.messages.firstOrNull { it.replyMarkup is ReplyMarkupModel.ShowKeyboard }?.replyMarkup,
-                                onReplyMarkupButtonClick = { component.onSendMessage(it.text) },
-                                onOpenMiniApp = { url, name ->
-                                    component.onOpenMiniApp(
-                                        url,
-                                        name,
-                                        if (state.isBot) state.chatId else 0L
-                                    )
-                                },
-                                mentionSuggestions = state.mentionSuggestions,
-                                onMentionQueryChange = { component.onMentionQueryChange(it) },
-                                inlineBotResults = state.inlineBotResults,
-                                isInlineBotLoading = state.isInlineBotLoading,
-                                onInlineQueryChange = { bot, query ->
-                                    component.onInlineQueryChange(
-                                        bot,
-                                        query
-                                    )
-                                },
-                                onLoadMoreInlineResults = { offset ->
-                                    component.onLoadMoreInlineResults(offset)
-                                },
-                                onSendInlineResult = { resultId -> component.onSendInlineResult(resultId) },
+                                    },
+                                    onCameraClick = { isRecordingVideo = true },
+                                    onSendVoice = { path, duration, waveform ->
+                                        component.onSendVoice(path, duration, waveform)
+                                    },
+                                    onCancelReply = { component.onCancelReply() },
+                                    onCancelEdit = { component.onCancelEdit() },
+                                    onSaveEdit = { t, e -> component.onSaveEditedMessage(t, e) },
+                                    onDraftChange = { component.onDraftChange(it) },
+                                    onTyping = { component.onTyping() },
+                                    onCancelMedia = { pendingMediaPaths = emptyList() },
+                                    onSendMedia = { paths, caption ->
+                                        if (paths.size > 1) component.onSendAlbum(paths, caption)
+                                        else paths.firstOrNull()?.let {
+                                            if (it.endsWith(".mp4")) component.onSendVideo(it, caption)
+                                            else component.onSendPhoto(it, caption)
+                                        }
+                                        pendingMediaPaths = emptyList()
+                                    },
+                                    onMediaOrderChange = { pendingMediaPaths = it },
+                                    onMediaClick = { path ->
+                                        if (path.endsWith(".mp4")) {
+                                            editingVideoPath = path
+                                        } else {
+                                            editingPhotoPath = path
+                                        }
+                                    },
+                                    onShowBotCommands = { component.onShowBotCommands() },
+                                    onReplyMarkupButtonClick = { component.onSendMessage(it.text) },
+                                    onOpenMiniApp = { url, name ->
+                                        component.onOpenMiniApp(
+                                            url,
+                                            name,
+                                            if (state.isBot) state.chatId else 0L
+                                        )
+                                    },
+                                    onMentionQueryChange = { component.onMentionQueryChange(it) },
+                                    onInlineQueryChange = { bot, query ->
+                                        component.onInlineQueryChange(bot, query)
+                                    },
+                                    onLoadMoreInlineResults = { offset ->
+                                        component.onLoadMoreInlineResults(offset)
+                                    },
+                                    onSendInlineResult = { resultId -> component.onSendInlineResult(resultId) }
+                                )
+                            }
+
+                            ChatInputBar(
+                                state = inputBarState,
+                                actions = inputBarActions,
                                 appPreferences = component.appPreferences,
                                 videoPlayerPool = component.videoPlayerPool,
                                 stickerRepository = component.stickerRepository
@@ -624,7 +631,7 @@ fun ChatContent(
                                         selectedMessageId = msg.id
                                         menuOffset = pos; menuMessageSize = size; clickOffset = clickPos
                                     },
-                                    onGoToReply = { scrollToMessage(it) },
+                                    onGoToReply = { scrollToMessageState.value(it) },
                                     selectedMessageId = selectedMessageId,
                                     onMessagePositionChange = { pos, size ->
                                         menuOffset = pos
@@ -763,9 +770,9 @@ fun ChatContent(
                 PinnedMessagesListSheet(
                     state = state,
                     onDismiss = { component.onDismissPinnedMessages() },
-                    onMessageClick = { scrollToMessage(it); component.onDismissPinnedMessages() },
+                    onMessageClick = { scrollToMessageState.value(it); component.onDismissPinnedMessages() },
                     onUnpin = { component.onUnpinMessage(it) },
-                    onReplyClick = { scrollToMessage(it); component.onDismissPinnedMessages() },
+                    onReplyClick = { scrollToMessageState.value(it); component.onDismissPinnedMessages() },
                     onReactionClick = { id, r -> component.onSendReaction(id, r) },
                     downloadUtils = component.downloadUtils,
                     videoPlayerPool = component.videoPlayerPool

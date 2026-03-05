@@ -1,21 +1,26 @@
 package org.monogram.presentation.chatsScreen.currentChat.impl
 
-import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.monogram.presentation.chatsScreen.currentChat.DefaultChatComponent
 
 internal fun DefaultChatComponent.handleToggleMessageSelection(messageId: Long) {
-    val current = _state.value.selectedMessageIds
-    if (current.contains(messageId)) {
-        _state.value = _state.value.copy(selectedMessageIds = current - messageId)
-    } else {
-        if (current.size < 100) {
-            _state.value = _state.value.copy(selectedMessageIds = current + messageId)
+    _state.update { currentState ->
+        val current = currentState.selectedMessageIds
+        if (current.contains(messageId)) {
+            currentState.copy(selectedMessageIds = current - messageId)
+        } else {
+            if (current.size < 100) {
+                currentState.copy(selectedMessageIds = current + messageId)
+            } else {
+                currentState
+            }
         }
     }
 }
 
 internal fun DefaultChatComponent.handleClearSelection() {
-    _state.value = _state.value.copy(selectedMessageIds = emptySet())
+    _state.update { it.copy(selectedMessageIds = emptySet()) }
 }
 
 internal fun DefaultChatComponent.handleDeleteSelectedMessages(revoke: Boolean = false) {
