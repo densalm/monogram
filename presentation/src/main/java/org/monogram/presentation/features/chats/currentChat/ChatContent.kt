@@ -310,17 +310,8 @@ fun ChatContent(
             (!state.viewAsTopics || state.currentTopicId != null)
 
     val isDragToBackEnabled by component.appPreferences.isDragToBackEnabled.collectAsState()
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    val dragOffsetX = remember { Animatable(0f) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
-
-    val animatedDragOffsetX by animateFloatAsState(
-        targetValue = dragOffsetX,
-        animationSpec = if (dragOffsetX == 0f || (containerSize.width > 0 && dragOffsetX >= containerSize.width.toFloat()))
-            spring(stiffness = Spring.StiffnessLow)
-        else
-            tween(0),
-        label = "DragOffsetX"
-    )
 
     val isCustomBackHandlingEnabled =
         (editingPhotoPath != null || editingVideoPath != null || selectedMessageId != null || state.selectedMessageIds.isNotEmpty() || state.currentTopicId != null || state.showBotCommands || state.restrictUserId != null || state.fullScreenImages != null || state.fullScreenVideoPath != null || state.fullScreenVideoMessageId != null) && state.miniAppUrl == null && state.webViewUrl == null
@@ -332,11 +323,16 @@ fun ChatContent(
                 .background(MaterialTheme.colorScheme.background)
                 .onGloballyPositioned { containerSize = it.size }
         ) {
-            if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled && dragOffsetX > 0 && previousChild != null) {
+            if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled && dragOffsetX.value > 0 && previousChild != null) {
                 Box(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     renderChild(previousChild)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f * (1f - (dragOffsetX.value / containerSize.width.toFloat()).coerceIn(0f, 1f))))
+                    )
                 }
             }
 
@@ -346,43 +342,47 @@ fun ChatContent(
                     .then(
                         if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled) {
                             Modifier.pointerInput(Unit) {
-                                var isValidDrag = false
-                                val edgeZone = 24.dp.toPx()
+                                var isDragging = false
                                 detectHorizontalDragGestures(
                                     onDragStart = { offset ->
-                                        isValidDrag = offset.x > edgeZone
-                                        if (isValidDrag) {
-                                            dragOffsetX = 0f
-                                        }
+                                        isDragging = offset.x > 48.dp.toPx()
                                     },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        if (isValidDrag) {
-                                            val newOffset = dragOffsetX + dragAmount
-                                            if (newOffset > 0) {
-                                                dragOffsetX = newOffset
+                                    onHorizontalDrag = { change, dragAmount ->
+                                        if (isDragging) {
+                                            change.consume()
+                                            coroutineScope.launch {
+                                                val newOffset = dragOffsetX.value + dragAmount
+                                                dragOffsetX.snapTo(newOffset.coerceAtLeast(0f))
                                             }
                                         }
                                     },
                                     onDragEnd = {
-                                        if (isValidDrag && containerSize.width > 0 && dragOffsetX > containerSize.width / 3) {
-                                            dragOffsetX = containerSize.width.toFloat()
-                                            component.onBackClicked()
-                                        } else {
-                                            dragOffsetX = 0f
+                                        if (isDragging) {
+                                            val width = containerSize.width.toFloat()
+                                            coroutineScope.launch {
+                                                if (dragOffsetX.value > width * 0.20f) {
+                                                    dragOffsetX.animateTo(width, tween(200))
+                                                    component.onBackClicked()
+                                                } else {
+                                                    dragOffsetX.animateTo(0f, spring())
+                                                }
+                                            }
+                                            isDragging = false
                                         }
-                                        isValidDrag = false
                                     },
                                     onDragCancel = {
-                                        dragOffsetX = 0f
-                                        isValidDrag = false
+                                        if (isDragging) {
+                                            coroutineScope.launch { dragOffsetX.animateTo(0f) }
+                                            isDragging = false
+                                        }
                                     }
                                 )
                             }
                         } else Modifier
                     )
                     .graphicsLayer {
-                        translationX = animatedDragOffsetX
-                        shadowElevation = if (dragOffsetX > 0) 20f else 0f
+                        translationX = dragOffsetX.value
+                        shadowElevation = if (dragOffsetX.value > 0) 20f else 0f
                     }
             ) {
                 Box(

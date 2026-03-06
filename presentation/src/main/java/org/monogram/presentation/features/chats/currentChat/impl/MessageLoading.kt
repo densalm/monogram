@@ -558,21 +558,19 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         .launchIn(scope)
 }
 
-private inline fun DefaultChatComponent.updateMessageContent(
+private suspend fun DefaultChatComponent.updateMessageContent(
     messageId: Long,
-    crossinline transform: (MessageModel) -> MessageModel
+    transform: (MessageModel) -> MessageModel
 ) {
-    scope.launch {
-        messageMutex.withLock {
-            _state.update { currentState ->
-                val currentMessages = currentState.messages.toMutableList()
-                val index = currentMessages.indexOfFirst { it.id == messageId }
-                if (index != -1) {
-                    currentMessages[index] = transform(currentMessages[index])
-                    currentState.copy(messages = currentMessages)
-                } else {
-                    currentState
-                }
+    messageMutex.withLock {
+        _state.update { currentState ->
+            val currentMessages = currentState.messages.toMutableList()
+            val index = currentMessages.indexOfFirst { it.id == messageId }
+            if (index != -1) {
+                currentMessages[index] = transform(currentMessages[index])
+                currentState.copy(messages = currentMessages)
+            } else {
+                currentState
             }
         }
     }
