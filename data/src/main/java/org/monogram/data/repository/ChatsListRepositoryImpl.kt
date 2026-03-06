@@ -1,17 +1,19 @@
 package org.monogram.data.repository
 
 import android.util.Log
-import org.monogram.core.DispatcherProvider
-import org.monogram.core.ScopeProvider
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import org.drinkless.tdlib.TdApi
+import org.monogram.core.DispatcherProvider
+import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.*
+import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.ChatsCacheDataSource
 import org.monogram.data.datasource.remote.ChatRemoteSource
 import org.monogram.data.datasource.remote.ChatsRemoteDataSource
 import org.monogram.data.datasource.remote.ProxyRemoteDataSource
+import org.monogram.data.db.model.ChatEntity
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.mapper.MessageMapper
@@ -20,6 +22,7 @@ import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.FolderModel
 import org.monogram.domain.models.TopicModel
 import org.monogram.domain.repository.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 class ChatsListRepositoryImpl(
@@ -35,7 +38,8 @@ class ChatsListRepositoryImpl(
     private val chatMapper: ChatMapper,
     private val messageMapper: MessageMapper,
     private val gateway: TelegramGateway,
-    scopeProvider: ScopeProvider
+    scopeProvider: ScopeProvider,
+    private val chatLocalDataSource: ChatLocalDataSource
 ) : ChatsListRepository {
 
     private val TAG = "ChatsListRepo"
@@ -68,7 +72,7 @@ class ChatsListRepositoryImpl(
         fileManager = fileManager,
         typingManager = typingManager,
         appPreferences = appPreferences,
-        triggerUpdate = { triggerUpdate() },
+        triggerUpdate = { chatId -> triggerUpdate(chatId) },
         fetchUser = { userId -> fetchUser(userId) }
     )
 
@@ -112,9 +116,26 @@ class ChatsListRepositoryImpl(
     private val needEmit = AtomicBoolean(false)
     private var currentLimit = 50
 
+    private val lastSavedEntities = ConcurrentHashMap<Long, ChatEntity>()
+    private val pendingSaveJobs = ConcurrentHashMap<Long, Job>()
+    private val modelCache = ConcurrentHashMap<Long, ChatModel>()
+    private val invalidatedModels = ConcurrentHashMap.newKeySet<Long>()
+
     init {
         scope.launch(dispatchers.io) {
             myUserId = chatRemoteSource.getMyUserId()
+        }
+
+        scope.launch(dispatchers.io) {
+            chatLocalDataSource.getAllChats().firstOrNull()?.let { entities ->
+                if (entities.isNotEmpty()) {
+                    entities.forEach { lastSavedEntities[it.id] = it }
+                    if (_chatListFlow.value.isEmpty()) {
+                        val models = entities.map { chatMapper.mapToDomain(it) }
+                        _chatListFlow.value = models
+                    }
+                }
+            }
         }
 
         scope.launch(dispatchers.io) {
@@ -123,17 +144,44 @@ class ChatsListRepositoryImpl(
                 if (needEmit.getAndSet(false)) {
                     runCatching {
                         val newList = listManager.rebuildChatList(currentLimit) { chat, order, isPinned ->
-                            modelFactory.mapChatToModel(chat, order, isPinned)
+                            val cached = modelCache[chat.id]
+                            if (cached != null && cached.order == order && cached.isPinned == isPinned && !invalidatedModels.contains(
+                                    chat.id
+                                )
+                            ) {
+                                cached
+                            } else {
+                                modelFactory.mapChatToModel(chat, order, isPinned).also {
+                                    modelCache[chat.id] = it
+                                    invalidatedModels.remove(chat.id)
+                                }
+                            }
                         }
                         if (newList != lastList) {
                             _chatListFlow.value = newList
                             lastList = newList
+
+                            // Save to Room - only those that changed
+                            val toSave = newList.map { chatMapper.mapToEntity(it) }
+                                .filter { entity ->
+                                    val last = lastSavedEntities[entity.id]
+                                    if (last == null || isEntityChanged(last, entity)) {
+                                        lastSavedEntities[entity.id] = entity
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+
+                            if (toSave.isNotEmpty()) {
+                                chatLocalDataSource.insertChats(toSave)
+                            }
                         }
                     }.onFailure { e ->
                         Log.e(TAG, "Error rebuilding chat list", e)
                     }
                 }
-                delay(150)
+                delay(200)
             }
         }
 
@@ -166,19 +214,23 @@ class ChatsListRepositoryImpl(
             is TdApi.UpdateNewChat -> {
                 cache.putChat(update.chat)
                 listManager.updateActiveListPositions(update.chat.id, update.chat.positions, activeChatList)
-                triggerUpdate()
+                saveChatToDb(update.chat.id)
+                triggerUpdate(update.chat.id)
             }
             is TdApi.UpdateChatTitle -> {
                 cache.updateChat(update.chatId) { it.title = update.title }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatPhoto -> {
                 cache.updateChat(update.chatId) { it.photo = update.photo }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatEmojiStatus -> {
                 cache.updateChat(update.chatId) { it.emojiStatus = update.emojiStatus }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatDraftMessage -> {
                 cache.updateChat(update.chatId) { chat ->
@@ -188,11 +240,13 @@ class ChatsListRepositoryImpl(
                         listManager.updateActiveListPositions(update.chatId, update.positions, activeChatList)
                     }
                 }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatPosition -> {
                 if (listManager.updateChatPositionInCache(update.chatId, update.position, activeChatList)) {
-                    triggerUpdate()
+                    saveChatToDb(update.chatId)
+                    triggerUpdate(update.chatId)
                 }
             }
             is TdApi.UpdateChatLastMessage -> {
@@ -204,37 +258,45 @@ class ChatsListRepositoryImpl(
                     }
                     typingManager.clearTypingStatus(update.chatId)
                 }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatReadInbox -> {
                 cache.updateChat(update.chatId) { it.unreadCount = update.unreadCount }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatReadOutbox -> {
                 cache.updateChat(update.chatId) { it.lastReadOutboxMessageId = update.lastReadOutboxMessageId }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatUnreadMentionCount -> {
                 cache.updateChat(update.chatId) { it.unreadMentionCount = update.unreadMentionCount }
                 folderManager.handleUpdateChatUnreadCount(update.chatId, update.unreadMentionCount)
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatUnreadReactionCount -> {
                 cache.updateChat(update.chatId) { it.unreadReactionCount = update.unreadReactionCount }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateMessageMentionRead -> {
                 cache.updateChat(update.chatId) { it.unreadMentionCount = update.unreadMentionCount }
                 folderManager.handleUpdateChatUnreadCount(update.chatId, update.unreadMentionCount)
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateMessageReactions -> {
                 cache.updateChat(update.chatId) { it.unreadReactionCount = update.reactions.size }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateFile -> {
                 if (fileManager.handleFileUpdate(update.file)) {
-                    triggerUpdate()
+                    val chatId = fileManager.getChatIdByPhotoId(update.file.id)
+                    triggerUpdate(chatId)
                     refreshActiveForumTopics()
                 }
             }
@@ -274,31 +336,35 @@ class ChatsListRepositoryImpl(
             is TdApi.UpdateChatAction -> typingManager.handleChatAction(update)
             is TdApi.UpdateChatNotificationSettings -> {
                 cache.updateChat(update.chatId) { it.notificationSettings = update.notificationSettings }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatViewAsTopics -> {
                 cache.updateChat(update.chatId) { it.viewAsTopics = update.viewAsTopics }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatIsTranslatable -> {
                 cache.updateChat(update.chatId) { it.isTranslatable = update.isTranslatable }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatPermissions -> {
                 cache.putChatPermissions(update.chatId, update.permissions)
                 cache.updateChat(update.chatId) { it.permissions = update.permissions }
-                triggerUpdate()
+                saveChatToDb(update.chatId)
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateChatMember -> {
                 val memberId = update.newChatMember.memberId
                 if (memberId is TdApi.MessageSenderUser && memberId.userId == myUserId) {
                     cache.putMyChatMember(update.chatId, update.newChatMember)
-                    triggerUpdate()
+                    triggerUpdate(update.chatId)
                 }
             }
             is TdApi.UpdateChatOnlineMemberCount -> {
                 cache.putOnlineMemberCount(update.chatId, update.onlineMemberCount)
-                triggerUpdate()
+                triggerUpdate(update.chatId)
             }
             is TdApi.UpdateAuthorizationState -> {
                 Log.d(TAG, "UpdateAuthorizationState: ${update.authorizationState}")
@@ -306,13 +372,49 @@ class ChatsListRepositoryImpl(
                     update.authorizationState is TdApi.AuthorizationStateClosed
                 ) {
                     cache.clearAll()
+                    modelCache.clear()
+                    invalidatedModels.clear()
+                    lastSavedEntities.clear()
+                    scope.launch { chatLocalDataSource.clearAllChats() }
                 }
             }
             else -> {}
         }
     }
 
-    private fun triggerUpdate() { needEmit.set(true) }
+    private fun saveChatToDb(chatId: Long) {
+        val chat = cache.getChat(chatId) ?: return
+
+        pendingSaveJobs[chatId]?.cancel()
+        pendingSaveJobs[chatId] = scope.launch(dispatchers.io) {
+            delay(1000)
+            val position = chat.positions.find { listManager.isSameChatList(it.list, activeChatList) }
+            val model = modelFactory.mapChatToModel(chat, position?.order ?: 0L, position?.isPinned ?: false)
+            val entity = chatMapper.mapToEntity(model)
+
+            val last = lastSavedEntities[chatId]
+            if (last == null || isEntityChanged(last, entity)) {
+                chatLocalDataSource.insertChat(entity)
+                lastSavedEntities[chatId] = entity
+            }
+            pendingSaveJobs.remove(chatId)
+        }
+    }
+
+    private fun isEntityChanged(old: ChatEntity, new: ChatEntity): Boolean {
+        return old.title != new.title ||
+                old.unreadCount != new.unreadCount ||
+                old.avatarPath != new.avatarPath ||
+                old.lastMessageText != new.lastMessageText ||
+                old.lastMessageTime != new.lastMessageTime ||
+                old.order != new.order ||
+                old.isPinned != new.isPinned
+    }
+
+    private fun triggerUpdate(chatId: Long? = null) {
+        chatId?.let { invalidatedModels.add(it) }
+        needEmit.set(true)
+    }
 
     private fun refreshActiveForumTopics() {
         val chatId = activeForumChatId ?: return
@@ -394,7 +496,7 @@ class ChatsListRepositoryImpl(
     }
 
     override fun loadNextChunk(limit: Int) {
-        if (_isLoadingFlow.value) return
+        if (_isLoadingFlow.value || currentLimit >= 500) return
         Log.d(TAG, "loadNextChunk: limit=$limit")
         currentLimit += limit
         _isLoadingFlow.value = true
@@ -573,6 +675,7 @@ class ChatsListRepositoryImpl(
         val chatObj = remoteDataSource.getChat(chatId) ?: return
         cache.putChat(chatObj)
         listManager.updateActiveListPositions(chatObj.id, chatObj.positions, activeChatList)
-        triggerUpdate()
+        saveChatToDb(chatObj.id)
+        triggerUpdate(chatObj.id)
     }
 }

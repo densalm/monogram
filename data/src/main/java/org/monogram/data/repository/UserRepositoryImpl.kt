@@ -2,12 +2,14 @@ package org.monogram.data.repository
 
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.ScopeProvider
 import org.monogram.data.datasource.cache.ChatLocalDataSource
+import org.monogram.data.datasource.cache.RoomUserLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.UserRemoteDataSource
 import org.monogram.data.gateway.UpdateDispatcher
@@ -43,6 +45,9 @@ class UserRepositoryImpl(
         scope.launch {
             updates.user.collect { update ->
                 userLocal.putUser(update.user)
+                if (userLocal is RoomUserLocalDataSource) {
+                    userLocal.saveUser(update.user.toEntity())
+                }
                 if (update.user.id == currentUserId) refreshCurrentUser()
                 _userUpdateFlow.emit(update.user.id)
             }
@@ -51,6 +56,9 @@ class UserRepositoryImpl(
             updates.userStatus.collect { update ->
                 userLocal.getUser(update.userId)?.let { cached ->
                     cached.status = update.status
+                    if (userLocal is RoomUserLocalDataSource) {
+                        userLocal.saveUser(cached.toEntity())
+                    }
                     if (update.userId == currentUserId) refreshCurrentUser()
                     _userUpdateFlow.emit(update.userId)
                 }
@@ -69,20 +77,12 @@ class UserRepositoryImpl(
                             if (user.id == currentUserId) refreshCurrentUser()
                         }
                     }
-                    // Check if this file is a chat photo
-                    chatLocal.getAllChats().forEach { chat ->
-                        val small = chat.photo?.small
-                        val big = chat.photo?.big
-                        if (small?.id == file.id || big?.id == file.id) {
-                            _userUpdateFlow.emit(chat.id)
-                        }
-                    }
                 }
             }
         }
     }
 
-    private fun refreshCurrentUser() {
+    private suspend fun refreshCurrentUser() {
         val user = userLocal.getUser(currentUserId) ?: return
         _currentUserFlow.update { user.toDomain(userLocal.getUserFullInfo(currentUserId)) }
     }
@@ -91,6 +91,9 @@ class UserRepositoryImpl(
         val user = remote.getMe() ?: return UserModel(0, "Error")
         currentUserId = user.id
         userLocal.putUser(user)
+        if (userLocal is RoomUserLocalDataSource) {
+            userLocal.saveUser(user.toEntity())
+        }
         val model = user.toDomain(userLocal.getUserFullInfo(user.id))
         _currentUserFlow.update { model }
         return model
@@ -101,9 +104,19 @@ class UserRepositoryImpl(
         userLocal.getUser(userId)?.let {
             return it.toDomain(userLocal.getUserFullInfo(userId))
         }
+
+        if (userLocal is RoomUserLocalDataSource) {
+            userLocal.loadUser(userId)
+        }
+
         val deferred = userRequests.getOrPut(userId) {
             scope.async {
-                remote.getUser(userId)?.also { userLocal.putUser(it) }
+                remote.getUser(userId)?.also {
+                    userLocal.putUser(it)
+                    if (userLocal is RoomUserLocalDataSource) {
+                        userLocal.saveUser(it.toEntity())
+                    }
+                }
             }
         }
         return try {
@@ -115,7 +128,12 @@ class UserRepositoryImpl(
 
     override suspend fun getUserFullInfo(userId: Long): UserModel? {
         if (userId <= 0) return null
-        val user = userLocal.getUser(userId) ?: remote.getUser(userId)?.also { userLocal.putUser(it) } ?: return null
+        val user = userLocal.getUser(userId) ?: remote.getUser(userId)?.also {
+            userLocal.putUser(it)
+            if (userLocal is RoomUserLocalDataSource) {
+                userLocal.saveUser(it.toEntity())
+            }
+        } ?: return null
 
         val cachedFullInfo = userLocal.getUserFullInfo(userId)
         if (cachedFullInfo != null) return user.toDomain(cachedFullInfo)
@@ -176,26 +194,16 @@ class UserRepositoryImpl(
         }
 
         // It's a group or channel (chatId < 0)
-        val chat = chatLocal.getChat(chatId) ?: try {
-            remote.getChat(chatId)?.also { chatLocal.putChat(it) }
-        } catch (e: Exception) {
-            null
-        } ?: return null
+        val chat = remote.getChat(chatId)?.also { chatLocal.insertChat(it.toEntity()) } ?: return null
 
         return when (val type = chat.type) {
             is TdApi.ChatTypeSupergroup -> {
-                val fullInfo = chatLocal.getSupergroupFullInfo(type.supergroupId)
-                    ?: remote.getSupergroupFullInfo(type.supergroupId)?.also {
-                        chatLocal.putSupergroupFullInfo(type.supergroupId, it)
-                    }
+                val fullInfo = remote.getSupergroupFullInfo(type.supergroupId)
                 val supergroup = remote.getSupergroup(type.supergroupId)
                 fullInfo?.mapSupergroupFullInfoToChat(supergroup)
             }
             is TdApi.ChatTypeBasicGroup -> {
-                val fullInfo = chatLocal.getBasicGroupFullInfo(type.basicGroupId)
-                    ?: remote.getBasicGroupFullInfo(type.basicGroupId)?.also {
-                        chatLocal.putBasicGroupFullInfo(type.basicGroupId, it)
-                    }
+                val fullInfo = remote.getBasicGroupFullInfo(type.basicGroupId)
                 fullInfo?.mapBasicGroupFullInfoToChat()
             }
             else -> null
@@ -204,17 +212,17 @@ class UserRepositoryImpl(
 
     override suspend fun getContacts(): List<UserModel> {
         val result = remote.getContacts() ?: return emptyList()
-        return result.userIds.toList().mapNotNull { getUser(it) }
+        return result.userIds.map { scope.async { getUser(it) } }.awaitAll().filterNotNull()
     }
 
     override suspend fun searchContacts(query: String): List<UserModel> {
         val result = remote.searchContacts(query) ?: return emptyList()
-        return result.userIds.toList().mapNotNull { getUser(it) }
+        return result.userIds.map { scope.async { getUser(it) } }.awaitAll().filterNotNull()
     }
 
     override suspend fun searchPublicChat(username: String): ChatModel? {
         val chat = remote.searchPublicChat(username) ?: return null
-        chatLocal.putChat(chat)
+        chatLocal.insertChat(chat.toEntity())
         return chat.toDomain()
     }
 
@@ -224,7 +232,7 @@ class UserRepositoryImpl(
         limit: Int,
         filter: ChatMembersFilter
     ): List<GroupMemberModel> {
-        val chat = chatLocal.getChat(chatId) ?: remote.getChat(chatId) ?: return emptyList()
+        val chat = remote.getChat(chatId) ?: return emptyList()
         val members: List<TdApi.ChatMember> = when (val type = chat.type) {
             is TdApi.ChatTypeSupergroup -> {
                 val tdFilter = filter.toApi()
@@ -246,11 +254,13 @@ class UserRepositoryImpl(
             else -> emptyList()
         }
 
-        return members.mapNotNull { member ->
-            val sender = member.memberId as? TdApi.MessageSenderUser ?: return@mapNotNull null
-            val user = getUser(sender.userId) ?: return@mapNotNull null
-            member.toDomain(user)
-        }
+        return members.map { member ->
+            scope.async {
+                val sender = member.memberId as? TdApi.MessageSenderUser ?: return@async null
+                val user = getUser(sender.userId) ?: return@async null
+                member.toDomain(user)
+            }
+        }.awaitAll().filterNotNull()
     }
 
     override suspend fun getChatMember(chatId: Long, userId: Long): GroupMemberModel? {
@@ -327,8 +337,11 @@ class UserRepositoryImpl(
 
     override fun logOut() {
         scope.launch { runCatching { remote.logout() } }
-        userLocal.clearAll()
-        chatLocal.clearAll()
+        scope.launch { userLocal.clearAll() }
+        if (userLocal is RoomUserLocalDataSource) {
+            scope.launch { userLocal.clearDatabase() }
+        }
+        scope.launch { chatLocal.clearAllChats() }
     }
 
     override suspend fun setName(firstName: String, lastName: String) =
@@ -376,4 +389,33 @@ class UserRepositoryImpl(
 
     override suspend fun reorderActiveUsernames(usernames: List<String>) =
         remote.reorderActiveUsernames(usernames.toTypedArray())
+
+    private fun TdApi.Chat.toEntity(): org.monogram.data.db.model.ChatEntity {
+        return org.monogram.data.db.model.ChatEntity(
+            id = id,
+            title = title,
+            unreadCount = unreadCount,
+            avatarPath = photo?.small?.local?.path,
+            lastMessageText = (lastMessage?.content as? TdApi.MessageText)?.text?.text ?: "",
+            lastMessageTime = (lastMessage?.date?.toLong() ?: 0L).toString(),
+            order = 0L,
+            isPinned = false,
+            createdAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun TdApi.User.toEntity(): org.monogram.data.db.model.UserEntity {
+        return org.monogram.data.db.model.UserEntity(
+            id = id,
+            firstName = firstName,
+            lastName = lastName.ifEmpty { null },
+            phoneNumber = phoneNumber.ifEmpty { null },
+            avatarPath = profilePhoto?.small?.local?.path?.ifEmpty { null },
+            isPremium = isPremium,
+            isVerified = verificationStatus?.isVerified ?: false,
+            username = usernames?.activeUsernames?.firstOrNull(),
+            lastSeen = (status as? TdApi.UserStatusOffline)?.wasOnline?.toLong() ?: 0L,
+            createdAt = System.currentTimeMillis()
+        )
+    }
 }

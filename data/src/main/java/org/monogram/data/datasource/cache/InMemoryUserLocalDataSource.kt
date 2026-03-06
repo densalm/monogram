@@ -7,21 +7,21 @@ class InMemoryUserLocalDataSource : UserLocalDataSource {
     private val users = ConcurrentHashMap<Long, TdApi.User>()
     private val fullInfos = ConcurrentHashMap<Long, TdApi.UserFullInfo>()
 
-    override fun getUser(userId: Long): TdApi.User? = users[userId]
+    override suspend fun getUser(userId: Long): TdApi.User? = users[userId]
 
-    override fun putUser(user: TdApi.User) {
+    override suspend fun putUser(user: TdApi.User) {
         users[user.id] = user
     }
 
-    override fun getUserFullInfo(userId: Long): TdApi.UserFullInfo? = fullInfos[userId]
+    override suspend fun getUserFullInfo(userId: Long): TdApi.UserFullInfo? = fullInfos[userId]
 
-    override fun putUserFullInfo(userId: Long, info: TdApi.UserFullInfo) {
+    override suspend fun putUserFullInfo(userId: Long, info: TdApi.UserFullInfo) {
         fullInfos[userId] = info
     }
 
-    override fun getAllUsers(): Collection<TdApi.User> = users.values
+    override suspend fun getAllUsers(): Collection<TdApi.User> = users.values
 
-    override fun clearAll() {
+    override suspend fun clearAll() {
         users.clear()
         fullInfos.clear()
     }

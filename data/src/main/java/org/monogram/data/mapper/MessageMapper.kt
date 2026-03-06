@@ -2,9 +2,9 @@ package org.monogram.data.mapper
 
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import org.monogram.core.ScopeProvider
 import kotlinx.coroutines.*
 import org.drinkless.tdlib.TdApi
+import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.datasource.remote.MessageFileApi
 import org.monogram.data.datasource.remote.TdMessageRemoteDataSource
@@ -1237,6 +1237,23 @@ class MessageMapper(
             replyMarkup = if (isReply) null else mapReplyMarkup(msg.replyMarkup),
             viaBotUserId = viaBotUserId,
             viaBotName = viaBotName
+        )
+    }
+
+    fun mapToEntity(msg: TdApi.Message): org.monogram.data.db.model.MessageEntity {
+        return org.monogram.data.db.model.MessageEntity(
+            id = msg.id,
+            chatId = msg.chatId,
+            senderId = when (val sender = msg.senderId) {
+                is TdApi.MessageSenderUser -> sender.userId
+                is TdApi.MessageSenderChat -> sender.chatId
+                else -> 0L
+            },
+            content = (msg.content as? TdApi.MessageText)?.text?.text ?: "",
+            date = msg.date,
+            isOutgoing = msg.isOutgoing,
+            isRead = false,
+            createdAt = System.currentTimeMillis()
         )
     }
 

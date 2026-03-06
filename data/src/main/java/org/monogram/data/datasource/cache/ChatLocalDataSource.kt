@@ -1,16 +1,23 @@
 package org.monogram.data.datasource.cache
 
-import org.drinkless.tdlib.TdApi
+import kotlinx.coroutines.flow.Flow
+import org.monogram.data.db.model.ChatEntity
+import org.monogram.data.db.model.MessageEntity
 
 interface ChatLocalDataSource {
-    fun getChat(chatId: Long): TdApi.Chat?
-    fun putChat(chat: TdApi.Chat)
-    fun getAllChats(): Collection<TdApi.Chat>
-    fun getSupergroup(supergroupId: Long): TdApi.Supergroup?
-    fun putSupergroup(supergroup: TdApi.Supergroup)
-    fun getSupergroupFullInfo(supergroupId: Long): TdApi.SupergroupFullInfo?
-    fun putSupergroupFullInfo(supergroupId: Long, info: TdApi.SupergroupFullInfo)
-    fun getBasicGroupFullInfo(basicGroupId: Long): TdApi.BasicGroupFullInfo?
-    fun putBasicGroupFullInfo(basicGroupId: Long, info: TdApi.BasicGroupFullInfo)
-    fun clearAll()
+    fun getAllChats(): Flow<List<ChatEntity>>
+    suspend fun insertChat(chat: ChatEntity)
+    suspend fun insertChats(chats: List<ChatEntity>)
+    suspend fun deleteChat(chatId: Long)
+    suspend fun clearAllChats()
+
+    fun getMessagesForChat(chatId: Long): Flow<List<MessageEntity>>
+    suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
+    suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity>
+    suspend fun insertMessage(message: MessageEntity)
+    suspend fun insertMessages(messages: List<MessageEntity>)
+    suspend fun deleteMessage(messageId: Long)
+    suspend fun clearMessagesForChat(chatId: Long)
+
+    suspend fun deleteExpired(timestamp: Long)
 }

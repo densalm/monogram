@@ -7,11 +7,19 @@ import java.util.*
 sealed class GroupedMessageItem {
     data class Single(val message: MessageModel) : GroupedMessageItem()
     data class Album(val albumId: Long, val messages: List<MessageModel>) : GroupedMessageItem()
+
+    val firstMessageId: Long
+        get() = when (this) {
+            is Single -> message.id
+            is Album -> messages.first().id
+        }
 }
 
 fun groupMessagesByAlbum(messages: List<MessageModel>): List<GroupedMessageItem> {
+    if (messages.isEmpty()) return emptyList()
+
     val result = mutableListOf<GroupedMessageItem>()
-    var currentAlbumId: Long? = null
+    var currentAlbumId: Long = 0L
     val currentAlbumMessages = mutableListOf<MessageModel>()
 
     for (msg in messages) {
@@ -20,7 +28,7 @@ fun groupMessagesByAlbum(messages: List<MessageModel>): List<GroupedMessageItem>
                 currentAlbumMessages.add(msg)
             } else {
                 if (currentAlbumMessages.isNotEmpty()) {
-                    result.add(GroupedMessageItem.Album(currentAlbumId!!, currentAlbumMessages.reversed()))
+                    result.add(GroupedMessageItem.Album(currentAlbumId, currentAlbumMessages.toList()))
                     currentAlbumMessages.clear()
                 }
                 currentAlbumId = msg.mediaAlbumId
@@ -28,15 +36,15 @@ fun groupMessagesByAlbum(messages: List<MessageModel>): List<GroupedMessageItem>
             }
         } else {
             if (currentAlbumMessages.isNotEmpty()) {
-                result.add(GroupedMessageItem.Album(currentAlbumId!!, currentAlbumMessages.reversed()))
+                result.add(GroupedMessageItem.Album(currentAlbumId, currentAlbumMessages.toList()))
                 currentAlbumMessages.clear()
-                currentAlbumId = null
+                currentAlbumId = 0L
             }
             result.add(GroupedMessageItem.Single(msg))
         }
     }
     if (currentAlbumMessages.isNotEmpty()) {
-        result.add(GroupedMessageItem.Album(currentAlbumId!!, currentAlbumMessages.reversed()))
+        result.add(GroupedMessageItem.Album(currentAlbumId, currentAlbumMessages.toList()))
     }
     return result
 }

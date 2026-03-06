@@ -462,6 +462,7 @@ class NativeVideoRenderer {
     @Keep
     fun onGlContextReady(textureId: Int) {
         Handler(Looper.getMainLooper()).post {
+            if (nativeHandle == 0L) return@post
             val st = SurfaceTexture(textureId)
             surfaceTexture = st
             st.setOnFrameAvailableListener {
@@ -550,7 +551,10 @@ class VideoGLTextureView(context: Context) : TextureView(context), TextureView.S
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        if (videoWidth == 0 || videoHeight == 0) return
+        if (videoWidth == 0 || videoHeight == 0) {
+            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.getSize(heightMeasureSpec))
+            return
+        }
 
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val height = MeasureSpec.getSize(heightMeasureSpec)

@@ -46,12 +46,73 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
 
     override fun getChat(chatId: Long): TdApi.Chat? = allChats[chatId]
     override fun putChat(chat: TdApi.Chat) {
-        allChats[chat.id] = chat
+        val existing = allChats[chat.id]
+        if (existing != null) {
+            synchronized(existing) {
+                existing.title = chat.title
+                existing.photo = chat.photo
+                existing.permissions = chat.permissions
+                existing.lastMessage = chat.lastMessage
+                existing.positions = chat.positions
+                existing.unreadCount = chat.unreadCount
+                existing.unreadMentionCount = chat.unreadMentionCount
+                existing.unreadReactionCount = chat.unreadReactionCount
+                existing.notificationSettings = chat.notificationSettings
+                existing.draftMessage = chat.draftMessage
+                existing.clientData = chat.clientData
+                existing.isMarkedAsUnread = chat.isMarkedAsUnread
+                existing.isTranslatable = chat.isTranslatable
+                existing.hasProtectedContent = chat.hasProtectedContent
+                existing.viewAsTopics = chat.viewAsTopics
+                existing.accentColorId = chat.accentColorId
+                existing.backgroundCustomEmojiId = chat.backgroundCustomEmojiId
+                existing.profileAccentColorId = chat.profileAccentColorId
+                existing.profileBackgroundCustomEmojiId = chat.profileBackgroundCustomEmojiId
+                existing.emojiStatus = chat.emojiStatus
+                existing.messageAutoDeleteTime = chat.messageAutoDeleteTime
+                existing.videoChat = chat.videoChat
+                existing.pendingJoinRequests = chat.pendingJoinRequests
+                existing.replyMarkupMessageId = chat.replyMarkupMessageId
+                existing.messageSenderId = chat.messageSenderId
+                existing.blockList = chat.blockList
+                existing.canBeDeletedOnlyForSelf = chat.canBeDeletedOnlyForSelf
+                existing.canBeDeletedForAllUsers = chat.canBeDeletedForAllUsers
+                existing.canBeReported = chat.canBeReported
+                existing.defaultDisableNotification = chat.defaultDisableNotification
+                existing.lastReadInboxMessageId = chat.lastReadInboxMessageId
+                existing.lastReadOutboxMessageId = chat.lastReadOutboxMessageId
+            }
+        } else {
+            allChats[chat.id] = chat
+        }
     }
 
     override fun getUser(userId: Long): TdApi.User? = usersCache[userId]
     override fun putUser(user: TdApi.User) {
-        usersCache[user.id] = user
+        val existing = usersCache[user.id]
+        if (existing != null) {
+            synchronized(existing) {
+                existing.firstName = user.firstName
+                existing.lastName = user.lastName
+                existing.usernames = user.usernames
+                existing.phoneNumber = user.phoneNumber
+                existing.status = user.status
+                existing.profilePhoto = user.profilePhoto
+                existing.emojiStatus = user.emojiStatus
+                existing.isPremium = user.isPremium
+                existing.verificationStatus = user.verificationStatus
+                existing.isSupport = user.isSupport
+                existing.haveAccess = user.haveAccess
+                existing.type = user.type
+                existing.languageCode = user.languageCode
+                existing.addedToAttachmentMenu = user.addedToAttachmentMenu
+                existing.isContact = user.isContact
+                existing.isMutualContact = user.isMutualContact
+                existing.isCloseFriend = user.isCloseFriend
+            }
+        } else {
+            usersCache[user.id] = user
+        }
     }
 
     override fun getUserFullInfo(userId: Long): TdApi.UserFullInfo? = userFullInfoCache[userId]
@@ -105,7 +166,29 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
 
     override fun getMessage(chatId: Long, messageId: Long): TdApi.Message? = messages[chatId]?.get(messageId)
     override fun putMessage(message: TdApi.Message) {
-        messages.getOrPut(message.chatId) { ConcurrentHashMap() }[message.id] = message
+        val chatMessages = messages.getOrPut(message.chatId) { ConcurrentHashMap() }
+        val existing = chatMessages[message.id]
+        if (existing != null) {
+            synchronized(existing) {
+                existing.senderId = message.senderId
+                existing.date = message.date
+                existing.editDate = message.editDate
+                existing.forwardInfo = message.forwardInfo
+                existing.interactionInfo = message.interactionInfo
+                existing.replyTo = message.replyTo
+                existing.selfDestructIn = message.selfDestructIn
+                existing.content = message.content
+                existing.replyMarkup = message.replyMarkup
+                existing.isOutgoing = message.isOutgoing
+                existing.hasTimestampedMedia = message.hasTimestampedMedia
+                existing.isChannelPost = message.isChannelPost
+                existing.containsUnreadMention = message.containsUnreadMention
+                existing.sendingState = message.sendingState
+                existing.schedulingState = message.schedulingState
+            }
+        } else {
+            chatMessages[message.id] = message
+        }
     }
 
     override fun removeMessage(chatId: Long, messageId: Long) {

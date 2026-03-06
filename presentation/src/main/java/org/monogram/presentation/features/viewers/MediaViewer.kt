@@ -542,7 +542,9 @@ private fun VideoPage(
         playerBuilder.build().apply {
             val mediaItem = MediaItem.Builder()
                 .setUri(path)
-                .setMimeType(getMimeType(path) ?: MimeTypes.VIDEO_MP4)
+                .apply {
+                    getMimeType(path)?.let { setMimeType(it) }
+                }
                 .build()
             setMediaItem(mediaItem)
             prepare()
@@ -550,7 +552,52 @@ private fun VideoPage(
         }
     }
 
-    LaunchedEffect(isActive, isInPipMode) {
+    DisposableEffect(exoPlayer, lifecycleOwner) {
+        val activity = context.findActivity()
+        val observer = LifecycleEventObserver { _, event ->
+            val isPip = activity?.isInPictureInPictureMode == true
+
+            if (event == Lifecycle.Event.ON_PAUSE && !isPip) exoPlayer.pause()
+            if (event == Lifecycle.Event.ON_STOP && !isPip) exoPlayer.pause()
+        }
+
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlayingChanged: Boolean) {
+                isPlaying = isPlayingChanged
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = playbackState == Player.STATE_BUFFERING
+                isEnded = playbackState == Player.STATE_ENDED
+                if (playbackState == Player.STATE_READY) {
+                    totalDuration = exoPlayer.duration.coerceAtLeast(0L)
+                }
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    val ratio = if ((videoSize.unappliedRotationDegrees / 90) % 2 == 1)
+                        videoSize.height.toFloat() / videoSize.width.toFloat()
+                    else videoSize.width.toFloat() / videoSize.height.toFloat()
+
+                    if (ratio != videoAspectRatio) {
+                        videoAspectRatio = ratio
+                    }
+                }
+            }
+        }
+
+        exoPlayer.addListener(listener)
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+
+    LaunchedEffect(exoPlayer, isActive, isInPipMode) {
         if (isActive || isInPipMode) {
             exoPlayer.play()
         } else {
@@ -583,55 +630,7 @@ private fun VideoPage(
         }
     )
 
-    DisposableEffect(lifecycleOwner) {
-        val activity = context.findActivity()
-        val observer = LifecycleEventObserver { _, event ->
-            val isPip = activity?.isInPictureInPictureMode == true
-
-            if (event == Lifecycle.Event.ON_PAUSE && !isPip) exoPlayer.pause()
-            if (event == Lifecycle.Event.ON_STOP && !isPip) exoPlayer.pause()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            exoPlayer.release()
-        }
-    }
-
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlayingChanged: Boolean) {
-                isPlaying = isPlayingChanged
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                isBuffering = playbackState == Player.STATE_BUFFERING
-                isEnded = playbackState == Player.STATE_ENDED
-                if (playbackState == Player.STATE_READY) {
-                    totalDuration = exoPlayer.duration.coerceAtLeast(0L)
-                }
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    val ratio = if ((videoSize.unappliedRotationDegrees / 90) % 2 == 1)
-                        videoSize.height.toFloat() / videoSize.width.toFloat()
-                    else videoSize.width.toFloat() / videoSize.height.toFloat()
-
-                    if (ratio != videoAspectRatio) {
-                        videoAspectRatio = ratio
-                    }
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            exoPlayer.removeListener(listener)
-        }
-    }
-
-    LaunchedEffect(Unit) {
+    LaunchedEffect(exoPlayer) {
         while (true) {
             currentPosition = exoPlayer.currentPosition
             if (totalDuration <= 0L) totalDuration = exoPlayer.duration.coerceAtLeast(0L)
@@ -639,9 +638,9 @@ private fun VideoPage(
         }
     }
 
-    LaunchedEffect(playbackSpeed) { exoPlayer.setPlaybackSpeed(playbackSpeed) }
-    LaunchedEffect(repeatMode) { exoPlayer.repeatMode = repeatMode }
-    LaunchedEffect(isMuted) { exoPlayer.volume = if (isMuted) 0f else 1f }
+    LaunchedEffect(exoPlayer, playbackSpeed) { exoPlayer.setPlaybackSpeed(playbackSpeed) }
+    LaunchedEffect(exoPlayer, repeatMode) { exoPlayer.repeatMode = repeatMode }
+    LaunchedEffect(exoPlayer, isMuted) { exoPlayer.volume = if (isMuted) 0f else 1f }
 
     Box(
         modifier = Modifier
@@ -743,6 +742,7 @@ private fun VideoPage(
                     }
                 },
                 update = { view ->
+                    view.player = exoPlayer
                     view.resizeMode = if (isInPipMode) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeMode
                     playerView = view
                 },

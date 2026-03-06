@@ -83,12 +83,10 @@ class ChatStoreFactory(
                 is Intent.DismissPinnedMessages -> component._state.update { it.copy(showPinnedMessagesList = false) }
                 is Intent.ScrollToMessageConsumed -> component._state.update { it.copy(scrollToMessageId = null) }
                 is Intent.ScrollToBottom -> component.scrollToBottomInternal()
-                is Intent.DownloadFile -> component.onDownloadFile(intent.fileId)
-                is Intent.DownloadHighRes -> { /* Handle high res download */
-                }
+                is Intent.DownloadFile -> component.handleDownloadFile(intent.fileId)
+                is Intent.DownloadHighRes -> component.handleDownloadHighRes(intent.messageId)
 
-                is Intent.CancelDownloadFile -> { /* Handle cancel download */
-                }
+                is Intent.CancelDownloadFile -> component.handleCancelDownloadFile(intent.fileId)
 
                 is Intent.UpdateScrollPosition -> component._state.update { it.copy(currentScrollMessageId = intent.messageId) }
                 is Intent.BottomReached -> component._state.update { it.copy(isAtBottom = intent.isAtBottom) }
@@ -96,6 +94,7 @@ class ChatStoreFactory(
                 is Intent.Typing -> { /* Handle typing */
                 }
 
+                is Intent.SendReaction -> component.handleSendReaction(intent.messageId, intent.reaction)
                 is Intent.SendReaction -> component.handleSendReaction(intent.messageId, intent.reaction)
                 is Intent.ToggleMessageSelection -> component.handleToggleMessageSelection(intent.messageId)
                 is Intent.ClearSelection -> component.handleClearSelection()

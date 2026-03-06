@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -187,62 +190,87 @@ fun ChatContent(
         }
     }
 
-    // Update bottom status and save scroll position
-    LaunchedEffect(
-        scrollState.firstVisibleItemIndex,
-        scrollState.layoutInfo.visibleItemsInfo.size,
-        scrollState.isScrollInProgress,
-        state.isLatestLoaded
-    ) {
-        val isAtBottom = if (isComments) {
-            val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
-            lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
-        } else {
-            scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
-        }
-        component.onBottomReached(isAtBottom)
-
-        if (!scrollState.isScrollInProgress) {
-            if (isAtBottom && !isComments) {
-                component.updateScrollPosition(0L)
+    // Update bottom status
+    LaunchedEffect(scrollState, state.isLatestLoaded, isComments) {
+        snapshotFlow {
+            if (isComments) {
+                val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
+                lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
             } else {
-                val firstVisibleItem = scrollState.layoutInfo.visibleItemsInfo.firstOrNull { it.index > 0 }
-                if (firstVisibleItem != null) {
-                    val groupedIndex = if (isComments) {
-                        if (state.rootMessage != null) firstVisibleItem.index - 1 else firstVisibleItem.index
-                    } else {
-                        if (state.rootMessage != null) firstVisibleItem.index - 1 else firstVisibleItem.index
-                    }
-
-                    val messageId = when (val groupedItem = groupedMessages.getOrNull(groupedIndex)) {
-                        is GroupedMessageItem.Single -> groupedItem.message.id
-                        is GroupedMessageItem.Album -> groupedItem.messages.first().id
-                        null -> null
-                    }
-                    messageId?.let { component.updateScrollPosition(it) }
-                }
+                scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
             }
         }
+            .distinctUntilChanged()
+            .collect { isAtBottom ->
+                component.onBottomReached(isAtBottom)
+            }
+    }
+
+    // Save scroll position
+    LaunchedEffect(scrollState, groupedMessages, isComments, state.rootMessage, state.isLatestLoaded) {
+        snapshotFlow { scrollState.isScrollInProgress to scrollState.firstVisibleItemIndex }
+            .filter { !it.first }
+            .map {
+                val isAtBottom = if (isComments) {
+                    val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
+                    lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
+                } else {
+                    scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
+                }
+
+                if (isAtBottom && !isComments) {
+                    0L
+                } else {
+                    val visibleItems = scrollState.layoutInfo.visibleItemsInfo
+                    if (visibleItems.isNotEmpty()) {
+                        val firstVisibleItem = if (isComments) {
+                            visibleItems.firstOrNull { it.index > 0 }
+                        } else {
+                            visibleItems.firstOrNull { it.index >= 0 }
+                        }
+
+                        if (firstVisibleItem != null) {
+                            val groupedIndex =
+                                if (state.rootMessage != null) firstVisibleItem.index - 1 else firstVisibleItem.index
+                            groupedMessages.getOrNull(groupedIndex)?.firstMessageId
+                        } else null
+                    } else null
+                }
+            }
+            .distinctUntilChanged()
+            .collect { messageId ->
+                if (messageId != null) {
+                    component.updateScrollPosition(messageId)
+                }
+            }
     }
 
     // Performance: Update visible range for repository
-    LaunchedEffect(scrollState.firstVisibleItemIndex, scrollState.layoutInfo.visibleItemsInfo.size, groupedMessages) {
-        val visibleItems = scrollState.layoutInfo.visibleItemsInfo
-        if (visibleItems.isNotEmpty()) {
-            val visibleIds = mutableListOf<Long>()
-            visibleItems.forEach { item ->
-                val groupedIndex = if (state.rootMessage != null) item.index - 1 else item.index
-                groupedMessages.getOrNull(groupedIndex)?.let { grouped ->
-                    when (grouped) {
-                        is GroupedMessageItem.Single -> visibleIds.add(grouped.message.id)
-                        is GroupedMessageItem.Album -> visibleIds.addAll(grouped.messages.map { it.id })
+    LaunchedEffect(scrollState, groupedMessages, state.rootMessage) {
+        snapshotFlow { scrollState.layoutInfo.visibleItemsInfo }
+            .map { visibleItems ->
+                val visibleIds = mutableListOf<Long>()
+                if (visibleItems.isNotEmpty()) {
+                    visibleItems.forEach { item ->
+                        val groupedIndex = if (state.rootMessage != null) item.index - 1 else item.index
+                        groupedMessages.getOrNull(groupedIndex)?.let { grouped ->
+                            when (grouped) {
+                                is GroupedMessageItem.Single -> visibleIds.add(grouped.message.id)
+                                is GroupedMessageItem.Album -> visibleIds.addAll(grouped.messages.map { it.id })
+                            }
+                        }
+                    }
+                }
+                visibleIds
+            }
+            .distinctUntilChanged()
+            .collect { visibleIds ->
+                if (visibleIds.isNotEmpty()) {
+                    (component as? DefaultChatComponent)?.let {
+                        it.repositoryMessage.updateVisibleRange(it.chatId, visibleIds, emptyList())
                     }
                 }
             }
-            (component as? DefaultChatComponent)?.let {
-                it.repositoryMessage.updateVisibleRange(it.chatId, visibleIds, emptyList())
-            }
-        }
     }
 
     // Auto-scroll to bottom when new messages arrive and we are already at the bottom
@@ -331,7 +359,14 @@ fun ChatContent(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.3f * (1f - (dragOffsetX.value / containerSize.width.toFloat()).coerceIn(0f, 1f))))
+                            .background(
+                                Color.Black.copy(
+                                    alpha = 0.3f * (1f - (dragOffsetX.value / containerSize.width.toFloat()).coerceIn(
+                                        0f,
+                                        1f
+                                    ))
+                                )
+                            )
                     )
                 }
             }

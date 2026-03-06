@@ -85,9 +85,9 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
     messageLoadingJob = scope.launch {
         _state.update {
             it.copy(
-            isLoading = true,
-            isOldestLoaded = false,
-            isLatestLoaded = false
+                isLoading = true,
+                isOldestLoaded = false,
+                isLatestLoaded = false
             )
         }
 
@@ -100,7 +100,7 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             if (isComments && threadId != null) {
                 loadComments(threadId)
             } else if (savedScrollPosition != 0L) {
-                loadAroundMessage(savedScrollPosition, threadId)
+                loadAroundMessage(savedScrollPosition, threadId, shouldHighlight = false)
             } else {
                 val chat = chatsListRepository.getChatById(chatId)
                 val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
@@ -110,7 +110,7 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
                 }
 
                 if (firstUnreadId != null) {
-                    loadAroundMessage(firstUnreadId, threadId)
+                    loadAroundMessage(firstUnreadId, threadId, shouldHighlight = false)
                 } else {
                     loadBottomMessages(threadId)
                 }
@@ -132,10 +132,10 @@ private suspend fun DefaultChatComponent.loadComments(threadId: Long) {
     val reachedEnd = messages.size < PAGE_SIZE
     _state.update {
         it.copy(
-        isAtBottom = reachedEnd,
-        isLatestLoaded = reachedEnd,
-        isOldestLoaded = true,
-        scrollToMessageId = null
+            isAtBottom = reachedEnd,
+            isLatestLoaded = reachedEnd,
+            isOldestLoaded = true,
+            scrollToMessageId = null
         )
     }
     updateMessages(messages, replace = true)
@@ -152,10 +152,10 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     val isOldestLoaded = messages.size < PAGE_SIZE
     _state.update {
         it.copy(
-        isAtBottom = true,
-        isLatestLoaded = true,
-        isOldestLoaded = isOldestLoaded,
-        scrollToMessageId = null
+            isAtBottom = true,
+            isLatestLoaded = true,
+            isOldestLoaded = isOldestLoaded,
+            scrollToMessageId = null
         )
     }
     updateMessages(messages, replace = true)
@@ -165,18 +165,22 @@ private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     }
 }
 
-private suspend fun DefaultChatComponent.loadAroundMessage(messageId: Long, threadId: Long?) {
+private suspend fun DefaultChatComponent.loadAroundMessage(
+    messageId: Long,
+    threadId: Long?,
+    shouldHighlight: Boolean = true
+) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
     val messages = repositoryMessage.getMessagesAround(chatId, messageId, PAGE_SIZE, threadId)
     if (messages.isNotEmpty()) {
         _state.update {
             it.copy(
-            isAtBottom = false,
-            isLatestLoaded = false,
-            isOldestLoaded = false,
-            scrollToMessageId = messageId,
-            highlightedMessageId = messageId
+                isAtBottom = false,
+                isLatestLoaded = false,
+                isOldestLoaded = false,
+                scrollToMessageId = messageId,
+                highlightedMessageId = if (shouldHighlight) messageId else null
             )
         }
         updateMessages(messages, replace = true)
@@ -279,13 +283,13 @@ internal fun DefaultChatComponent.scrollToMessageInternal(messageId: Long) {
     messageLoadingJob = scope.launch {
         _state.update {
             it.copy(
-            isLoading = true,
-            isOldestLoaded = false,
-            isLatestLoaded = false
+                isLoading = true,
+                isOldestLoaded = false,
+                isLatestLoaded = false
             )
         }
         try {
-            loadAroundMessage(messageId, _state.value.currentTopicId)
+            loadAroundMessage(messageId, _state.value.currentTopicId, shouldHighlight = true)
         } catch (e: Exception) {
             Log.e("DefaultChatComponent", "Failed to scroll to message", e)
         } finally {
@@ -300,9 +304,9 @@ internal fun DefaultChatComponent.scrollToBottomInternal() {
     messageLoadingJob = scope.launch {
         _state.update {
             it.copy(
-            isLoading = true,
-            isOldestLoaded = false,
-            isLatestLoaded = false
+                isLoading = true,
+                isOldestLoaded = false,
+                isLatestLoaded = false
             )
         }
         try {
@@ -558,19 +562,21 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         .launchIn(scope)
 }
 
-private suspend fun DefaultChatComponent.updateMessageContent(
+private inline fun DefaultChatComponent.updateMessageContent(
     messageId: Long,
-    transform: (MessageModel) -> MessageModel
+    crossinline transform: (MessageModel) -> MessageModel
 ) {
-    messageMutex.withLock {
-        _state.update { currentState ->
-            val currentMessages = currentState.messages.toMutableList()
-            val index = currentMessages.indexOfFirst { it.id == messageId }
-            if (index != -1) {
-                currentMessages[index] = transform(currentMessages[index])
-                currentState.copy(messages = currentMessages)
-            } else {
-                currentState
+    scope.launch {
+        messageMutex.withLock {
+            _state.update { currentState ->
+                val currentMessages = currentState.messages.toMutableList()
+                val index = currentMessages.indexOfFirst { it.id == messageId }
+                if (index != -1) {
+                    currentMessages[index] = transform(currentMessages[index])
+                    currentState.copy(messages = currentMessages)
+                } else {
+                    currentState
+                }
             }
         }
     }

@@ -347,7 +347,13 @@ class DefaultChatComponent(
 
     override fun onCancelDownloadFile(fileId: Int) = store.accept(ChatStore.Intent.CancelDownloadFile(fileId))
 
-    override fun updateScrollPosition(messageId: Long) = store.accept(ChatStore.Intent.UpdateScrollPosition(messageId))
+    override fun updateScrollPosition(messageId: Long) {
+        if (_state.value.currentTopicId == null) {
+            cacheProvider.saveChatScrollPosition(chatId, messageId)
+        }
+        _state.update { it.copy(lastScrollPosition = messageId) }
+        store.accept(ChatStore.Intent.UpdateScrollPosition(messageId))
+    }
 
     override fun onBottomReached(isAtBottom: Boolean) = store.accept(ChatStore.Intent.BottomReached(isAtBottom))
 

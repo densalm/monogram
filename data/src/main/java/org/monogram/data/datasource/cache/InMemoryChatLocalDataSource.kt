@@ -1,47 +1,36 @@
 package org.monogram.data.datasource.cache
 
-import org.drinkless.tdlib.TdApi
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import org.monogram.data.db.model.ChatEntity
+import org.monogram.data.db.model.MessageEntity
 
 class InMemoryChatLocalDataSource : ChatLocalDataSource {
+    override fun getAllChats(): Flow<List<ChatEntity>> = flowOf(emptyList())
 
-    private val chats = ConcurrentHashMap<Long, TdApi.Chat>()
-    private val supergroups = ConcurrentHashMap<Long, TdApi.Supergroup>()
-    private val supergroupFullInfos = ConcurrentHashMap<Long, TdApi.SupergroupFullInfo>()
-    private val basicGroupFullInfos = ConcurrentHashMap<Long, TdApi.BasicGroupFullInfo>()
+    override suspend fun insertChat(chat: ChatEntity) {}
 
-    override fun getChat(chatId: Long): TdApi.Chat? = chats[chatId]
+    override suspend fun insertChats(chats: List<ChatEntity>) {}
 
-    override fun putChat(chat: TdApi.Chat) {
-        chats[chat.id] = chat
-    }
+    override suspend fun deleteChat(chatId: Long) {}
 
-    override fun getAllChats(): Collection<TdApi.Chat> = chats.values
+    override suspend fun clearAllChats() {}
 
-    override fun getSupergroup(supergroupId: Long): TdApi.Supergroup? = supergroups[supergroupId]
+    override fun getMessagesForChat(chatId: Long): Flow<List<MessageEntity>> = flowOf(emptyList())
 
-    override fun putSupergroup(supergroup: TdApi.Supergroup) {
-        supergroups[supergroup.id] = supergroup
-    }
+    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity> =
+        emptyList()
 
-    override fun getSupergroupFullInfo(supergroupId: Long): TdApi.SupergroupFullInfo? =
-        supergroupFullInfos[supergroupId]
+    override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int): List<MessageEntity> =
+        emptyList()
 
-    override fun putSupergroupFullInfo(supergroupId: Long, info: TdApi.SupergroupFullInfo) {
-        supergroupFullInfos[supergroupId] = info
-    }
+    override suspend fun insertMessage(message: MessageEntity) {}
 
-    override fun getBasicGroupFullInfo(basicGroupId: Long): TdApi.BasicGroupFullInfo? =
-        basicGroupFullInfos[basicGroupId]
+    override suspend fun insertMessages(messages: List<MessageEntity>) {}
 
-    override fun putBasicGroupFullInfo(basicGroupId: Long, info: TdApi.BasicGroupFullInfo) {
-        basicGroupFullInfos[basicGroupId] = info
-    }
+    override suspend fun deleteMessage(messageId: Long) {}
 
-    override fun clearAll() {
-        chats.clear()
-        supergroups.clear()
-        supergroupFullInfos.clear()
-        basicGroupFullInfos.clear()
-    }
+    override suspend fun clearMessagesForChat(chatId: Long) {}
+
+    override suspend fun deleteExpired(timestamp: Long) {}
 }

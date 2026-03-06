@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -83,26 +86,27 @@ fun ChatContentList(
         state.isAtBottom
     ) {
         snapshotFlow { scrollState.layoutInfo.visibleItemsInfo }
-            .collect { visibleItems ->
-                if (visibleItems.isEmpty()) return@collect
-
+            .filter { it.isNotEmpty() }
+            .map { visibleItems ->
+                val firstIndex = visibleItems.first().index
+                val lastIndex = visibleItems.last().index
+                firstIndex to lastIndex
+            }
+            .distinctUntilChanged()
+            .collect { (firstVisibleIndex, lastVisibleIndex) ->
                 if (isComments) {
-                    val lastVisibleIndex = visibleItems.last().index
                     if (lastVisibleIndex >= groupedMessages.size - 5 && !state.isLoading && !state.isLatestLoaded) {
                         component.loadNewer()
                     }
 
-                    val firstVisibleIndex = visibleItems.first().index
                     if (firstVisibleIndex < 5 && !state.isLoading && !state.isOldestLoaded) {
                         component.loadMore()
                     }
                 } else {
-                    val lastVisibleIndex = visibleItems.last().index
                     if (lastVisibleIndex >= groupedMessages.size - 5 && !state.isLoading) {
                         component.loadMore()
                     }
 
-                    val firstVisibleIndex = visibleItems.first().index
                     if (firstVisibleIndex < 5 && !state.isAtBottom && !state.isLoading) {
                         component.loadNewer()
                     }
