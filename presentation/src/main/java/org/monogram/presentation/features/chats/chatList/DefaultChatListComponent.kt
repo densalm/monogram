@@ -461,6 +461,10 @@ class DefaultChatListComponent(
         }
     }
 
+    override fun onResume() {
+        repository.refresh()
+    }
+
     private fun toggleSelection(id: Long) {
         _state.update { state ->
             val newSelection = if (state.selectedChatIds.contains(id)) {

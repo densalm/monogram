@@ -495,6 +495,14 @@ class ChatsListRepositoryImpl(
         }
     }
 
+    override fun refresh() {
+        retryConnection()
+        scope.launch(dispatchers.io) {
+            chatRemoteSource.loadChats(activeChatList, 50)
+            triggerUpdate()
+        }
+    }
+
     override fun loadNextChunk(limit: Int) {
         if (_isLoadingFlow.value || currentLimit >= 500) return
         Log.d(TAG, "loadNextChunk: limit=$limit")

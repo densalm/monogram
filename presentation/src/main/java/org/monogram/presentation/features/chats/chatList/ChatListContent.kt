@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,6 +38,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -46,6 +48,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -77,6 +81,19 @@ fun ChatListContent(component: ChatListComponent) {
 
     BackHandler(enabled = isCustomBackHandlingEnabled) {
         component.handleBack()
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                component.onResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     val pagerState = rememberPagerState(
@@ -343,6 +360,8 @@ fun ChatListContent(component: ChatListComponent) {
         )
     }
 
+    val scrollStates = remember { mutableMapOf<Int, LazyListState>() }
+
     Scaffold(
         containerColor = if (isTablet) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = Modifier.nestedScroll(nestedScrollConnection),
@@ -509,7 +528,7 @@ fun ChatListContent(component: ChatListComponent) {
                                 }
                             }
 
-                            if (state.folders.isNotEmpty()) {
+                            if (state.folders.size > 1) {
                                 FolderTabs(
                                     modifier = Modifier.offset {
                                         val yOffset = if (isArchivePersistent) {
@@ -522,10 +541,15 @@ fun ChatListContent(component: ChatListComponent) {
                                     folders = state.folders,
                                     pagerState = pagerState,
                                     onTabClick = { index ->
-                                        scope.launch {
-                                            pagerState.animateScrollToPage(
-                                                index
-                                            )
+                                        if (pagerState.currentPage == index) {
+                                            val folderId = state.folders[index].id
+                                            scope.launch {
+                                                scrollStates[folderId]?.animateScrollToItem(0)
+                                            }
+                                        } else {
+                                            scope.launch {
+                                                pagerState.animateScrollToPage(index)
+                                            }
                                         }
                                     }
                                 )
@@ -578,11 +602,31 @@ fun ChatListContent(component: ChatListComponent) {
                 var showAllMessages by remember { mutableStateOf(false) }
 
                 val scrollState = rememberLazyListState(
-                    initialFirstVisibleItemIndex = if (state.selectedFolderId == -2) state.scrollPositions[-2]?.first ?: 0 else 0,
-                    initialFirstVisibleItemScrollOffset = if (state.selectedFolderId == -2) state.scrollPositions[-2]?.second ?: 0 else 0
+                    initialFirstVisibleItemIndex = if (state.selectedFolderId == -2 && !state.isSearchActive) state.scrollPositions[-2]?.first ?: 0 else 0,
+                    initialFirstVisibleItemScrollOffset = if (state.selectedFolderId == -2 && !state.isSearchActive) state.scrollPositions[-2]?.second ?: 0 else 0
                 )
 
-                if (state.selectedFolderId == -2) {
+                if (state.selectedFolderId == -2 && !state.isSearchActive) {
+                    scrollStates[-2] = scrollState
+                }
+
+                val firstItemId = remember(state.selectedFolderId, state.isSearchActive) {
+                    derivedStateOf {
+                        if (state.selectedFolderId == -2 && !state.isSearchActive) {
+                            state.chatsByFolder[-2]?.firstOrNull()?.id
+                        } else {
+                            null
+                        }
+                    }
+                }
+
+                LaunchedEffect(firstItemId.value) {
+                    if (state.selectedFolderId == -2 && !state.isSearchActive && !scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
+                        scrollState.scrollToItem(0, 0)
+                    }
+                }
+
+                if (state.selectedFolderId == -2 && !state.isSearchActive) {
                     DisposableEffect(Unit) {
                         onDispose {
                             component.updateScrollPosition(-2, scrollState.firstVisibleItemIndex, scrollState.firstVisibleItemScrollOffset)
@@ -865,6 +909,28 @@ fun ChatListContent(component: ChatListComponent) {
                         initialFirstVisibleItemIndex = state.scrollPositions[folderId]?.first ?: 0,
                         initialFirstVisibleItemScrollOffset = state.scrollPositions[folderId]?.second ?: 0
                     )
+
+                    scrollStates[folderId] = scrollState
+
+                    val firstItemId = remember(folderId) {
+                        derivedStateOf { folderChats.firstOrNull()?.id }
+                    }
+
+                    LaunchedEffect(firstItemId.value) {
+                        if (!scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
+                            scrollState.scrollToItem(0, 0)
+                        }
+                    }
+
+                    val isInitialLoad = remember(folderId) { mutableStateOf(true) }
+                    LaunchedEffect(folderChats) {
+                        if (isInitialLoad.value && folderChats.isNotEmpty()) {
+                            if (state.scrollPositions[folderId] == null) {
+                                scrollState.scrollToItem(0, 0)
+                            }
+                            isInitialLoad.value = false
+                        }
+                    }
 
                     DisposableEffect(Unit) {
                         onDispose {

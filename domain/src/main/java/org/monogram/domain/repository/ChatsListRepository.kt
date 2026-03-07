@@ -21,6 +21,7 @@ interface ChatsListRepository {
 
     fun loadNextChunk(limit: Int)
     fun selectFolder(folderId: Int)
+    fun refresh()
     suspend fun getChatById(chatId: Long): ChatModel?
 
     suspend fun searchChats(query: String): List<ChatModel>
