@@ -95,7 +95,6 @@ class ChatStoreFactory(
                 }
 
                 is Intent.SendReaction -> component.handleSendReaction(intent.messageId, intent.reaction)
-                is Intent.SendReaction -> component.handleSendReaction(intent.messageId, intent.reaction)
                 is Intent.ToggleMessageSelection -> component.handleToggleMessageSelection(intent.messageId)
                 is Intent.ClearSelection -> component.handleClearSelection()
                 is Intent.ClearMessages -> { /* Handle clear messages */
@@ -133,7 +132,13 @@ class ChatStoreFactory(
                     )
                 }
 
-                is Intent.DismissImages -> component._state.update { it.copy(fullScreenImages = null) }
+                is Intent.DismissImages -> component._state.update {
+                    it.copy(
+                        fullScreenImages = null,
+                        fullScreenVideoMessageId = null
+                    )
+                }
+
                 is Intent.OpenVideo -> component._state.update {
                     it.copy(
                         fullScreenVideoPath = intent.path,
@@ -142,7 +147,14 @@ class ChatStoreFactory(
                     )
                 }
 
-                is Intent.DismissVideo -> component._state.update { it.copy(fullScreenVideoPath = null) }
+                is Intent.DismissVideo -> component._state.update {
+                    it.copy(
+                        fullScreenVideoPath = null,
+                        fullScreenVideoMessageId = null,
+                        fullScreenVideoCaption = null
+                    )
+                }
+
                 is Intent.AddToAdBlockWhitelist -> component.onAddToAdBlockWhitelist()
                 is Intent.RemoveFromAdBlockWhitelist -> component.onRemoveFromAdBlockWhitelist()
                 is Intent.ToggleMute -> { /* Handle mute */
