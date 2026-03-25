@@ -51,17 +51,17 @@ fun ChatTopBar(
     topicEmojiPath: String? = null,
     isChannel: Boolean = false,
     isWhitelistedInAdBlock: Boolean = false,
-    onToggleAdBlockWhitelist: () -> Unit = {},
+    onToggleAdBlockWhitelist: (() -> Unit)? = null,
     isMuted: Boolean = false,
-    onToggleMute: () -> Unit = {},
+    onToggleMute: (() -> Unit)? = null,
     isSearchActive: Boolean = false,
     searchQuery: String = "",
     onSearchToggle: () -> Unit = {},
     onSearchQueryChange: (String) -> Unit = {},
-    onClearHistory: () -> Unit = {},
-    onDeleteChat: () -> Unit = {},
-    onReport: () -> Unit = {},
-    onCopyLink: () -> Unit = {},
+    onClearHistory: (() -> Unit)? = null,
+    onDeleteChat: (() -> Unit)? = null,
+    onReport: (() -> Unit)? = null,
+    onCopyLink: (() -> Unit)? = null,
     showBack: Boolean = true,
     personalAvatarPath: String? = null
 ) {
@@ -279,15 +279,17 @@ fun ChatTopBar(
                                }
                        )
       */
-                            MenuOptionRow(
-                                icon = if (isMuted) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
-                                title = if (isMuted) stringResource(R.string.menu_unmute) else stringResource(R.string.menu_mute),
-                                onClick = {
-                                    showMenu = false
-                                    onToggleMute()
-                                }
-                            )
-                            if (isChannel) {
+                            if (onToggleMute != null) {
+                                MenuOptionRow(
+                                    icon = if (isMuted) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+                                    title = if (isMuted) stringResource(R.string.menu_unmute) else stringResource(R.string.menu_mute),
+                                    onClick = {
+                                        showMenu = false
+                                        onToggleMute()
+                                    }
+                                )
+                            }
+                            if (isChannel && onToggleAdBlockWhitelist != null) {
                                 MenuOptionRow(
                                     icon = if (isWhitelistedInAdBlock) Icons.Rounded.Block else Icons.AutoMirrored.Rounded.PlaylistAddCheck,
                                     title = if (isWhitelistedInAdBlock) stringResource(R.string.menu_filter_ads) else stringResource(
@@ -299,40 +301,48 @@ fun ChatTopBar(
                                     }
                                 )
                             }
-                            MenuOptionRow(
-                                icon = Icons.Rounded.Link,
-                                title = stringResource(R.string.menu_copy_link),
-                                onClick = {
-                                    showMenu = false
-                                    onCopyLink()
-                                }
-                            )
-                            MenuOptionRow(
-                                icon = Icons.Rounded.CleaningServices,
-                                title = stringResource(R.string.menu_clear_history),
-                                onClick = {
-                                    showMenu = false
-                                    onClearHistory()
-                                }
-                            )
-                            MenuOptionRow(
-                                icon = Icons.Rounded.Delete,
-                                title = stringResource(R.string.menu_delete_chat),
-                                textColor = MaterialTheme.colorScheme.error,
-                                iconTint = MaterialTheme.colorScheme.error,
-                                onClick = {
-                                    showMenu = false
-                                    onDeleteChat()
-                                }
-                            )
-                            MenuOptionRow(
-                                icon = Icons.Rounded.Report,
-                                title = stringResource(R.string.menu_report),
-                                onClick = {
-                                    showMenu = false
-                                    onReport()
-                                }
-                            )
+                            if (onCopyLink != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Link,
+                                    title = stringResource(R.string.menu_copy_link),
+                                    onClick = {
+                                        showMenu = false
+                                        onCopyLink()
+                                    }
+                                )
+                            }
+                            if (onClearHistory != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.CleaningServices,
+                                    title = stringResource(R.string.menu_clear_history),
+                                    onClick = {
+                                        showMenu = false
+                                        onClearHistory()
+                                    }
+                                )
+                            }
+                            if (onDeleteChat != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Delete,
+                                    title = stringResource(R.string.menu_delete_chat),
+                                    textColor = MaterialTheme.colorScheme.error,
+                                    iconTint = MaterialTheme.colorScheme.error,
+                                    onClick = {
+                                        showMenu = false
+                                        onDeleteChat()
+                                    }
+                                )
+                            }
+                            if (onReport != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Report,
+                                    title = stringResource(R.string.menu_report),
+                                    onClick = {
+                                        showMenu = false
+                                        onReport()
+                                    }
+                                )
+                            }
                         }
                     }
                 }

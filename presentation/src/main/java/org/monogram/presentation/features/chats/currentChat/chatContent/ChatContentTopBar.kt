@@ -45,7 +45,12 @@ fun ChatContentTopBar(
     showBack: Boolean = true
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val isAdBlockEnabled by component.appPreferences.isAdBlockEnabled.collectAsState()
     val isSelectionMode = state.selectedMessageIds.isNotEmpty()
+    val isMainChat = state.currentTopicId == null && state.rootMessage == null
+    val otherUserId = state.otherUser?.id
+    val canReportChat = state.isGroup || state.isChannel ||
+            (otherUserId != null && state.currentUser?.id != otherUserId)
 
     var showDeleteSheet by remember { mutableStateOf(false) }
 
@@ -244,7 +249,7 @@ fun ChatContentTopBar(
                     title = title,
                     avatarPath = state.chatAvatar,
                     emojiStatusPath = state.chatEmojiStatus,
-                    statusText = statusText ?: "",
+                    statusText = statusText,
                     isOnline = state.isOnline,
                     isVerified = state.isVerified,
                     onBack = onBack,
@@ -253,23 +258,27 @@ fun ChatContentTopBar(
                     topicEmojiPath = topicEmojiPath,
                     isChannel = state.isChannel,
                     isWhitelistedInAdBlock = state.isWhitelistedInAdBlock,
-                    onToggleAdBlockWhitelist = {
-                        if (state.isWhitelistedInAdBlock) {
-                            component.onRemoveFromAdBlockWhitelist()
-                        } else {
-                            component.onAddToAdBlockWhitelist()
+                    onToggleAdBlockWhitelist = if (isMainChat && state.isChannel && isAdBlockEnabled) {
+                        {
+                            if (state.isWhitelistedInAdBlock) {
+                                component.onRemoveFromAdBlockWhitelist()
+                            } else {
+                                component.onAddToAdBlockWhitelist()
+                            }
                         }
-                    },
+                    } else null,
                     isMuted = state.isMuted,
                     onToggleMute = component::onToggleMute,
                     isSearchActive = state.isSearchActive,
                     searchQuery = state.searchQuery,
                     onSearchToggle = component::onSearchToggle,
                     onSearchQueryChange = component::onSearchQueryChange,
-                    onClearHistory = component::onClearHistory,
-                    onDeleteChat = component::onDeleteChat,
-                    onReport = component::onReport,
-                    onCopyLink = { component.onCopyLink(clipboardManager) },
+                    onClearHistory = if (isMainChat) component::onClearHistory else null,
+                    onDeleteChat = if (isMainChat) component::onDeleteChat else null,
+                    onReport = if (isMainChat && canReportChat) component::onReport else null,
+                    onCopyLink = if (isMainChat && (state.isGroup || state.isChannel)) {
+                        { component.onCopyLink(clipboardManager) }
+                    } else null,
                     showBack = showBack,
                     personalAvatarPath = state.chatPersonalAvatar,
                     videoPlayerPool = component.videoPlayerPool
