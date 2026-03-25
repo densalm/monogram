@@ -126,7 +126,9 @@ fun ChatContentList(
 
     LazyColumn(
         state = scrollState,
-        modifier = modifier.fillMaxSize().semantics { contentDescription = "ChatMessages" },
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { contentDescription = "ChatMessages" },
         reverseLayout = !isComments,
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -300,9 +302,14 @@ private fun MessageRowItem(
             if (shouldAnimateEntry) 0.98f else 1f
         )
     }
-    val alpha = remember(mainMsg.id) {
+    val itemAlpha = remember(mainMsg.id) {
         Animatable(
             if (shouldAnimateEntry) 0f else 1f
+        )
+    }
+    val offsetY = remember(mainMsg.id) {
+        Animatable(
+            if (shouldAnimateEntry) 10f else 0f
         )
     }
 
@@ -314,10 +321,12 @@ private fun MessageRowItem(
         if (shouldAnimateEntry && scale.value < 1f) {
             val stiffness = Spring.StiffnessMediumLow
             launch { scale.animateTo(1f, spring(Spring.DampingRatioLowBouncy, stiffness)) }
-            launch { alpha.animateTo(1f, spring(stiffness = stiffness)) }
+            launch { itemAlpha.animateTo(1f, spring(stiffness = stiffness)) }
+            launch { offsetY.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
         } else if (!shouldAnimateEntry) {
             scale.snapTo(1f)
-            alpha.snapTo(1f)
+            itemAlpha.snapTo(1f)
+            offsetY.snapTo(0f)
         }
     }
 
@@ -330,7 +339,12 @@ private fun MessageRowItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { this.scaleX = scale.value; this.scaleY = scale.value; this.alpha = alpha.value }
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                alpha = itemAlpha.value
+                translationY = offsetY.value
+            }
             .background(backgroundColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

@@ -107,11 +107,33 @@ fun MessageOptionsMenu(
     val scale = remember { Animatable(0.6f) }
     val alpha = remember { Animatable(0f) }
     val dimAlpha = remember { Animatable(0f) }
+    val runtimeContentScale = remember { Animatable(1f) }
 
     var menuSize by remember { mutableStateOf(IntSize.Zero) }
     var firstScreenWidth by remember { mutableStateOf<Int?>(null) }
     var containerOffset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var hasTrackedViewersState by remember(message.id) { mutableStateOf(false) }
+    var lastTrackedViewersCount by remember(message.id) { mutableIntStateOf(viewers.size) }
+    var lastTrackedLoadingState by remember(message.id) { mutableStateOf(isLoadingViewers) }
+    var hasTrackedReactions by remember(message.id) { mutableStateOf(false) }
+    var lastTrackedReactionCount by remember(message.id) { mutableIntStateOf(0) }
+    var hasReactionsInMessage by remember(message.id) { mutableStateOf(false) }
+    var suppressNextReactionsAppearanceAnimation by remember(message.id) { mutableStateOf(false) }
+
+    fun animateRuntimeContentScale() {
+        scope.launch {
+            runtimeContentScale.stop()
+            runtimeContentScale.snapTo(0.97f)
+            runtimeContentScale.animateTo(
+                1f,
+                spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+        }
+    }
 
     fun animateOutAndDismiss(action: (() -> Unit)? = null) {
         scope.launch {
@@ -183,6 +205,18 @@ fun MessageOptionsMenu(
         }
         launch { alpha.animateTo(1f, tween(150, easing = LinearOutSlowInEasing)) }
         launch { dimAlpha.animateTo(1f, tween(200)) }
+    }
+
+    LaunchedEffect(isLoadingViewers, viewers.size) {
+        if (hasTrackedViewersState &&
+            (lastTrackedLoadingState != isLoadingViewers || lastTrackedViewersCount != viewers.size)
+        ) {
+            animateRuntimeContentScale()
+        }
+
+        hasTrackedViewersState = true
+        lastTrackedLoadingState = isLoadingViewers
+        lastTrackedViewersCount = viewers.size
     }
 
     var showDeleteSheet by remember { mutableStateOf(false) }
@@ -299,8 +333,9 @@ fun MessageOptionsMenu(
                 .graphicsLayer {
                     this.alpha = if (menuSize == IntSize.Zero || containerSize == IntSize.Zero) 0f else alpha.value
 
-                    scaleX = scale.value
-                    scaleY = scale.value
+                    val currentScale = scale.value * runtimeContentScale.value
+                    scaleX = currentScale
+                    scaleY = currentScale
                     this.transformOrigin = transformOrigin
                     shadowElevation = 16.dp.toPx()
                     shape = RoundedCornerShape(16.dp)
@@ -371,11 +406,29 @@ fun MessageOptionsMenu(
 
                 Column(
                     modifier = contentModifier
+                        .animateContentSize(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
                         .padding(vertical = 4.dp)
                 ) {
                     if (page == MenuPage.Main) {
                         ReactionsRow(
                             message = message,
+                            suppressAppearanceAnimation = suppressNextReactionsAppearanceAnimation,
+                            onAppearanceAnimationConsumed = {
+                                suppressNextReactionsAppearanceAnimation = false
+                            },
+                            onReactionsChanged = { reactionCount ->
+                                hasReactionsInMessage = reactionCount > 0
+                                if (hasTrackedReactions && lastTrackedReactionCount != reactionCount) {
+                                    animateRuntimeContentScale()
+                                }
+                                hasTrackedReactions = true
+                                lastTrackedReactionCount = reactionCount
+                            },
                             onReaction = { reaction ->
                                 animateOutAndDismiss { onReaction(reaction) }
                             }
@@ -486,6 +539,9 @@ fun MessageOptionsMenu(
                             textColor = MaterialTheme.colorScheme.primary,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (hasReactionsInMessage) {
+                                    suppressNextReactionsAppearanceAnimation = true
+                                }
                                 menuPage = MenuPage.Main
                             }
                         )
@@ -547,6 +603,9 @@ fun MessageOptionsMenu(
                             textColor = MaterialTheme.colorScheme.primary,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (hasReactionsInMessage) {
+                                    suppressNextReactionsAppearanceAnimation = true
+                                }
                                 menuPage = MenuPage.Main
                             }
                         )
@@ -618,6 +677,9 @@ private enum class MenuPage {
 @Composable
 private fun ReactionsRow(
     message: MessageModel,
+    suppressAppearanceAnimation: Boolean,
+    onAppearanceAnimationConsumed: () -> Unit,
+    onReactionsChanged: (Int) -> Unit,
     onReaction: (String) -> Unit,
     stickerRepository: StickerRepository = koinInject(),
     appPreferences: AppPreferences = koinInject()
@@ -641,70 +703,106 @@ private fun ReactionsRow(
         }
     }
 
-    if (reactions.isEmpty()) return
+    LaunchedEffect(reactions.size) {
+        onReactionsChanged(reactions.size)
+    }
 
-    Row(
-        modifier = Modifier
-            .horizontalScroll(rememberScrollState())
-            .padding(vertical = 4.dp)
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        reactions.forEach { reaction ->
-            val isChosen = message.reactions.any { it.isChosen && it.emoji == reaction.emoji }
-
-            val backgroundColor by animateColorAsState(
-                targetValue = if (isChosen) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                animationSpec = spring(stiffness = Spring.StiffnessLow),
-                label = "reactionBg"
-            )
-
-            val scale by animateFloatAsState(
-                targetValue = if (isChosen) 1.1f else 1f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                label = "reactionScale"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clip(CircleShape)
-                    .background(backgroundColor)
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        val reactionValue = reaction.emoji ?: reaction.sticker?.id?.toString()
-                        if (reactionValue != null) {
-                            onReaction(reactionValue)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                val sticker = reaction.sticker
-                if (sticker != null) {
-                    StickerImage(
-                        path = sticker.path,
-                        modifier = Modifier.size(28.dp),
-                    )
-                } else {
-                    Text(
-                        text = reaction.emoji,
-                        fontSize = 24.sp,
-                        fontFamily = emojiFontFamily
-                    )
-                }
-            }
+    LaunchedEffect(suppressAppearanceAnimation, reactions.isNotEmpty()) {
+        if (suppressAppearanceAnimation && reactions.isNotEmpty()) {
+            onAppearanceAnimationConsumed()
         }
     }
 
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    )
+    AnimatedVisibility(
+        visible = reactions.isNotEmpty(),
+        enter = if (suppressAppearanceAnimation) {
+            EnterTransition.None
+        } else {
+            fadeIn(animationSpec = tween(180, easing = LinearOutSlowInEasing)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+        },
+        exit = fadeOut(animationSpec = tween(120)) +
+                shrinkVertically(animationSpec = tween(120)) +
+                scaleOut(targetScale = 0.96f, animationSpec = tween(120)),
+        label = "ReactionsRowVisibility"
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp)
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                reactions.forEach { reaction ->
+                    val isChosen = message.reactions.any { it.isChosen && it.emoji == reaction.emoji }
+
+                    val backgroundColor by animateColorAsState(
+                        targetValue = if (isChosen) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        animationSpec = spring(stiffness = Spring.StiffnessLow),
+                        label = "reactionBg"
+                    )
+
+                    val scale by animateFloatAsState(
+                        targetValue = if (isChosen) 1.1f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        label = "reactionScale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .clip(CircleShape)
+                            .background(backgroundColor)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onReaction(reaction.emoji)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val sticker = reaction.sticker
+                        if (sticker != null) {
+                            StickerImage(
+                                path = sticker.path,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        } else {
+                            Text(
+                                text = reaction.emoji,
+                                fontSize = 24.sp,
+                                fontFamily = emojiFontFamily
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+        }
+    }
 }
 
 @Composable

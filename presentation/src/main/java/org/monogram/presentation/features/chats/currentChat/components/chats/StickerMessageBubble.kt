@@ -8,7 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,7 +20,6 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.util.UnstableApi
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
-import org.monogram.domain.models.MessageSendingState
 import org.monogram.domain.models.StickerModel
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 
@@ -139,16 +139,12 @@ fun StickerMessageBubble(
                 )
                 if (isOutgoing) {
                     Spacer(modifier = Modifier.width(4.dp))
-                    val statusIcon = when (msg.sendingState) {
-                        is MessageSendingState.Pending -> Icons.Default.Schedule
-                        is MessageSendingState.Failed -> Icons.Default.Error
-                        null -> if (msg.isRead) Icons.Default.DoneAll else Icons.Default.Check
-                    }
-                    Icon(
-                        imageVector = statusIcon,
-                        contentDescription = null,
-                        modifier = Modifier.size(12.dp),
-                        tint = if (msg.sendingState is MessageSendingState.Failed) Color.Red else Color.White
+                    MessageSendingStatusIcon(
+                        sendingState = msg.sendingState,
+                        isRead = msg.isRead,
+                        baseColor = Color.White,
+                        size = 12.dp,
+                        usePrimaryForRead = false
                     )
                 }
             }

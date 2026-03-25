@@ -1,11 +1,8 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import android.content.Context
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -20,6 +17,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -32,7 +30,6 @@ import org.monogram.domain.models.MessageEntityType
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
 import org.monogram.presentation.core.util.EmojiStyle
-import org.monogram.presentation.features.chats.currentChat.components.channels.formatDuration
 import org.monogram.presentation.features.chats.currentChat.components.channels.formatViews
 import java.io.File
 import java.text.BreakIterator
@@ -235,32 +232,83 @@ fun MessageMetadata(
             color = contentColor
         )
         if (isOutgoing) {
-            AnimatedContent(
-                targetState = msg.sendingState to msg.isRead,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-                },
-                label = "SendingState"
-            ) { (sendingState, isRead) ->
-                val statusIcon = when (sendingState) {
-                    is MessageSendingState.Pending -> Icons.Default.Schedule
-                    is MessageSendingState.Failed -> Icons.Default.Error
-                    null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                }
-                val statusTint = if (sendingState is MessageSendingState.Failed) {
-                    Color.Red
-                } else if (isRead && contentColor != Color.White) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    contentColor
-                }
-                Icon(
-                    imageVector = statusIcon,
-                    contentDescription = null,
-                    modifier = Modifier.size(13.dp),
-                    tint = statusTint
-                )
-            }
+            MessageSendingStatusIcon(
+                sendingState = msg.sendingState,
+                isRead = msg.isRead,
+                baseColor = contentColor,
+                size = 13.dp,
+                usePrimaryForRead = contentColor != Color.White
+            )
         }
+    }
+}
+
+@Composable
+fun MessageSendingStatusIcon(
+    sendingState: MessageSendingState?,
+    isRead: Boolean,
+    baseColor: Color,
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 14.dp,
+    usePrimaryForRead: Boolean = true
+) {
+    val targetTint = when {
+        sendingState is MessageSendingState.Failed -> MaterialTheme.colorScheme.error
+        isRead && usePrimaryForRead -> MaterialTheme.colorScheme.primary
+        else -> baseColor
+    }
+    val tint = animateColorAsState(targetValue = targetTint, animationSpec = tween(220), label = "SendingTint").value
+
+    AnimatedContent(
+        targetState = sendingState to isRead,
+        transitionSpec = {
+            val incomingFromBottom = targetState.first == null && initialState.first is MessageSendingState.Pending
+            val enter = fadeIn(tween(200)) +
+                    slideInVertically(tween(220)) { fullHeight -> if (incomingFromBottom) fullHeight / 2 else -fullHeight / 2 }
+            val exit = fadeOut(tween(150)) +
+                    slideOutVertically(tween(170)) { fullHeight -> if (incomingFromBottom) -fullHeight / 2 else fullHeight / 2 }
+            enter.togetherWith(exit).using(SizeTransform(clip = false))
+        },
+        label = "SendingState"
+    ) { (state, read) ->
+        val icon = when (state) {
+            is MessageSendingState.Pending -> Icons.Default.Schedule
+            is MessageSendingState.Failed -> Icons.Default.Error
+            null -> if (read) Icons.Default.DoneAll else Icons.Default.Check
+        }
+
+        val pendingRotation = if (state is MessageSendingState.Pending) {
+            val transition = rememberInfiniteTransition(label = "PendingRotation")
+            transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1200, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "PendingRotationValue"
+            ).value
+        } else {
+            0f
+        }
+
+        val settledScale = animateFloatAsState(
+            targetValue = if (state is MessageSendingState.Pending) 1f else 1.06f,
+            animationSpec = tween(220),
+            label = "SendingScale"
+        ).value
+
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = modifier
+                .size(size)
+                .graphicsLayer {
+                    rotationZ = pendingRotation
+                    scaleX = settledScale
+                    scaleY = settledScale
+                },
+            tint = tint
+        )
     }
 }

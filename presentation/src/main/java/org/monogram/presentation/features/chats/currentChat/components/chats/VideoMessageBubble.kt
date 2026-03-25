@@ -1,8 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -74,7 +72,14 @@ fun VideoMessageBubble(
     val tailCorner = 2.dp
 
     val context = LocalContext.current
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading && !content.supportsStreaming) {
@@ -182,14 +187,9 @@ fun VideoMessageBubble(
                             )
                         }
                 ) {
-                    Crossfade(
-                        targetState = hasPath || content.supportsStreaming,
-                        animationSpec = tween(400),
-                        label = "VideoLoadingState"
-                    ) { targetHasPathOrStreaming ->
-                        if (targetHasPathOrStreaming) {
+                    if (hasPath || content.supportsStreaming) {
                             if (autoplayVideos) {
-                                val videoPath = content.path ?: "http://streaming/${content.fileId}"
+                                val videoPath = stablePath ?: "http://streaming/${content.fileId}"
                                 VideoStickerPlayer(
                                     path = videoPath,
                                     type = VideoType.Gif,
@@ -199,7 +199,7 @@ fun VideoMessageBubble(
                                     volume = if (isMuted) 0f else 1f,
                                     onProgressUpdate = { pos -> currentPosition = pos },
                                     videoPlayerPool = videoPlayerPool,
-                                    fileId = if (content.path == null) content.fileId else 0
+                                    fileId = if (!hasPath && content.supportsStreaming) content.fileId else 0
                                 )
 
                                 Box(
@@ -223,7 +223,7 @@ fun VideoMessageBubble(
                                     Image(
                                         painter = rememberAsyncImagePainter(
                                             model = ImageRequest.Builder(context)
-                                                .data(content.path)
+                                                .data(stablePath)
                                                 .crossfade(true)
                                                 .build()
                                         ),
@@ -259,7 +259,7 @@ fun VideoMessageBubble(
                                     )
                                 }
                             }
-                        } else {
+                    } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -324,7 +324,6 @@ fun VideoMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
                     Box(

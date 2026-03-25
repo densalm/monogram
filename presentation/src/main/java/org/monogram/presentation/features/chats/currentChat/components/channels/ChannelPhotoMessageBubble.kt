@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,6 +31,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -62,7 +62,7 @@ fun ChannelPhotoMessageBubble(
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
 ) {
-    val context = LocalContext.current
+    LocalContext.current
     val cornerRadius = bubbleRadius.dp
     val smallCorner = (bubbleRadius / 4f).coerceAtLeast(4f).dp
     val tailCorner = 2.dp
@@ -105,7 +105,7 @@ fun ChannelPhotoMessageBubble(
             shape = bubbleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 1.dp,
-            modifier = Modifier.widthIn(max = 360.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier
                 .fillMaxWidth()
@@ -124,31 +124,38 @@ fun ChannelPhotoMessageBubble(
                     }
                 }
 
-                val aspectRatio = if (content.width > 0 && content.height > 0) {
-                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.6f, 1.8f)
+                val mediaRatio = if (content.width > 0 && content.height > 0) {
+                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
                 } else 1f
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 130.dp, max = 360.dp)
-                        .aspectRatio(aspectRatio)
-                        .clip(if (hasCaption) RoundedCornerShape(topStart = topStart, topEnd = topEnd) else bubbleShape)
-                        .clipToBounds()
-                        .onGloballyPositioned { imagePosition = it.positionInWindow() }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (content.isDownloading) {
-                                        onCancelDownload(content.fileId)
-                                    } else {
-                                        onPhotoClick(msg)
-                                    }
-                                },
-                                onLongPress = { offset -> onLongClick(imagePosition + offset) }
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val mediaHeight = (maxWidth / mediaRatio).coerceIn(160.dp, 320.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(mediaHeight)
+                            .clip(
+                                if (hasCaption) RoundedCornerShape(
+                                    topStart = topStart,
+                                    topEnd = topEnd
+                                ) else bubbleShape
                             )
-                        }
-                ) {
+                            .clipToBounds()
+                            .onGloballyPositioned { imagePosition = it.positionInWindow() }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (content.isDownloading) {
+                                            onCancelDownload(content.fileId)
+                                        } else {
+                                            onPhotoClick(msg)
+                                        }
+                                    },
+                                    onLongPress = { offset -> onLongClick(imagePosition + offset) }
+                                )
+                            }
+                    ) {
                     Crossfade(
                         targetState = content.path,
                         animationSpec = tween(300),
@@ -159,7 +166,7 @@ fun ChannelPhotoMessageBubble(
                                 painter = rememberAsyncImagePainter(path),
                                 contentDescription = content.caption,
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
+                                contentScale = ContentScale.Fit
                             )
                         } else {
                             // Loading State
@@ -176,7 +183,7 @@ fun ChannelPhotoMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(10.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
                                 Box(
@@ -210,15 +217,16 @@ fun ChannelPhotoMessageBubble(
                         }
                     }
 
-                    if (!hasCaption && showMetadata) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            MessageMetadata(msg, msg.isOutgoing, Color.White)
+                        if (!hasCaption && showMetadata) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                MessageMetadata(msg, msg.isOutgoing, Color.White)
+                            }
                         }
                     }
                 }

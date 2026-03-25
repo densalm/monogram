@@ -1,8 +1,7 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.annotation.OptIn
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,7 +9,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +32,6 @@ import androidx.media3.common.util.UnstableApi
 import coil3.compose.rememberAsyncImagePainter
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
-import org.monogram.domain.models.MessageSendingState
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
@@ -66,7 +67,14 @@ fun GifMessageBubble(
     val smallCorner = 4.dp
     val tailCorner = 2.dp
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading) {
@@ -166,15 +174,10 @@ fun GifMessageBubble(
                             )
                         }
                 ) {
-                    Crossfade(
-                        targetState = content.path,
-                        animationSpec = tween(300),
-                        label = "GifLoading"
-                    ) { path ->
-                        if (!path.isNullOrBlank()) {
+                    if (!stablePath.isNullOrBlank()) {
                             if (autoplayGifs) {
                                 VideoStickerPlayer(
-                                    path = path,
+                                    path = stablePath ?: "",
                                     type = VideoType.Gif,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit,
@@ -183,7 +186,7 @@ fun GifMessageBubble(
                                 )
                             } else {
                                 Image(
-                                    painter = rememberAsyncImagePainter(path),
+                                    painter = rememberAsyncImagePainter(stablePath),
                                     contentDescription = content.caption,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit
@@ -218,7 +221,7 @@ fun GifMessageBubble(
                                     color = Color.White
                                 )
                             }
-                        } else {
+                    } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -265,7 +268,6 @@ fun GifMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
                     if (content.isUploading) {
@@ -312,36 +314,13 @@ fun GifMessageBubble(
                                 )
                                 if (isOutgoing) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
-                                            )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                                        }
-                                        val statusTint = if (sendingState is MessageSendingState.Failed) {
-                                            Color.Red
-                                        } else if (isRead) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            Color.White
-                                        }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = statusTint
-                                        )
-                                    }
+                                    MessageSendingStatusIcon(
+                                        sendingState = msg.sendingState,
+                                        isRead = msg.isRead,
+                                        baseColor = Color.White,
+                                        size = 12.dp,
+                                        usePrimaryForRead = false
+                                    )
                                 }
                             }
                         }
@@ -405,36 +384,12 @@ fun GifMessageBubble(
                                 )
                                 if (isOutgoing) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
-                                            )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                                        }
-                                        val statusTint = if (sendingState is MessageSendingState.Failed) {
-                                            MaterialTheme.colorScheme.error
-                                        } else if (isRead) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            timeColor
-                                        }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = statusTint
-                                        )
-                                    }
+                                    MessageSendingStatusIcon(
+                                        sendingState = msg.sendingState,
+                                        isRead = msg.isRead,
+                                        baseColor = timeColor,
+                                        size = 14.dp
+                                    )
                                 }
                             }
                         }

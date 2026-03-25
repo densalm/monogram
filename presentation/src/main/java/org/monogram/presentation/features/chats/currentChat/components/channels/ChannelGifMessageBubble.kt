@@ -35,12 +35,7 @@ import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
-import org.monogram.presentation.features.chats.currentChat.components.chats.ForwardContent
-import org.monogram.presentation.features.chats.currentChat.components.chats.MessageText
-import org.monogram.presentation.features.chats.currentChat.components.chats.MessageReactionsView
-import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyContent
-import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
-import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.*
 
 @Composable
 fun ChannelGifMessageBubble(
@@ -84,7 +79,14 @@ fun ChannelGifMessageBubble(
     var gifPosition by remember { mutableStateOf(Offset.Zero) }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading) {
@@ -107,7 +109,7 @@ fun ChannelGifMessageBubble(
             shape = bubbleShape,
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 1.dp,
-            modifier = Modifier.widthIn(max = 360.dp)
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.animateContentSize()) {
                 msg.forwardInfo?.let { forward ->
@@ -137,53 +139,50 @@ fun ChannelGifMessageBubble(
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 130.dp, max = 360.dp)
-                        .aspectRatio(
-                            if (content.width > 0 && content.height > 0)
-                                (content.width.toFloat() / content.height.toFloat()).coerceIn(0.6f, 1.8f)
-                            else 1f
-                        )
-                        .clipToBounds()
-                        .onGloballyPositioned { gifPosition = it.positionInWindow() }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (content.isDownloading) {
-                                        onCancelDownload(content.fileId)
-                                    } else {
-                                        onGifClick(msg)
-                                    }
-                                },
-                                onLongPress = { offset -> onLongClick(gifPosition + offset) }
-                            )
-                        }
-                ) {
-                    Crossfade(
-                        targetState = hasPath,
-                        animationSpec = tween(300),
-                        label = "GifLoading"
-                    ) { targetHasPath ->
-                        if (targetHasPath) {
+                val mediaRatio = if (content.width > 0 && content.height > 0)
+                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
+                else 1f
+
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val mediaHeight = (maxWidth / mediaRatio).coerceIn(160.dp, 320.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(mediaHeight)
+                            .clipToBounds()
+                            .onGloballyPositioned { gifPosition = it.positionInWindow() }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (content.isDownloading) {
+                                            onCancelDownload(content.fileId)
+                                        } else {
+                                            onGifClick(msg)
+                                        }
+                                    },
+                                    onLongPress = { offset -> onLongClick(gifPosition + offset) }
+                                )
+                            }
+                    ) {
+                        if (hasPath) {
                             if (autoplayGifs) {
-                                content.path?.let { path ->
+                                stablePath?.let { path ->
                                     VideoStickerPlayer(
                                         path = path,
                                         type = VideoType.Gif,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
+                                        contentScale = ContentScale.Fit,
                                         animate = !isAnyViewerOpen,
                                         videoPlayerPool = videoPlayerPool
                                     )
                                 }
                             } else {
                                 Image(
-                                    painter = rememberAsyncImagePainter(content.path),
+                                    painter = rememberAsyncImagePainter(stablePath),
                                     contentDescription = content.caption,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Fit
                                 )
 
                                 Box(
@@ -229,7 +228,7 @@ fun ChannelGifMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(10.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
 
@@ -262,64 +261,64 @@ fun ChannelGifMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
-                    if (content.caption.isEmpty() && (hasPath || msg.isOutgoing || content.minithumbnail != null) && showMetadata) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                msg.views?.let { viewsCount ->
-                                    if (viewsCount > 0) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Visibility,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = Color.White
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = formatViews(context, viewsCount),
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            color = Color.White
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                }
-                                Text(
-                                    text = formatTime(context, msg.date),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = Color.White
-                                )
-                                if (msg.isOutgoing) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
+                        if (content.caption.isEmpty() && (hasPath || msg.isOutgoing || content.minithumbnail != null) && showMetadata) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    msg.views?.let { viewsCount ->
+                                        if (viewsCount > 0) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Visibility,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp),
+                                                tint = Color.White
                                             )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = formatViews(context, viewsCount),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
                                         }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = if (sendingState is MessageSendingState.Failed) Color.Red else Color.White
-                                        )
+                                    }
+                                    Text(
+                                        text = formatTime(context, msg.date),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = Color.White
+                                    )
+                                    if (msg.isOutgoing) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        AnimatedContent(
+                                            targetState = msg.sendingState to msg.isRead,
+                                            transitionSpec = {
+                                                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
+                                                    animationSpec = tween(
+                                                        300
+                                                    )
+                                                )
+                                            },
+                                            label = "SendingState"
+                                        ) { (sendingState, isRead) ->
+                                            val statusIcon = when (sendingState) {
+                                                is MessageSendingState.Pending -> Icons.Default.Schedule
+                                                is MessageSendingState.Failed -> Icons.Default.Error
+                                                null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
+                                            }
+                                            Icon(
+                                                imageVector = statusIcon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp),
+                                                tint = if (sendingState is MessageSendingState.Failed) Color.Red else Color.White
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -422,7 +421,6 @@ fun ChannelGifMessageBubble(
         }
 
         if (showComments && msg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,
@@ -438,7 +436,7 @@ fun ChannelGifMessageBubble(
                 reactions = msg.reactions,
                 onReactionClick = onReactionClick,
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
+                    .padding(top = 2.dp)
                     .align(Alignment.Start)
             )
         }

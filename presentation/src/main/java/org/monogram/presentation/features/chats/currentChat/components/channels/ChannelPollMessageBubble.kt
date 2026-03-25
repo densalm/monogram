@@ -1,14 +1,11 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.dp
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.features.chats.currentChat.components.chats.PollMessageBubble
@@ -57,7 +54,6 @@ fun ChannelPollMessageBubble(
         )
 
         if (showComments && msg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,

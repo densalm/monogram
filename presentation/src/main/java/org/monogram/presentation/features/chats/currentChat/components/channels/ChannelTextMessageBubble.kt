@@ -195,7 +195,8 @@ fun ChannelTextMessageBubble(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,
                 isSameSenderBelow = isSameSenderBelow,
-                onClick = { onCommentsClick(msg.id) }
+                onClick = { onCommentsClick(msg.id) },
+                modifier = Modifier.fillMaxWidth()
             )
         }
 
@@ -204,7 +205,7 @@ fun ChannelTextMessageBubble(
                 reactions = msg.reactions,
                 onReactionClick = onReactionClick,
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
+                    .padding(top = 2.dp)
                     .align(Alignment.Start)
             )
         }

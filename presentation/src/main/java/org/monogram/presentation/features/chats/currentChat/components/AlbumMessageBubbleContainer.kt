@@ -139,7 +139,6 @@ fun AlbumMessageBubbleContainer(
             Column(
                 modifier = Modifier
                     .then(if (isChannel) Modifier.padding(horizontal = 8.dp) else Modifier)
-                    .width(IntrinsicSize.Max)
                     .widthIn(max = maxWidth)
                     .then(if (isChannel) Modifier.fillMaxWidth() else Modifier)
                     .onGloballyPositioned { coordinates ->
@@ -182,7 +181,7 @@ fun AlbumMessageBubbleContainer(
                             )
                         },
                         onReplyClick = onGoToReply,
-                        onReactionClick = { onReactionClick(firstMsg.id, it) },
+                        onReactionClick = { onReactionClick(lastMsg.id, it) },
                         onCommentsClick = onCommentsClick,
                         showComments = showComments,
                         toProfile = toProfile,
@@ -217,7 +216,7 @@ fun AlbumMessageBubbleContainer(
                             )
                         },
                         onReplyClick = onGoToReply,
-                        onReactionClick = { onReactionClick(firstMsg.id, it) },
+                        onReactionClick = { onReactionClick(lastMsg.id, it) },
                         toProfile = toProfile,
                         modifier = Modifier,
                         fontSize = fontSize,

@@ -261,7 +261,6 @@ fun ChannelAlbumMessageBubble(
         }
 
         if (showComments && firstMsg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = firstMsg.replyCount,
                 bubbleRadius = bubbleRadius,
@@ -272,7 +271,7 @@ fun ChannelAlbumMessageBubble(
         }
 
         MessageReactionsView(
-            reactions = firstMsg.reactions,
+            reactions = lastMsg.reactions,
             onReactionClick = onReactionClick,
             modifier = Modifier
                 .padding(top = 2.dp)
@@ -464,7 +463,6 @@ fun ChannelDocumentAlbumBubble(
         }
 
         if (showComments && firstMsg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = firstMsg.replyCount,
                 bubbleRadius = bubbleRadius,
@@ -669,7 +667,6 @@ fun ChannelAudioAlbumBubble(
         }
 
         if (showComments && firstMsg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = firstMsg.replyCount,
                 bubbleRadius = bubbleRadius,

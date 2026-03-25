@@ -225,7 +225,7 @@ fun ChatContent(
 
                 val shouldShow = !isForumList &&
                         !showInitialLoading &&
-                        (snapshot.unreadCount > 0 || !snapshot.isAtBottom)
+                        (snapshot.unreadCount > 0 || !snapshot.isNearBottom)
 
                 if (shouldShow) {
                     showScrollToBottomButton = true
@@ -718,7 +718,7 @@ fun ChatContent(
                                 Box {
                                     FloatingActionButton(
                                         onClick = {
-                                            if (state.unreadCount > 0 || !state.isLatestLoaded) {
+                                            if (!state.isLatestLoaded) {
                                                 component.onScrollToBottom()
                                             } else {
                                                 coroutineScope.launch {
