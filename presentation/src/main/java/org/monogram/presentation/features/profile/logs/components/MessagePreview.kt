@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -22,6 +23,7 @@ import coil3.compose.AsyncImage
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageModel
+import org.monogram.presentation.R
 import org.monogram.presentation.features.chats.currentChat.components.chats.MessageText
 import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
 import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
@@ -39,10 +41,10 @@ fun MessagePreview(
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(8.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Row(
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             val content = message.content
@@ -62,8 +64,8 @@ fun MessagePreview(
                         model = file,
                         contentDescription = null,
                         modifier = Modifier
-                            .size(if (content is MessageContent.Gif) 80.dp else 40.dp)
-                            .clip(RoundedCornerShape(4.dp))
+                            .size(if (content is MessageContent.Gif) 80.dp else 48.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clickable {
                                 when (content) {
@@ -87,7 +89,7 @@ fun MessagePreview(
                             },
                         contentScale = ContentScale.Crop
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                 }
             }
 
@@ -99,7 +101,7 @@ fun MessagePreview(
                             MessageText(
                                 text = calculateDiff(oldContent.text, content.text),
                                 inlineContent = emptyMap(),
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 entities = emptyList()
                             )
                         } else {
@@ -109,12 +111,12 @@ fun MessagePreview(
                             )
                             val inlineContent = rememberMessageInlineContent(
                                 entities = content.entities,
-                                fontSize = 12f
+                                fontSize = 14f
                             )
                             MessageText(
                                 text = annotatedText,
                                 inlineContent = inlineContent,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodyMedium,
                                 entities = content.entities
                             )
                         }
@@ -122,37 +124,37 @@ fun MessagePreview(
 
                     is MessageContent.Photo -> {
                         val oldCaption = (oldContent as? MessageContent.Photo)?.caption
-                        MediaPreviewText("Photo", content.caption, content.entities, oldCaption)
+                        MediaPreviewText(stringResource(R.string.logs_media_photo), content.caption, content.entities, oldCaption)
                     }
 
                     is MessageContent.Video -> {
                         val oldCaption = (oldContent as? MessageContent.Video)?.caption
-                        MediaPreviewText("Video", content.caption, content.entities, oldCaption)
+                        MediaPreviewText(stringResource(R.string.logs_media_video), content.caption, content.entities, oldCaption)
                     }
 
                     is MessageContent.Document -> {
                         val oldDoc = oldContent as? MessageContent.Document
                         val oldText = oldDoc?.caption?.ifEmpty { oldDoc.fileName }
                         val newText = content.caption.ifEmpty { content.fileName }
-                        MediaPreviewText("Document", newText, content.entities, oldText)
+                        MediaPreviewText(stringResource(R.string.logs_media_document), newText, content.entities, oldText)
                     }
 
                     is MessageContent.Audio -> {
                         val oldAudio = oldContent as? MessageContent.Audio
                         val oldText = oldAudio?.caption?.ifEmpty { oldAudio.title.ifEmpty { oldAudio.fileName } }
                         val newText = content.caption.ifEmpty { content.title.ifEmpty { content.fileName } }
-                        MediaPreviewText("Audio", newText, content.entities, oldText)
+                        MediaPreviewText(stringResource(R.string.logs_media_audio), newText, content.entities, oldText)
                     }
 
                     is MessageContent.Sticker -> {
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Sticker")
+                                    append(stringResource(R.string.logs_media_sticker))
                                 }
                                 append(" ${content.emoji}")
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -160,10 +162,10 @@ fun MessagePreview(
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Voice message")
+                                    append(stringResource(R.string.logs_media_voice))
                                 }
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -171,27 +173,27 @@ fun MessagePreview(
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Video message")
+                                    append(stringResource(R.string.logs_media_video_note))
                                 }
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
                     is MessageContent.Gif -> {
                         val oldCaption = (oldContent as? MessageContent.Gif)?.caption
-                        MediaPreviewText("GIF", content.caption, content.entities, oldCaption)
+                        MediaPreviewText(stringResource(R.string.logs_media_gif), content.caption, content.entities, oldCaption)
                     }
 
                     is MessageContent.Contact -> {
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Contact")
+                                    append(stringResource(R.string.logs_media_contact))
                                 }
                                 append(": ${content.firstName} ${content.lastName}".trim())
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -199,11 +201,11 @@ fun MessagePreview(
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Poll")
+                                    append(stringResource(R.string.logs_media_poll))
                                 }
                                 append(": ${content.question}")
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -211,10 +213,10 @@ fun MessagePreview(
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Location")
+                                    append(stringResource(R.string.logs_media_location))
                                 }
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
@@ -222,26 +224,26 @@ fun MessagePreview(
                         Text(
                             text = buildAnnotatedString {
                                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                                    append("Venue")
+                                    append(stringResource(R.string.logs_media_venue))
                                 }
                                 append(": ${content.title}")
                             },
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
 
                     is MessageContent.Service -> {
                         Text(
                             text = content.text,
-                            style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic),
+                            style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     MessageContent.Unsupported -> {
                         Text(
-                            "Unsupported message",
-                            style = MaterialTheme.typography.bodySmall
+                            stringResource(R.string.logs_media_unsupported),
+                            style = MaterialTheme.typography.bodyMedium
                         )
                     }
                 }
@@ -274,7 +276,7 @@ private fun MediaPreviewText(
     MessageText(
         text = annotatedText,
         inlineContent = emptyMap(),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         entities = if (oldText != null && oldText != text) emptyList() else entities
     )
 }

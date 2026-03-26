@@ -86,6 +86,9 @@ class MessageMapper(
         var senderPersonalAvatar: String? = null
         var senderCustomTitle: String? = null
         var isSenderVerified = false
+        var isSenderPremium = false
+        var senderStatusEmojiId = 0L
+        var senderStatusEmojiPath: String? = null
         val senderId: Long
 
         when (val sender = msg.senderId) {
@@ -107,6 +110,9 @@ class MessageMapper(
                     senderAvatar = user.avatarPath.takeIf { isValidPath(it) }
                     senderPersonalAvatar = user.personalAvatarPath.takeIf { isValidPath(it) }
                     isSenderVerified = user.isVerified
+                    isSenderPremium = user.isPremium
+                    senderStatusEmojiId = user.statusEmojiId
+                    senderStatusEmojiPath = user.statusEmojiPath
                 }
 
                 val chat = cache.getChat(msg.chatId)
@@ -400,15 +406,24 @@ class MessageMapper(
             viaBotUserId = msg.viaBotUserId,
             viaBotName = viaBotName,
             senderPersonalAvatar = senderPersonalAvatar,
-            senderCustomTitle = senderCustomTitle
+            senderCustomTitle = senderCustomTitle,
+            isSenderPremium = isSenderPremium,
+            senderStatusEmojiId = senderStatusEmojiId,
+            senderStatusEmojiPath = senderStatusEmojiPath
         )
     }
 
-    suspend fun getMessageReadDate(chatId: Long, messageId: Long): Int {
+    suspend fun getMessageReadDate(chatId: Long, messageId: Long, messageDate: Int): Int {
         val chat = cache.getChat(chatId)
         if (chat?.type !is TdApi.ChatTypePrivate) {
             return 0
         }
+
+        val sevenDaysAgo = (System.currentTimeMillis() / 1000) - (7 * 24 * 60 * 60)
+        if (messageDate < sevenDaysAgo) {
+            return 0
+        }
+
         return try {
             val result = gateway.execute(TdApi.GetMessageReadDate(chatId, messageId))
             if (result is TdApi.MessageReadDateRead) {
@@ -769,7 +784,10 @@ class MessageMapper(
         viaBotUserId: Long = 0L,
         viaBotName: String? = null,
         senderPersonalAvatar: String? = null,
-        senderCustomTitle: String? = null
+        senderCustomTitle: String? = null,
+        isSenderPremium: Boolean = false,
+        senderStatusEmojiId: Long = 0L,
+        senderStatusEmojiPath: String? = null
     ): MessageModel {
         val networkAutoDownload = isChatOpen && isNetworkAutoDownloadEnabled()
         val isActuallyUploading = msg.sendingState is TdApi.MessageSendingStatePending
@@ -1236,7 +1254,10 @@ class MessageMapper(
             canGetViewers = hasInteraction,
             replyMarkup = if (isReply) null else mapReplyMarkup(msg.replyMarkup),
             viaBotUserId = viaBotUserId,
-            viaBotName = viaBotName
+            viaBotName = viaBotName,
+            isSenderPremium = isSenderPremium,
+            senderStatusEmojiId = senderStatusEmojiId,
+            senderStatusEmojiPath = senderStatusEmojiPath
         )
     }
 

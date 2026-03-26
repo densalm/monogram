@@ -2,12 +2,6 @@ package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DoneAll
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -276,21 +270,11 @@ fun ChatTimestampInfo(
         )
         if (isOutgoing) {
             Spacer(modifier = Modifier.width(4.dp))
-            val statusIcon = when (sendingState) {
-                is MessageSendingState.Pending -> Icons.Default.Schedule
-                is MessageSendingState.Failed -> Icons.Default.Error
-                null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-            }
-            val statusTint = if (sendingState is MessageSendingState.Failed) {
-                MaterialTheme.colorScheme.error
-            } else {
-                color
-            }
-            Icon(
-                imageVector = statusIcon,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = statusTint
+            MessageSendingStatusIcon(
+                sendingState = sendingState,
+                isRead = isRead,
+                baseColor = color,
+                size = 14.dp
             )
         }
     }

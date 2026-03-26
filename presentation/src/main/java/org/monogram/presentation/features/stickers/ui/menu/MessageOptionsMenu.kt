@@ -2,12 +2,9 @@ package org.monogram.presentation.features.stickers.ui.menu
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -33,6 +30,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import androidx.compose.ui.zIndex
@@ -41,10 +39,14 @@ import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageViewerModel
 import org.monogram.domain.models.RecentEmojiModel
 import org.monogram.domain.repository.StickerRepository
+import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.features.chats.currentChat.chatContent.DeleteMessagesSheet
+import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.text.SimpleDateFormat
@@ -54,6 +56,7 @@ import java.util.*
 fun MessageOptionsMenu(
     message: MessageModel,
     canWrite: Boolean,
+    canPinMessages: Boolean,
     isPinned: Boolean,
     messageOffset: Offset,
     messageSize: IntSize,
@@ -62,6 +65,18 @@ fun MessageOptionsMenu(
     isSameSenderAbove: Boolean = false,
     isSameSenderBelow: Boolean = false,
     isMessageOutgoing: Boolean = message.isOutgoing,
+    showReadInfo: Boolean = true,
+    showViewsInfo: Boolean = true,
+    showViewersList: Boolean = false,
+    canReport: Boolean = true,
+    canBlock: Boolean = false,
+    canRestrict: Boolean = false,
+    canCopyLink: Boolean = true,
+    viewers: List<MessageViewerModel> = emptyList(),
+    isLoadingViewers: Boolean = false,
+    onReloadViewers: () -> Unit = {},
+    onViewerClick: (Long) -> Unit = {},
+    videoPlayerPool: VideoPlayerPool,
     bubbleRadius: Float = 18f,
     splitOffset: Int? = null,
     onReply: () -> Unit,
@@ -97,11 +112,33 @@ fun MessageOptionsMenu(
     val scale = remember { Animatable(0.6f) }
     val alpha = remember { Animatable(0f) }
     val dimAlpha = remember { Animatable(0f) }
+    val runtimeContentScale = remember { Animatable(1f) }
 
     var menuSize by remember { mutableStateOf(IntSize.Zero) }
     var firstScreenWidth by remember { mutableStateOf<Int?>(null) }
     var containerOffset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var hasTrackedViewersState by remember(message.id) { mutableStateOf(false) }
+    var lastTrackedViewersCount by remember(message.id) { mutableIntStateOf(viewers.size) }
+    var lastTrackedLoadingState by remember(message.id) { mutableStateOf(isLoadingViewers) }
+    var hasTrackedReactions by remember(message.id) { mutableStateOf(false) }
+    var lastTrackedReactionCount by remember(message.id) { mutableIntStateOf(0) }
+    var hasReactionsInMessage by remember(message.id) { mutableStateOf(false) }
+    var suppressNextReactionsAppearanceAnimation by remember(message.id) { mutableStateOf(false) }
+
+    fun animateRuntimeContentScale() {
+        scope.launch {
+            runtimeContentScale.stop()
+            runtimeContentScale.snapTo(0.97f)
+            runtimeContentScale.animateTo(
+                1f,
+                spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+        }
+    }
 
     fun animateOutAndDismiss(action: (() -> Unit)? = null) {
         scope.launch {
@@ -175,8 +212,20 @@ fun MessageOptionsMenu(
         launch { dimAlpha.animateTo(1f, tween(200)) }
     }
 
+    LaunchedEffect(isLoadingViewers, viewers.size) {
+        if (hasTrackedViewersState &&
+            (lastTrackedLoadingState != isLoadingViewers || lastTrackedViewersCount != viewers.size)
+        ) {
+            animateRuntimeContentScale()
+        }
+
+        hasTrackedViewersState = true
+        lastTrackedLoadingState = isLoadingViewers
+        lastTrackedViewersCount = viewers.size
+    }
+
     var showDeleteSheet by remember { mutableStateOf(false) }
-    var showMoreOptions by remember { mutableStateOf(false) }
+    var menuPage by remember { mutableStateOf(MenuPage.Main) }
 
     if (showDeleteSheet) {
         DeleteMessagesSheet(
@@ -289,8 +338,9 @@ fun MessageOptionsMenu(
                 .graphicsLayer {
                     this.alpha = if (menuSize == IntSize.Zero || containerSize == IntSize.Zero) 0f else alpha.value
 
-                    scaleX = scale.value
-                    scaleY = scale.value
+                    val currentScale = scale.value * runtimeContentScale.value
+                    scaleX = currentScale
+                    scaleY = currentScale
                     this.transformOrigin = transformOrigin
                     shadowElevation = 16.dp.toPx()
                     shape = RoundedCornerShape(16.dp)
@@ -307,11 +357,12 @@ fun MessageOptionsMenu(
             shape = RoundedCornerShape(16.dp)
         ) {
             AnimatedContent(
-                targetState = showMoreOptions,
+                targetState = menuPage,
                 transitionSpec = {
                     val duration = 300
                     val easing = FastOutSlowInEasing
-                    if (targetState) {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    if (forward) {
                         (slideInHorizontally(animationSpec = tween(duration, easing = easing)) { width -> width / 2 } +
                                 fadeIn(animationSpec = tween(duration, easing = easing)))
                             .togetherWith(
@@ -346,12 +397,13 @@ fun MessageOptionsMenu(
                     )
                 },
                 label = "MenuTransition"
-            ) { isMore ->
-                val contentModifier = if (isMore && firstScreenWidth != null) {
+            ) { page ->
+                val isSubPage = page != MenuPage.Main
+                val contentModifier = if (isSubPage && firstScreenWidth != null) {
                     Modifier.width(with(density) { firstScreenWidth!!.toDp() })
                 } else {
                     Modifier.onGloballyPositioned { coords ->
-                        if (!isMore) {
+                        if (page == MenuPage.Main) {
                             firstScreenWidth = coords.size.width
                         }
                     }
@@ -359,66 +411,120 @@ fun MessageOptionsMenu(
 
                 Column(
                     modifier = contentModifier
+                        .animateContentSize(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
                         .padding(vertical = 4.dp)
                 ) {
-                    if (!isMore) {
+                    if (page == MenuPage.Main) {
                         ReactionsRow(
                             message = message,
+                            suppressAppearanceAnimation = suppressNextReactionsAppearanceAnimation,
+                            onAppearanceAnimationConsumed = {
+                                suppressNextReactionsAppearanceAnimation = false
+                            },
+                            onReactionsChanged = { reactionCount ->
+                                hasReactionsInMessage = reactionCount > 0
+                                if (hasTrackedReactions && lastTrackedReactionCount != reactionCount) {
+                                    animateRuntimeContentScale()
+                                }
+                                hasTrackedReactions = true
+                                lastTrackedReactionCount = reactionCount
+                            },
                             onReaction = { reaction ->
                                 animateOutAndDismiss { onReaction(reaction) }
                             }
                         )
 
-                        InternalMenuHeaderInfo(message)
-
-                        InternalMenuOptionItem(
-                            icon = Icons.AutoMirrored.Rounded.Reply,
-                            text = "Reply",
-                            onClick = { animateOutAndDismiss(onReply) }
+                        InternalMenuHeaderInfo(
+                            message = message,
+                            showReadInfo = showReadInfo,
+                            showViewsInfo = showViewsInfo
                         )
+
+                        if (showViewersList) {
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.Visibility,
+                                text = "${viewers.size} ${stringResource(R.string.info_views)}",
+                                trailingContent = {
+                                    if (isLoadingViewers) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Rounded.ChevronRight,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onReloadViewers()
+                                    menuPage = MenuPage.Viewers
+                                }
+                            )
+                        }
 
                         if (canWrite) {
                             InternalMenuOptionItem(
+                                icon = Icons.AutoMirrored.Rounded.Reply,
+                                text = stringResource(R.string.menu_reply),
+                                onClick = { animateOutAndDismiss(onReply) }
+                            )
+                        }
+
+                        if (canPinMessages) {
+                            InternalMenuOptionItem(
                                 icon = Icons.Rounded.PushPin,
-                                text = if (isPinned) "Unpin" else "Pin",
+                                text = if (isPinned) stringResource(R.string.menu_unpin) else stringResource(R.string.menu_pin),
                                 onClick = { animateOutAndDismiss(onPin) }
                             )
-                            if (message.canBeEdited) {
-                                InternalMenuOptionItem(
-                                    icon = Icons.Rounded.Edit,
-                                    text = "Edit",
-                                    onClick = { animateOutAndDismiss(onEdit) }
-                                )
-                            }
+                        }
+
+                        if (message.canBeEdited) {
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.Edit,
+                                text = stringResource(R.string.menu_edit),
+                                onClick = { animateOutAndDismiss(onEdit) }
+                            )
                         }
 
                         if (shouldShowCopy(message)) {
                             InternalMenuOptionItem(
                                 icon = Icons.Rounded.ContentCopy,
-                                text = "Copy",
+                                text = stringResource(R.string.menu_copy),
                                 onClick = { animateOutAndDismiss(onCopy) }
                             )
                         }
 
-                        InternalMenuOptionItem(
-                            icon = Icons.AutoMirrored.Rounded.Forward,
-                            text = "Forward",
-                            onClick = { animateOutAndDismiss(onForward) }
-                        )
+                        if (message.canBeForwarded) {
+                            InternalMenuOptionItem(
+                                icon = Icons.AutoMirrored.Rounded.Forward,
+                                text = stringResource(R.string.menu_forward),
+                                onClick = { animateOutAndDismiss(onForward) }
+                            )
+                        }
 
                         InternalMenuOptionItem(
                             icon = Icons.Rounded.CheckCircle,
-                            text = "Select",
+                            text = stringResource(R.string.menu_select),
                             onClick = { animateOutAndDismiss(onSelect) }
                         )
 
                         InternalMenuOptionItem(
                             icon = Icons.Rounded.MoreHoriz,
-                            text = "More",
+                            text = stringResource(R.string.menu_more),
                             trailingIcon = Icons.Rounded.ChevronRight,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showMoreOptions = true
+                                menuPage = MenuPage.More
                             }
                         )
 
@@ -429,21 +535,24 @@ fun MessageOptionsMenu(
                             )
                             InternalMenuOptionItem(
                                 icon = Icons.Rounded.Delete,
-                                text = "Delete",
+                                text = stringResource(R.string.menu_delete),
                                 textColor = MaterialTheme.colorScheme.error,
                                 iconTint = MaterialTheme.colorScheme.error,
                                 onClick = { showDeleteSheet = true }
                             )
                         }
-                    } else {
+                    } else if (page == MenuPage.More) {
                         InternalMenuOptionItem(
                             icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                            text = "Back",
+                            text = stringResource(R.string.cd_back),
                             iconTint = MaterialTheme.colorScheme.primary,
                             textColor = MaterialTheme.colorScheme.primary,
                             onClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showMoreOptions = false
+                                if (hasReactionsInMessage) {
+                                    suppressNextReactionsAppearanceAnimation = true
+                                }
+                                menuPage = MenuPage.Main
                             }
                         )
 
@@ -455,46 +564,118 @@ fun MessageOptionsMenu(
                         if (message.canGetMessageThread) {
                             InternalMenuOptionItem(
                                 icon = Icons.AutoMirrored.Rounded.Chat,
-                                text = "View Comments",
+                                text = stringResource(R.string.menu_view_comments),
                                 onClick = { animateOutAndDismiss(onComments) }
                             )
                         }
 
-                        InternalMenuOptionItem(
-                            icon = Icons.Rounded.Link,
-                            text = "Copy Link",
-                            onClick = { animateOutAndDismiss(onCopyLink) }
-                        )
+                        if (canCopyLink) {
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.Link,
+                                text = stringResource(R.string.menu_copy_link),
+                                onClick = { animateOutAndDismiss(onCopyLink) }
+                            )
+                        }
 
                         if (shouldShowDownload(message)) {
                             InternalMenuOptionItem(
                                 icon = Icons.Rounded.Download,
-                                text = "Save to Downloads",
+                                text = stringResource(R.string.menu_save_to_downloads),
                                 onClick = { animateOutAndDismiss(onSaveToDownloads) }
                             )
                         }
 
-                        InternalMenuOptionItem(
-                            icon = Icons.Rounded.Report,
-                            text = "Report",
-                            onClick = { animateOutAndDismiss(onReport) }
-                        )
+                        if (canReport) {
+                            InternalMenuOptionItem(
+                                icon = Icons.Rounded.Report,
+                                text = stringResource(R.string.menu_report),
+                                onClick = { animateOutAndDismiss(onReport) }
+                            )
+                        }
 
-                        if (!message.isOutgoing) {
+                        if (canBlock) {
                             InternalMenuOptionItem(
                                 icon = Icons.Rounded.Block,
-                                text = "Block User",
+                                text = stringResource(R.string.menu_block_user),
                                 textColor = MaterialTheme.colorScheme.error,
                                 iconTint = MaterialTheme.colorScheme.error,
                                 onClick = { animateOutAndDismiss(onBlock) }
                             )
-                            InternalMenuOptionItem(
-                                icon = Icons.Rounded.Gavel,
-                                text = "Restrict User",
-                                textColor = MaterialTheme.colorScheme.error,
-                                iconTint = MaterialTheme.colorScheme.error,
-                                onClick = { animateOutAndDismiss(onRestrict) }
-                            )
+                            if (canRestrict) {
+                                InternalMenuOptionItem(
+                                    icon = Icons.Rounded.Gavel,
+                                    text = stringResource(R.string.menu_restrict_user),
+                                    textColor = MaterialTheme.colorScheme.error,
+                                    iconTint = MaterialTheme.colorScheme.error,
+                                    onClick = { animateOutAndDismiss(onRestrict) }
+                                )
+                            }
+                        }
+                    } else {
+                        InternalMenuOptionItem(
+                            icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                            text = stringResource(R.string.viewer_back),
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            textColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (hasReactionsInMessage) {
+                                    suppressNextReactionsAppearanceAnimation = true
+                                }
+                                menuPage = MenuPage.Main
+                            }
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        when {
+                            isLoadingViewers -> {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+
+                            viewers.isEmpty() -> {
+                                Text(
+                                    text = stringResource(R.string.info_views),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            else -> {
+                                val viewerDateFormat =
+                                    remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
+                                val scrollState = rememberScrollState()
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 260.dp)
+                                        .verticalScroll(scrollState)
+                                ) {
+                                    viewers.forEach { viewer ->
+                                        ViewerRow(
+                                            viewer = viewer,
+                                            dateFormat = viewerDateFormat,
+                                            videoPlayerPool = videoPlayerPool,
+                                            onClick = {
+                                                animateOutAndDismiss {
+                                                    onViewerClick(viewer.user.id)
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -503,9 +684,18 @@ fun MessageOptionsMenu(
     }
 }
 
+private enum class MenuPage {
+    Main,
+    More,
+    Viewers
+}
+
 @Composable
 private fun ReactionsRow(
     message: MessageModel,
+    suppressAppearanceAnimation: Boolean,
+    onAppearanceAnimationConsumed: () -> Unit,
+    onReactionsChanged: (Int) -> Unit,
     onReaction: (String) -> Unit,
     stickerRepository: StickerRepository = koinInject(),
     appPreferences: AppPreferences = koinInject()
@@ -529,80 +719,176 @@ private fun ReactionsRow(
         }
     }
 
-    if (reactions.isEmpty()) return
+    LaunchedEffect(reactions.size) {
+        onReactionsChanged(reactions.size)
+    }
 
-    Row(
-        modifier = Modifier
-            .horizontalScroll(rememberScrollState())
-            .padding(vertical = 4.dp)
-            .padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        reactions.forEach { reaction ->
-            val isChosen = message.reactions.any { it.isChosen && it.emoji == reaction.emoji }
-
-            val backgroundColor by animateColorAsState(
-                targetValue = if (isChosen) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                animationSpec = spring(stiffness = Spring.StiffnessLow),
-                label = "reactionBg"
-            )
-
-            val scale by animateFloatAsState(
-                targetValue = if (isChosen) 1.1f else 1f,
-                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                label = "reactionScale"
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .graphicsLayer {
-                        scaleX = scale
-                        scaleY = scale
-                    }
-                    .clip(CircleShape)
-                    .background(backgroundColor)
-                    .clickable {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        val reactionValue = reaction.emoji ?: reaction.sticker?.id?.toString()
-                        if (reactionValue != null) {
-                            onReaction(reactionValue)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                val sticker = reaction.sticker
-                if (sticker != null) {
-                    StickerImage(
-                        path = sticker.path,
-                        modifier = Modifier.size(28.dp),
-                    )
-                } else {
-                    Text(
-                        text = reaction.emoji,
-                        fontSize = 24.sp,
-                        fontFamily = emojiFontFamily
-                    )
-                }
-            }
+    LaunchedEffect(suppressAppearanceAnimation, reactions.isNotEmpty()) {
+        if (suppressAppearanceAnimation && reactions.isNotEmpty()) {
+            onAppearanceAnimationConsumed()
         }
     }
 
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-    )
+    AnimatedVisibility(
+        visible = reactions.isNotEmpty(),
+        enter = if (suppressAppearanceAnimation) {
+            EnterTransition.None
+        } else {
+            fadeIn(animationSpec = tween(180, easing = LinearOutSlowInEasing)) +
+                    expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+        },
+        exit = fadeOut(animationSpec = tween(120)) +
+                shrinkVertically(animationSpec = tween(120)) +
+                scaleOut(targetScale = 0.96f, animationSpec = tween(120)),
+        label = "ReactionsRowVisibility"
+    ) {
+        Column {
+            Row(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp)
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                reactions.forEach { reaction ->
+                    val isChosen = message.reactions.any { it.isChosen && it.emoji == reaction.emoji }
+
+                    val backgroundColor by animateColorAsState(
+                        targetValue = if (isChosen) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        animationSpec = spring(stiffness = Spring.StiffnessLow),
+                        label = "reactionBg"
+                    )
+
+                    val scale by animateFloatAsState(
+                        targetValue = if (isChosen) 1.1f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        label = "reactionScale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .clip(CircleShape)
+                            .background(backgroundColor)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onReaction(reaction.emoji)
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val sticker = reaction.sticker
+                        if (sticker != null) {
+                            StickerImage(
+                                path = sticker.path,
+                                modifier = Modifier.size(28.dp),
+                            )
+                        } else {
+                            Text(
+                                text = reaction.emoji,
+                                fontSize = 24.sp,
+                                fontFamily = emojiFontFamily
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+        }
+    }
 }
 
 @Composable
-private fun InternalMenuHeaderInfo(message: MessageModel) {
+private fun ViewerRow(
+    viewer: MessageViewerModel,
+    dateFormat: SimpleDateFormat,
+    videoPlayerPool: VideoPlayerPool,
+    onClick: () -> Unit
+) {
+    val fullName = remember(viewer.user.firstName, viewer.user.lastName) {
+        listOfNotNull(viewer.user.firstName, viewer.user.lastName)
+            .joinToString(" ")
+            .ifBlank { "Unknown" }
+    }
+    val subtitle = remember(viewer.viewedDate) {
+        if (viewer.viewedDate > 0) {
+            dateFormat.format(Date(viewer.viewedDate.toLong() * 1000))
+        } else {
+            ""
+        }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Avatar(
+            path = viewer.user.avatarPath,
+            fallbackPath = viewer.user.personalAvatarPath,
+            name = fullName,
+            size = 32.dp,
+            videoPlayerPool = videoPlayerPool,
+            fontSize = 12,
+            onClick = onClick
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = fullName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (subtitle.isNotEmpty()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InternalMenuHeaderInfo(
+    message: MessageModel,
+    showReadInfo: Boolean,
+    showViewsInfo: Boolean
+) {
     val dateFormat = remember { SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()) }
 
     val editDate = if (message.editDate > 0) dateFormat.format(Date(message.editDate.toLong() * 1000)) else null
-    val readDate =
+    val readDate = if (showReadInfo)
         if (message.isOutgoing && message.readDate > 0) dateFormat.format(Date(message.readDate.toLong() * 1000)) else null
-    val views = if (message.views != null && message.views!! > 0) message.views.toString() else null
+    else null
+    val views = if (showViewsInfo && message.views != null && message.views!! > 0) message.views.toString() else null
 
     val hasHeader = editDate != null || readDate != null || views != null
 
@@ -611,7 +897,7 @@ private fun InternalMenuHeaderInfo(message: MessageModel) {
             if (editDate != null) {
                 InternalMenuInfoRow(
                     icon = Icons.Rounded.Edit,
-                    label = "Edited",
+                    label = stringResource(R.string.info_edited),
                     value = editDate
                 )
             }
@@ -619,7 +905,7 @@ private fun InternalMenuHeaderInfo(message: MessageModel) {
             if (readDate != null) {
                 InternalMenuInfoRow(
                     icon = Icons.Rounded.DoneAll,
-                    label = "Read",
+                    label = stringResource(R.string.info_read),
                     value = readDate,
                     iconTint = MaterialTheme.colorScheme.primary
                 )
@@ -628,7 +914,7 @@ private fun InternalMenuHeaderInfo(message: MessageModel) {
             if (views != null) {
                 InternalMenuInfoRow(
                     icon = Icons.Rounded.Visibility,
-                    label = "Views",
+                    label = stringResource(R.string.info_views),
                     value = views
                 )
             }
@@ -686,7 +972,8 @@ private fun InternalMenuOptionItem(
     onClick: () -> Unit,
     textColor: Color = MaterialTheme.colorScheme.onSurface,
     iconTint: Color = MaterialTheme.colorScheme.onSurface,
-    trailingIcon: ImageVector? = null
+    trailingIcon: ImageVector? = null,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -708,7 +995,9 @@ private fun InternalMenuOptionItem(
             color = textColor,
             modifier = Modifier.weight(1f)
         )
-        if (trailingIcon != null) {
+        if (trailingContent != null) {
+            trailingContent()
+        } else if (trailingIcon != null) {
             Icon(
                 imageVector = trailingIcon,
                 contentDescription = null,
@@ -730,6 +1019,7 @@ private fun shouldShowCopy(message: MessageModel): Boolean {
 }
 
 private fun shouldShowDownload(message: MessageModel): Boolean {
+    if (!message.canBeSaved) return false
     return when (val content = message.content) {
         is MessageContent.Photo -> content.path != null
         is MessageContent.Video -> content.path != null

@@ -267,10 +267,13 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
 
     fun putChatFromEntity(entity: org.monogram.data.db.model.ChatEntity) {
         val chatList = if (entity.isArchived) TdApi.ChatListArchive() else TdApi.ChatListMain()
+        val cachedPositions = parsePositionsCache(entity.positionsCache)
         val chat = TdApi.Chat().apply {
             id = entity.id
             title = entity.title
             unreadCount = entity.unreadCount
+            unreadMentionCount = entity.unreadMentionCount
+            unreadReactionCount = entity.unreadReactionCount
             photo = entity.avatarPath?.let { path ->
                 TdApi.ChatPhotoInfo().apply {
                     small = TdApi.File().apply { local = TdApi.LocalFile().apply { this.path = path } }
@@ -278,20 +281,104 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
             }
             lastMessage = TdApi.Message().apply {
                 content = TdApi.MessageText().apply { text = TdApi.FormattedText(entity.lastMessageText, emptyArray()) }
-                date = 0
+                date = entity.lastMessageTime.toIntOrNull() ?: 0
+                id = entity.lastMessageId
+                isOutgoing = entity.isLastMessageOutgoing
             }
-            positions = arrayOf(TdApi.ChatPosition(chatList, entity.order, entity.isPinned, null))
+            positions = cachedPositions ?: arrayOf(TdApi.ChatPosition(chatList, entity.order, entity.isPinned, null))
             notificationSettings = TdApi.ChatNotificationSettings().apply {
                 muteFor = if (entity.isMuted) Int.MAX_VALUE else 0
             }
             type = when (entity.type) {
-                "PRIVATE" -> TdApi.ChatTypePrivate()
-                "BASIC_GROUP" -> TdApi.ChatTypeBasicGroup()
-                "SUPERGROUP" -> TdApi.ChatTypeSupergroup(0, entity.isChannel)
-                "SECRET" -> TdApi.ChatTypeSecret()
-                else -> TdApi.ChatTypePrivate()
+                "PRIVATE" -> TdApi.ChatTypePrivate().apply {
+                    userId = if (entity.privateUserId != 0L) entity.privateUserId else (entity.messageSenderId ?: 0L)
+                }
+                "BASIC_GROUP" -> TdApi.ChatTypeBasicGroup().apply {
+                    basicGroupId = entity.basicGroupId
+                }
+                "SUPERGROUP" -> TdApi.ChatTypeSupergroup(entity.supergroupId, entity.isChannel)
+                "SECRET" -> TdApi.ChatTypeSecret().apply {
+                    secretChatId = entity.secretChatId
+                }
+                else -> TdApi.ChatTypePrivate().apply { userId = entity.privateUserId }
+            }
+            isMarkedAsUnread = entity.isMarkedAsUnread
+            hasProtectedContent = entity.hasProtectedContent
+            isTranslatable = entity.isTranslatable
+            viewAsTopics = entity.viewAsTopics
+            accentColorId = entity.accentColorId
+            profileAccentColorId = entity.profileAccentColorId
+            backgroundCustomEmojiId = entity.backgroundCustomEmojiId
+            messageAutoDeleteTime = entity.messageAutoDeleteTime
+            canBeDeletedOnlyForSelf = entity.canBeDeletedOnlyForSelf
+            canBeDeletedForAllUsers = entity.canBeDeletedForAllUsers
+            canBeReported = entity.canBeReported
+            lastReadInboxMessageId = entity.lastReadInboxMessageId
+            lastReadOutboxMessageId = entity.lastReadOutboxMessageId
+            replyMarkupMessageId = entity.replyMarkupMessageId
+            messageSenderId = entity.messageSenderId?.let { sender ->
+                TdApi.MessageSenderUser(sender)
+            }
+            blockList = if (entity.blockList) TdApi.BlockListMain() else null
+            permissions = TdApi.ChatPermissions(
+                entity.permissionCanSendBasicMessages,
+                entity.permissionCanSendAudios,
+                entity.permissionCanSendDocuments,
+                entity.permissionCanSendPhotos,
+                entity.permissionCanSendVideos,
+                entity.permissionCanSendVideoNotes,
+                entity.permissionCanSendVoiceNotes,
+                entity.permissionCanSendPolls,
+                entity.permissionCanSendOtherMessages,
+                entity.permissionCanAddLinkPreviews,
+                entity.permissionCanEditTag,
+                entity.permissionCanChangeInfo,
+                entity.permissionCanInviteUsers,
+                entity.permissionCanPinMessages,
+                entity.permissionCanCreateTopics
+            )
+            clientData = "mc:${entity.memberCount};oc:${entity.onlineCount}"
+        }
+        chatPermissionsCache[entity.id] = chat.permissions
+        onlineMemberCount[entity.id] = entity.onlineCount
+        putChat(chat)
+    }
+
+    private fun parsePositionsCache(raw: String?): Array<TdApi.ChatPosition>? {
+        if (raw.isNullOrBlank()) return null
+
+        val parsed = raw.split("|").mapNotNull { token ->
+            val parts = token.split(":")
+            when (parts.firstOrNull()) {
+                "m" -> {
+                    if (parts.size < 3) return@mapNotNull null
+                    val order = parts[1].toLongOrNull() ?: return@mapNotNull null
+                    if (order == 0L) return@mapNotNull null
+                    val pinned = parts[2] == "1"
+                    TdApi.ChatPosition(TdApi.ChatListMain(), order, pinned, null)
+                }
+
+                "a" -> {
+                    if (parts.size < 3) return@mapNotNull null
+                    val order = parts[1].toLongOrNull() ?: return@mapNotNull null
+                    if (order == 0L) return@mapNotNull null
+                    val pinned = parts[2] == "1"
+                    TdApi.ChatPosition(TdApi.ChatListArchive(), order, pinned, null)
+                }
+
+                "f" -> {
+                    if (parts.size < 4) return@mapNotNull null
+                    val folderId = parts[1].toIntOrNull() ?: return@mapNotNull null
+                    val order = parts[2].toLongOrNull() ?: return@mapNotNull null
+                    if (order == 0L) return@mapNotNull null
+                    val pinned = parts[3] == "1"
+                    TdApi.ChatPosition(TdApi.ChatListFolder(folderId), order, pinned, null)
+                }
+
+                else -> null
             }
         }
-        putChat(chat)
+
+        return parsed.takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 }

@@ -6,6 +6,7 @@ import android.media.MediaMetadataRetriever
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.monogram.domain.models.GifModel
@@ -247,7 +248,7 @@ internal fun DefaultChatComponent.handleCopySelectedMessages(clipboardManager: C
 }
 
 internal fun DefaultChatComponent.handleReportMessage(message: MessageModel) {
-
+    _state.update { it.copy(showReportDialog = true) }
 }
 
 internal fun DefaultChatComponent.handleReportReasonSelected(reason: String) {

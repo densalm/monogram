@@ -1,24 +1,19 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import android.graphics.RuntimeShader
 import android.os.Build
-import androidx.annotation.RequiresApi
-import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.TextLayoutResult
 import org.intellij.lang.annotations.Language
+import kotlin.math.sin
 
 object SpoilerShader {
     @Language("AGSL")
@@ -73,51 +68,6 @@ half4 main(float2 coord) {
 """
 }
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-fun DrawScope.drawSpoilerEffect(
-    layoutResult: TextLayoutResult,
-    start: Int,
-    end: Int,
-    shader: RuntimeShader,
-    time: Float,
-    color: Color
-) {
-    val path = layoutResult.getPathForRange(start, end)
-    shader.setFloatUniform("resolution", size.width, size.height)
-    shader.setFloatUniform("time", time)
-    shader.setColorUniform("particleColor", color.toArgb())
-
-    drawPath(
-        path = path,
-        brush = ShaderBrush(shader)
-    )
-}
-
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@Composable
-fun AnimatedSpoilerEffect(
-    modifier: Modifier = Modifier,
-    color: Color = Color.Gray
-) {
-    val time by produceState(0f) {
-        while (true) {
-            withInfiniteAnimationFrameMillis {
-                value = it / 1000f
-            }
-        }
-    }
-
-    val shader = remember { RuntimeShader(SpoilerShader.SHADER_CODE) }
-
-    Canvas(modifier = modifier.fillMaxSize()) {
-        shader.setFloatUniform("resolution", size.width, size.height)
-        shader.setFloatUniform("time", time)
-        shader.setColorUniform("particleColor", color.toArgb())
-
-        drawRect(brush = ShaderBrush(shader))
-    }
-}
-
 @Composable
 fun SpoilerWrapper(
     isRevealed: Boolean,
@@ -128,7 +78,7 @@ fun SpoilerWrapper(
         content()
         if (!isRevealed) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                AnimatedSpoilerEffect()
+                AnimatedSpoilerEffectApi33()
             } else {
                 Box(
                     modifier = Modifier
@@ -136,6 +86,41 @@ fun SpoilerWrapper(
                         .background(Color.Gray.copy(alpha = 0.5f))
                 )
             }
+        }
+    }
+}
+
+fun DrawScope.drawSpoilerEffectFallback(
+    layoutResult: TextLayoutResult,
+    start: Int,
+    end: Int,
+    time: Float,
+    color: Color
+) {
+    val path = layoutResult.getPathForRange(start, end)
+    drawPath(path = path, color = color.copy(alpha = 0.5f))
+
+    val bounds = path.getBounds()
+    val spacing = 11f
+    val phase = (time * 24f) % spacing
+
+    clipPath(path, clipOp = ClipOp.Intersect) {
+        var y = bounds.top - spacing + phase
+        while (y <= bounds.bottom + spacing) {
+            val rowOffset = if (((y / spacing).toInt() and 1) == 0) 0f else spacing * 0.5f
+            var x = bounds.left - spacing + rowOffset
+
+            while (x <= bounds.right + spacing) {
+                val pulse = ((sin((x + y) * 0.07f + time * 3.6f) + 1f) * 0.5f)
+                drawCircle(
+                    color = color.copy(alpha = 0.10f + 0.22f * pulse),
+                    radius = 1.0f + 1.2f * pulse,
+                    center = Offset(x, y)
+                )
+                x += spacing
+            }
+
+            y += spacing
         }
     }
 }

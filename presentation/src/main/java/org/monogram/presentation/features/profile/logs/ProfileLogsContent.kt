@@ -2,7 +2,6 @@ package org.monogram.presentation.features.profile.logs
 
 import android.widget.Toast
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,20 +11,21 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.RadioButtonUnchecked
-import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.monogram.domain.models.MessageSenderModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
+import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.features.chats.chatList.components.SectionHeader
 import org.monogram.presentation.features.chats.chatList.components.SettingsTextField
 import org.monogram.presentation.features.profile.logs.components.DateHeader
@@ -33,7 +33,6 @@ import org.monogram.presentation.features.profile.logs.components.FilterChipComp
 import org.monogram.presentation.features.profile.logs.components.LogBubble
 import org.monogram.presentation.features.viewers.ImageViewer
 import org.monogram.presentation.features.viewers.VideoViewer
-import org.monogram.presentation.core.ui.ItemPosition
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -43,6 +42,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
     val state by component.state.subscribeAsState()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(state.logs.size) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo }
@@ -57,14 +57,15 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
     }
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Recent Actions", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.logs_title), style = MaterialTheme.typography.titleMedium)
                         if (state.logs.isNotEmpty()) {
                             Text(
-                                text = "${state.logs.size} events loaded",
+                                text = stringResource(R.string.logs_events_count, state.logs.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -73,77 +74,93 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                 },
                 navigationIcon = {
                     IconButton(onClick = component::onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
                     IconButton(onClick = component::onShowFilters) {
-                        Icon(Icons.Rounded.FilterList, contentDescription = "Filters")
+                        Icon(Icons.Rounded.FilterList, contentDescription = stringResource(R.string.filters))
                     }
-                }
+                },
+                scrollBehavior = scrollBehavior,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
             )
         }
     ) { padding ->
-        Box(
+        Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
+                .padding(padding),
+            color = MaterialTheme.colorScheme.background
         ) {
-            if (state.isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (state.logs.isEmpty()) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "No recent actions found",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Try changing filters",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                    reverseLayout = true
-                ) {
-                    itemsIndexed(state.logs) { index, event ->
-                        Column {
-                            val showHeader = index == state.logs.lastIndex ||
-                                    !isSameDay(event.date, state.logs[index + 1].date)
-
-                            if (showHeader) {
-                                DateHeader(event.date)
-                            }
-
-                            val senderId = when (val s = event.memberId) {
-                                is MessageSenderModel.User -> s.userId
-                                is MessageSenderModel.Chat -> s.chatId
-                            }
-                            val senderInfo = state.senderInfo[senderId]
-
-                            LogBubble(event, senderInfo, state.senderInfo, component)
-                        }
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (state.isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                } else if (state.logs.isEmpty()) {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = stringResource(R.string.logs_empty_title),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.logs_empty_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
                     }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                        reverseLayout = true
+                    ) {
+                        itemsIndexed(
+                            items = state.logs,
+                            key = { _, event -> event.id }
+                        ) { index, event ->
+                            Column {
+                                val showHeader = index == state.logs.lastIndex ||
+                                        !isSameDay(event.date, state.logs[index + 1].date)
 
-                    if (state.isLoadingMore) {
-                        item {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                if (showHeader) {
+                                    DateHeader(event.date)
+                                }
+
+                                val senderId = when (val s = event.memberId) {
+                                    is MessageSenderModel.User -> s.userId
+                                    is MessageSenderModel.Chat -> s.chatId
+                                }
+                                val senderInfo = state.senderInfo[senderId]
+
+                                LogBubble(
+                                    event = event,
+                                    senderInfo = senderInfo,
+                                    allSenderInfo = state.senderInfo,
+                                    component = component,
+                                    modifier = Modifier.animateItem()
+                                )
+                            }
+                        }
+
+                        if (state.isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                }
                             }
                         }
                     }
@@ -163,10 +180,10 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                     onDismiss = component::onDismissViewer,
                     autoDownload = true,
                     onPageChanged = {},
-                    onForward = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyLink = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyText = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
+                    onForward = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onDelete = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onCopyLink = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onCopyText = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
                     captions = listOfNotNull(state.fullScreenPhotoCaption),
                     downloadUtils = component.downloadUtils
                 )
@@ -186,10 +203,10 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                     isDoubleTapSeekEnabled = true,
                     seekDuration = 10,
                     isZoomEnabled = true,
-                    onForward = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyLink = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyText = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
+                    onForward = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onDelete = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onCopyLink = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
+                    onCopyText = { Toast.makeText(context, context.getString(R.string.logs_not_implemented), Toast.LENGTH_SHORT).show() },
                     caption = state.fullScreenVideoCaption,
                     fileId = state.fullScreenVideoFileId,
                     supportsStreaming = state.fullScreenVideoSupportsStreaming,
@@ -202,8 +219,9 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
     if (state.isFiltersVisible) {
         ModalBottomSheet(
             onDismissRequest = component::onDismissFilters,
-            containerColor = MaterialTheme.colorScheme.background,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            dragHandle = { BottomSheetDefaults.DragHandle() },
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
         ) {
             var searchQuery by remember { mutableStateOf("") }
 
@@ -216,41 +234,47 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                        .padding(bottom = 16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Filter Actions",
+                        text = stringResource(R.string.logs_filter_title),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
-                    TextButton(onClick = component::onApplyFilters) {
-                        Text("Apply", fontWeight = FontWeight.Bold)
+                    Row {
+                        TextButton(onClick = {
+                            component.onResetFilters()
+                            searchQuery = ""
+                        }) {
+                            Text(stringResource(R.string.logs_filter_reset))
+                        }
+                        Button(onClick = component::onApplyFilters) {
+                            Text(stringResource(R.string.logs_filter_apply))
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
                 val filterItems = remember {
                     listOf(
-                        ProfileLogsComponent.FilterType.MESSAGE_EDITS to "Edits",
-                        ProfileLogsComponent.FilterType.MESSAGE_DELETIONS to "Deletions",
-                        ProfileLogsComponent.FilterType.MESSAGE_PINS to "Pins",
-                        ProfileLogsComponent.FilterType.MEMBER_JOINS to "Joins",
-                        ProfileLogsComponent.FilterType.MEMBER_LEAVES to "Leaves",
-                        ProfileLogsComponent.FilterType.MEMBER_INVITES to "Invites",
-                        ProfileLogsComponent.FilterType.MEMBER_PROMOTIONS to "Promotions",
-                        ProfileLogsComponent.FilterType.MEMBER_RESTRICTIONS to "Restrictions",
-                        ProfileLogsComponent.FilterType.INFO_CHANGES to "Info",
-                        ProfileLogsComponent.FilterType.SETTING_CHANGES to "Settings",
-                        ProfileLogsComponent.FilterType.INVITE_LINK_CHANGES to "Links",
-                        ProfileLogsComponent.FilterType.VIDEO_CHAT_CHANGES to "Video"
+                        ProfileLogsComponent.FilterType.MESSAGE_EDITS to R.string.logs_action_edits,
+                        ProfileLogsComponent.FilterType.MESSAGE_DELETIONS to R.string.logs_action_deletions,
+                        ProfileLogsComponent.FilterType.MESSAGE_PINS to R.string.logs_action_pins,
+                        ProfileLogsComponent.FilterType.MEMBER_JOINS to R.string.logs_action_joins,
+                        ProfileLogsComponent.FilterType.MEMBER_LEAVES to R.string.logs_action_leaves,
+                        ProfileLogsComponent.FilterType.MEMBER_INVITES to R.string.logs_action_invites,
+                        ProfileLogsComponent.FilterType.MEMBER_PROMOTIONS to R.string.logs_action_promotions,
+                        ProfileLogsComponent.FilterType.MEMBER_RESTRICTIONS to R.string.logs_action_restrictions,
+                        ProfileLogsComponent.FilterType.INFO_CHANGES to R.string.logs_action_info,
+                        ProfileLogsComponent.FilterType.SETTING_CHANGES to R.string.logs_action_settings,
+                        ProfileLogsComponent.FilterType.INVITE_LINK_CHANGES to R.string.logs_action_links,
+                        ProfileLogsComponent.FilterType.VIDEO_CHAT_CHANGES to R.string.logs_action_video
                     )
                 }
 
                 val filteredFilterItems = remember(searchQuery) {
-                    filterItems.filter { it.second.contains(searchQuery, ignoreCase = true) }
+                    filterItems
                 }
 
                 val filteredSenderInfo = remember(searchQuery, state.senderInfo) {
@@ -258,7 +282,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                 }
 
                 if (filteredFilterItems.isNotEmpty()) {
-                    SectionHeader("Action Types")
+                    SectionHeader(stringResource(R.string.logs_filter_section_types))
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         shape = RoundedCornerShape(24.dp),
@@ -270,7 +294,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                                 .padding(vertical = 8.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            items(filteredFilterItems) { (type, label) ->
+                            items(filteredFilterItems) { (type, labelRes) ->
                                 val isChecked = when (type) {
                                     ProfileLogsComponent.FilterType.MESSAGE_EDITS -> state.pendingFilters.messageEdits
                                     ProfileLogsComponent.FilterType.MESSAGE_DELETIONS -> state.pendingFilters.messageDeletions
@@ -287,7 +311,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                                     else -> false
                                 }
                                 FilterChipCompact(
-                                    label = label,
+                                    label = stringResource(labelRes),
                                     selected = isChecked,
                                     onClick = { component.onToggleFilter(type) }
                                 )
@@ -296,15 +320,22 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                     }
                 }
 
-                SectionHeader("By Users")
+                SectionHeader(stringResource(R.string.logs_filter_section_users))
 
                 SettingsTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    placeholder = "Search...",
-                    icon = Icons.Rounded.Search,
+                    placeholder = stringResource(R.string.logs_filter_search_placeholder),
+                    icon = if (searchQuery.isEmpty()) Icons.Rounded.Search else Icons.Rounded.Close,
                     position = ItemPosition.TOP,
-                    singleLine = true
+                    singleLine = true,
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.clear))
+                            }
+                        }
+                    } else null
                 )
 
                 Surface(
@@ -327,7 +358,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = if (searchQuery.isEmpty()) "No users found" else "No results for \"$searchQuery\"",
+                                        text = if (searchQuery.isEmpty()) stringResource(R.string.logs_filter_no_users) else stringResource(R.string.logs_filter_no_results, searchQuery),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )

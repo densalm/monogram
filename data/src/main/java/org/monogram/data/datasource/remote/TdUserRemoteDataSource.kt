@@ -20,14 +20,18 @@ class TdUserRemoteDataSource(
         return runCatching { gateway.execute(TdApi.GetUserFullInfo(userId)) }.getOrNull()
     }
 
-    override suspend fun getSupergroupFullInfo(supergroupId: Long): TdApi.SupergroupFullInfo? =
-        runCatching { gateway.execute(TdApi.GetSupergroupFullInfo(supergroupId)) }.getOrNull()
+    override suspend fun getSupergroupFullInfo(supergroupId: Long): TdApi.SupergroupFullInfo? {
+        if (supergroupId == 0L) return null
+        return runCatching { gateway.execute(TdApi.GetSupergroupFullInfo(supergroupId)) }.getOrNull()
+    }
 
     override suspend fun getBasicGroupFullInfo(basicGroupId: Long): TdApi.BasicGroupFullInfo? =
         runCatching { gateway.execute(TdApi.GetBasicGroupFullInfo(basicGroupId)) }.getOrNull()
 
-    override suspend fun getSupergroup(supergroupId: Long): TdApi.Supergroup? =
-        runCatching { gateway.execute(TdApi.GetSupergroup(supergroupId)) }.getOrNull()
+    override suspend fun getSupergroup(supergroupId: Long): TdApi.Supergroup? {
+        if (supergroupId == 0L) return null
+        return runCatching { gateway.execute(TdApi.GetSupergroup(supergroupId)) }.getOrNull()
+    }
 
     override suspend fun getChat(chatId: Long): TdApi.Chat? {
         if (chatId == 0L) return null
@@ -58,6 +62,7 @@ class TdUserRemoteDataSource(
             val chat = gateway.execute(TdApi.GetChat(chatId))
             val type = chat.type
             if (type is TdApi.ChatTypeSupergroup) {
+                if (type.supergroupId == 0L) return@runCatching null
                 val supergroup = gateway.execute(TdApi.GetSupergroup(type.supergroupId))
                 if (supergroup.isChannel) {
                     val me = gateway.execute(TdApi.GetMe())
@@ -134,6 +139,13 @@ class TdUserRemoteDataSource(
 
     override suspend fun setUsername(username: String) {
         gateway.execute(TdApi.SetUsername(username))
+    }
+
+    override suspend fun setEmojiStatus(customEmojiId: Long?) {
+        val status = customEmojiId?.let {
+            TdApi.EmojiStatus(TdApi.EmojiStatusTypeCustomEmoji(it), 0)
+        }
+        gateway.execute(TdApi.SetEmojiStatus(status))
     }
 
     override suspend fun setProfilePhoto(path: String) {

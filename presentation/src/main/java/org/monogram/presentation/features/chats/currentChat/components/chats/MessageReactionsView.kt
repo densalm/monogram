@@ -1,6 +1,8 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -25,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import org.monogram.domain.models.MessageReactionModel
 import org.monogram.domain.repository.StickerRepository
@@ -46,17 +49,29 @@ fun MessageReactionsView(
     val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
     val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
+    val customEmojiStickerSets by stickerRepository.customEmojiStickerSets.collectAsState()
+
+    LaunchedEffect(Unit) {
+        runCatching { stickerRepository.loadCustomEmojiStickerSets() }
+    }
+
+    val customEmojiFileIdsById = remember(customEmojiStickerSets) {
+        buildMap {
+            customEmojiStickerSets.forEach { set ->
+                set.stickers.forEach { sticker ->
+                    val customEmojiId = sticker.customEmojiId
+                    if (customEmojiId != null) {
+                        put(customEmojiId, sticker.id)
+                    }
+                }
+            }
+        }
+    }
 
     AnimatedVisibility(
         visible = reactions.isNotEmpty(),
-        enter = fadeIn(animationSpec = tween(300)) + expandVertically(
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            expandFrom = Alignment.Top
-        ),
-        exit = fadeOut(animationSpec = tween(200)) + shrinkVertically(
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-            shrinkTowards = Alignment.Top
-        ),
+        enter = fadeIn(animationSpec = tween(durationMillis = 260, easing = LinearOutSlowInEasing)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 140)),
         modifier = modifier
     ) {
         FlowRow(
@@ -64,27 +79,37 @@ fun MessageReactionsView(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            for (reaction in reactions) {
+            reactions.forEachIndexed { index, reaction ->
                 key(reaction.emoji ?: reaction.customEmojiId) {
                     var isVisible by remember { mutableStateOf(false) }
-                    LaunchedEffect(Unit) { isVisible = true }
+
+                    LaunchedEffect(reaction.emoji, reaction.customEmojiId, index) {
+                        delay(index * 35L)
+                        isVisible = true
+                    }
 
                     AnimatedVisibility(
                         visible = isVisible,
                         enter = scaleIn(
-                            initialScale = 0.7f,
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessLow
+                            initialScale = 0.88f,
+                            animationSpec = tween(
+                                durationMillis = 280,
+                                easing = FastOutSlowInEasing
                             )
-                        ) + fadeIn(),
-                        exit = scaleOut(targetScale = 0.7f) + fadeOut()
+                        ) +
+                            fadeIn(animationSpec = tween(durationMillis = 220)),
+                        exit = scaleOut(
+                            targetScale = 0.92f,
+                            animationSpec = tween(durationMillis = 140)
+                        ) +
+                            fadeOut(animationSpec = tween(durationMillis = 120))
                     ) {
                         MessageReactionItem(
                             reaction = reaction,
                             onReactionClick = onReactionClick,
                             emojiFontFamily = emojiFontFamily,
                             stickerRepository = stickerRepository,
+                            customEmojiFileIdsById = customEmojiFileIdsById,
                             videoPlayerPool = videoPlayerPool
                         )
                     }
@@ -101,6 +126,7 @@ private fun MessageReactionItem(
     onReactionClick: (String) -> Unit,
     emojiFontFamily: FontFamily,
     stickerRepository: StickerRepository,
+    customEmojiFileIdsById: Map<Long, Long>,
     videoPlayerPool: VideoPlayerPool
 ) {
     val customEmojiId = reaction.customEmojiId
@@ -116,7 +142,7 @@ private fun MessageReactionItem(
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
         },
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
         label = "reactionBackground"
     )
 
@@ -126,7 +152,7 @@ private fun MessageReactionItem(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
         label = "reactionContent"
     )
 
@@ -136,8 +162,15 @@ private fun MessageReactionItem(
         label = "reactionScale"
     )
 
-    val customEmojiPath by if (customEmojiId != null && reaction.customEmojiPath == null) {
-        stickerRepository.getStickerFile(customEmojiId).collectAsState(initial = null)
+    val alpha by animateFloatAsState(
+        targetValue = if (isChosen) 1f else 0.96f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "reactionAlpha"
+    )
+
+    val customEmojiFileId = customEmojiId?.let(customEmojiFileIdsById::get)
+    val customEmojiPath by if (customEmojiFileId != null && reaction.customEmojiPath == null) {
+        stickerRepository.getStickerFile(customEmojiFileId).collectAsState(initial = null)
     } else {
         remember { mutableStateOf(reaction.customEmojiPath) }
     }
@@ -145,13 +178,24 @@ private fun MessageReactionItem(
     var showDropdown by remember { mutableStateOf(false) }
     val linkHandler = LocalLinkHandler.current
 
-    Box(modifier = Modifier.graphicsLayer(scaleX = scale, scaleY = scale)) {
+    Box(
+        modifier = Modifier.graphicsLayer(
+            scaleX = scale,
+            scaleY = scale,
+            alpha = alpha
+        )
+    ) {
         Row(
             modifier = Modifier
                 .clip(CircleShape)
                 .background(backgroundColor)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
-                .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -170,8 +214,16 @@ private fun MessageReactionItem(
 
             AnimatedVisibility(
                 visible = reaction.recentSenders.isNotEmpty() && reaction.count <= 3,
-                enter = fadeIn() + expandHorizontally(),
-                exit = fadeOut() + shrinkHorizontally()
+                enter = fadeIn(animationSpec = tween(durationMillis = 220)) +
+                    expandHorizontally(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        ),
+                        expandFrom = Alignment.Start
+                    ),
+                exit = fadeOut(animationSpec = tween(durationMillis = 120)) +
+                    shrinkHorizontally(animationSpec = tween(durationMillis = 140), shrinkTowards = Alignment.Start)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy((-8).dp),
@@ -196,11 +248,25 @@ private fun MessageReactionItem(
                     targetState = reaction.count,
                     transitionSpec = {
                         if (targetState > initialState) {
-                            (slideInVertically { height -> height } + fadeIn()).togetherWith(
-                                slideOutVertically { height -> -height } + fadeOut())
+                            (slideInVertically(
+                                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                                initialOffsetY = { height -> height / 2 }
+                            ) + fadeIn(animationSpec = tween(durationMillis = 180))).togetherWith(
+                                slideOutVertically(
+                                    animationSpec = tween(durationMillis = 160),
+                                    targetOffsetY = { height -> -height / 2 }
+                                ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                            )
                         } else {
-                            (slideInVertically { height -> -height } + fadeIn()).togetherWith(
-                                slideOutVertically { height -> height } + fadeOut())
+                            (slideInVertically(
+                                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                                initialOffsetY = { height -> -height / 2 }
+                            ) + fadeIn(animationSpec = tween(durationMillis = 180))).togetherWith(
+                                slideOutVertically(
+                                    animationSpec = tween(durationMillis = 160),
+                                    targetOffsetY = { height -> height / 2 }
+                                ) + fadeOut(animationSpec = tween(durationMillis = 120))
+                            )
                         }.using(
                             SizeTransform(clip = false)
                         )

@@ -1,6 +1,5 @@
 package org.monogram.presentation.settings.chatSettings
 
-import android.app.TimePickerDialog
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -17,12 +16,15 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -30,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import org.monogram.presentation.R
 import org.monogram.presentation.core.util.EmojiStyle
 import org.monogram.presentation.core.util.NightMode
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
@@ -44,7 +47,6 @@ import org.monogram.presentation.core.ui.SettingsTile
 @Composable
 fun ChatSettingsContent(component: ChatSettingsComponent) {
     val state by component.state.subscribeAsState()
-    val context = LocalContext.current
 
     val blueColor = Color(0xFF4285F4)
     val greenColor = Color(0xFF34A853)
@@ -54,12 +56,25 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
     val purpleColor = Color(0xFF9C27B0)
     val redColor = Color(0xFFEA4335)
 
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+    var showThemeEditor by remember { mutableStateOf(false) }
+
+    if (showThemeEditor) {
+        ChatThemeEditorScreen(
+            state = state,
+            component = component,
+            onBack = { showThemeEditor = false }
+        )
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Chat Settings",
+                        text = stringResource(R.string.chat_settings_header),
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -67,7 +82,10 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 },
                 navigationIcon = {
                     IconButton(onClick = component::onBackClicked) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -79,10 +97,13 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = padding.calculateTopPadding()),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 16.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = padding.calculateTopPadding(),
+                bottom = padding.calculateBottomPadding() + 16.dp
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
@@ -102,7 +123,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Appearance")
+                SectionHeader(stringResource(R.string.appearance_header))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(24.dp),
@@ -114,7 +135,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                             .animateContentSize()
                     ) {
                         AppearanceSliderItem(
-                            title = "Message text size",
+                            title = stringResource(R.string.message_text_size_title),
                             value = state.fontSize,
                             onValueChange = component::onFontSizeChanged,
                             valueRange = 12f..30f,
@@ -145,7 +166,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                         )
 
                         AppearanceSliderItem(
-                            title = "Bubble rounding",
+                            title = stringResource(R.string.bubble_rounding_title),
                             value = state.bubbleRadius,
                             onValueChange = component::onBubbleRadiusChanged,
                             valueRange = 0f..30f,
@@ -174,7 +195,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Chat Wallpaper")
+                SectionHeader(stringResource(R.string.chat_wallpaper_header))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(24.dp),
@@ -209,7 +230,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.Close,
-                                        contentDescription = "Reset Wallpaper",
+                                        contentDescription = stringResource(R.string.reset_wallpaper_cd),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
@@ -226,7 +247,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Rounded.Check,
-                                                contentDescription = "Selected",
+                                                contentDescription = stringResource(R.string.chat_settings_selected),
                                                 tint = MaterialTheme.colorScheme.onPrimary,
                                                 modifier = Modifier.size(20.dp)
                                             )
@@ -285,7 +306,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Emoji Style")
+                SectionHeader(stringResource(R.string.emoji_style_header))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(24.dp),
@@ -327,7 +348,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Theme")
+                SectionHeader(stringResource(R.string.theme_header))
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceContainer,
                     shape = RoundedCornerShape(24.dp),
@@ -339,26 +360,69 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                             .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow))
                     ) {
                         Text(
-                            text = "Night Mode",
+                            text = stringResource(R.string.night_mode_title),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            NightMode.entries.forEach { mode ->
-                                Box(modifier = Modifier.weight(1f)) {
-                                    ThemeModeItem(
-                                        mode = mode,
-                                        selected = state.nightMode == mode,
-                                        onClick = { component.onNightModeChanged(mode) }
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(30.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Tune,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
+                                Column {
+                                    Text(
+                                        text = stringResource(R.string.night_mode_current_label),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = stringResource(
+                                            R.string.night_mode_current_format,
+                                            nightModeLabel(state.nightMode)
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(NightMode.entries.toList()) { mode ->
+                                ThemeModeItem(
+                                    mode = mode,
+                                    selected = state.nightMode == mode,
+                                    onClick = { component.onNightModeChanged(mode) },
+                                    modifier = Modifier.widthIn(min = 164.dp)
+                                )
                             }
                         }
 
@@ -389,41 +453,59 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                                         ) {
                                             TimeSettingCard(
-                                                label = "From",
+                                                label = stringResource(R.string.from_label),
                                                 time = state.nightModeStartTime,
                                                 icon = Icons.Rounded.LightMode,
                                                 modifier = Modifier.weight(1f),
-                                                onClick = {
-                                                    val parts = state.nightModeStartTime.split(":")
-                                                    TimePickerDialog(context, { _, h, m ->
-                                                        component.onNightModeStartTimeChanged(
-                                                            String.format(
-                                                                "%02d:%02d",
-                                                                h,
-                                                                m
-                                                            )
-                                                        )
-                                                    }, parts[0].toInt(), parts[1].toInt(), true).show()
-                                                }
+                                                onClick = { showStartTimePicker = true }
                                             )
                                             TimeSettingCard(
-                                                label = "To",
+                                                label = stringResource(R.string.to_label),
                                                 time = state.nightModeEndTime,
                                                 icon = Icons.Rounded.DarkMode,
                                                 modifier = Modifier.weight(1f),
-                                                onClick = {
-                                                    val parts = state.nightModeEndTime.split(":")
-                                                    TimePickerDialog(context, { _, h, m ->
-                                                        component.onNightModeEndTimeChanged(
-                                                            String.format(
-                                                                "%02d:%02d",
-                                                                h,
-                                                                m
-                                                            )
-                                                        )
-                                                    }, parts[0].toInt(), parts[1].toInt(), true).show()
-                                                }
+                                                onClick = { showEndTimePicker = true }
                                             )
+                                        }
+
+                                        if (showStartTimePicker) {
+                                            val parts = state.nightModeStartTime.split(":")
+                                            val timePickerState = rememberTimePickerState(
+                                                initialHour = parts.getOrNull(0)?.toIntOrNull() ?: 0,
+                                                initialMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+                                                is24Hour = true
+                                            )
+                                            TimePickerDialogWrapper(
+                                                onDismissRequest = { showStartTimePicker = false },
+                                                onConfirm = {
+                                                    component.onNightModeStartTimeChanged(
+                                                        String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                                                    )
+                                                    showStartTimePicker = false
+                                                }
+                                            ) {
+                                                TimePicker(state = timePickerState)
+                                            }
+                                        }
+
+                                        if (showEndTimePicker) {
+                                            val parts = state.nightModeEndTime.split(":")
+                                            val timePickerState = rememberTimePickerState(
+                                                initialHour = parts.getOrNull(0)?.toIntOrNull() ?: 0,
+                                                initialMinute = parts.getOrNull(1)?.toIntOrNull() ?: 0,
+                                                is24Hour = true
+                                            )
+                                            TimePickerDialogWrapper(
+                                                onDismissRequest = { showEndTimePicker = false },
+                                                onConfirm = {
+                                                    component.onNightModeEndTimeChanged(
+                                                        String.format("%02d:%02d", timePickerState.hour, timePickerState.minute)
+                                                    )
+                                                    showEndTimePicker = false
+                                                }
+                                            ) {
+                                                TimePicker(state = timePickerState)
+                                            }
                                         }
                                     }
                                 }
@@ -443,7 +525,10 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                             )
                                             Spacer(modifier = Modifier.width(12.dp))
                                             Text(
-                                                text = "Brightness threshold: ${(state.nightModeBrightnessThreshold * 100).toInt()}%",
+                                                text = stringResource(
+                                                    R.string.brightness_threshold_format,
+                                                    (state.nightModeBrightnessThreshold * 100).toInt()
+                                                ),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium
                                             )
@@ -455,7 +540,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                             modifier = Modifier.padding(vertical = 8.dp)
                                         )
                                         Text(
-                                            text = "Switch to dark theme when screen brightness is below this level.",
+                                            text = stringResource(R.string.brightness_threshold_description),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -465,29 +550,34 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                 else -> Spacer(modifier = Modifier.height(0.dp))
                             }
                         }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        FilledTonalButton(
+                            onClick = { showThemeEditor = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Palette,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.chat_settings_edit_custom_theme))
+                        }
                     }
                 }
             }
 
             item {
-                SectionHeader("Dynamic Colors")
-                SettingsSwitchTile(
-                    icon = Icons.Rounded.Palette,
-                    title = "Dynamic Colors",
-                    subtitle = "Use system colors for the app theme",
-                    checked = state.isDynamicColorsEnabled,
-                    iconColor = purpleColor,
-                    position = ItemPosition.STANDALONE,
-                    onCheckedChange = component::onDynamicColorsChanged
-                )
-            }
-
-            item {
-                SectionHeader("Data and Storage")
+                SectionHeader(stringResource(R.string.data_storage_header))
                 SettingsSwitchTile(
                     icon = Icons.Rounded.Photo,
-                    title = "Compress Photos",
-                    subtitle = "Reduce photo size before sending",
+                    title = stringResource(R.string.compress_photos_title),
+                    subtitle = stringResource(R.string.compress_photos_subtitle),
                     checked = state.compressPhotos,
                     iconColor = blueColor,
                     position = ItemPosition.TOP,
@@ -495,8 +585,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 )
                 SettingsSwitchTile(
                     icon = Icons.Rounded.VideoFile,
-                    title = "Compress Videos",
-                    subtitle = "Reduce video size before sending",
+                    title = stringResource(R.string.compress_videos_title),
+                    subtitle = stringResource(R.string.compress_videos_subtitle),
                     checked = state.compressVideos,
                     iconColor = greenColor,
                     position = ItemPosition.BOTTOM,
@@ -505,11 +595,11 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Video Player")
+                SectionHeader(stringResource(R.string.video_player_header))
                 SettingsSwitchTile(
                     icon = Icons.Rounded.Gesture,
-                    title = "Enable Gestures",
-                    subtitle = "Swipe to control volume and brightness",
+                    title = stringResource(R.string.enable_gestures_title),
+                    subtitle = stringResource(R.string.enable_gestures_subtitle),
                     checked = state.isPlayerGesturesEnabled,
                     iconColor = blueColor,
                     position = ItemPosition.TOP,
@@ -517,8 +607,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 )
                 SettingsSwitchTile(
                     icon = Icons.Rounded.Forward10,
-                    title = "Double Tap to Seek",
-                    subtitle = "Double tap on video edges to seek",
+                    title = stringResource(R.string.double_tap_seek_title),
+                    subtitle = stringResource(R.string.double_tap_seek_subtitle),
                     checked = state.isPlayerDoubleTapSeekEnabled,
                     iconColor = orangeColor,
                     position = ItemPosition.MIDDLE,
@@ -538,7 +628,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 AppearanceSliderItem(
-                                    title = "Seek Duration",
+                                    title = stringResource(R.string.seek_duration_title),
                                     value = state.playerSeekDuration.toFloat(),
                                     onValueChange = { component.onPlayerSeekDurationChanged(it.toInt()) },
                                     valueRange = 5f..60f,
@@ -570,8 +660,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
 
                 SettingsSwitchTile(
                     icon = Icons.Rounded.ZoomIn,
-                    title = "Enable Zoom",
-                    subtitle = "Pinch to zoom in video player",
+                    title = stringResource(R.string.enable_zoom_title),
+                    subtitle = stringResource(R.string.enable_zoom_subtitle),
                     checked = state.isPlayerZoomEnabled,
                     iconColor = pinkColor,
                     position = ItemPosition.BOTTOM,
@@ -580,11 +670,11 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Chat List")
+                SectionHeader(stringResource(R.string.chat_list_header))
                 SettingsSwitchTile(
                     icon = Icons.Rounded.Archive,
-                    title = "Pin Archived Chats",
-                    subtitle = "Keep archived chats at the top of the list",
+                    title = stringResource(R.string.pin_archived_chats_title),
+                    subtitle = stringResource(R.string.pin_archived_chats_subtitle),
                     checked = state.isArchivePinned,
                     iconColor = orangeColor,
                     position = ItemPosition.TOP,
@@ -597,8 +687,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 ) {
                     SettingsSwitchTile(
                         icon = Icons.Rounded.Archive,
-                        title = "Always Show Pinned Archive",
-                        subtitle = "Keep pinned archive visible even when scrolling",
+                        title = stringResource(R.string.always_show_pinned_archive_title),
+                        subtitle = stringResource(R.string.always_show_pinned_archive_subtitle),
                         checked = state.isArchiveAlwaysVisible,
                         iconColor = orangeColor,
                         position = ItemPosition.MIDDLE,
@@ -607,8 +697,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 }
                 SettingsSwitchTile(
                     icon = Icons.Rounded.Link,
-                    title = "Show Link Previews",
-                    subtitle = "Display previews for links in messages",
+                    title = stringResource(R.string.show_link_previews_title),
+                    subtitle = stringResource(R.string.show_link_previews_subtitle),
                     checked = state.showLinkPreviews,
                     iconColor = blueColor,
                     position = ItemPosition.MIDDLE,
@@ -616,8 +706,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 )
                 SettingsSwitchTile(
                     icon = Icons.Rounded.SwipeLeft,
-                    title = "Drag to Back",
-                    subtitle = "Swipe from left edge to go back",
+                    title = stringResource(R.string.drag_to_back_title),
+                    subtitle = stringResource(R.string.drag_to_back_subtitle),
                     checked = state.isDragToBackEnabled,
                     iconColor = tealColor,
                     position = ItemPosition.BOTTOM,
@@ -644,7 +734,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             listOf(1, 2).forEach { lines ->
-                                val label = if (lines == 1) "Two-line" else "Three-line"
+                                val label =
+                                    if (lines == 1) stringResource(R.string.two_line_label) else stringResource(R.string.three_line_label)
                                 Surface(
                                     onClick = { component.onChatListMessageLinesChanged(lines) },
                                     shape = RoundedCornerShape(16.dp),
@@ -674,8 +765,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
 
                 SettingsSwitchTile(
                     icon = Icons.Rounded.AccountCircle,
-                    title = "Show Photos",
-                    subtitle = "Display profile photos in the chat list",
+                    title = stringResource(R.string.show_photos_title),
+                    subtitle = stringResource(R.string.show_photos_subtitle),
                     checked = state.showChatListPhotos,
                     iconColor = pinkColor,
                     position = ItemPosition.BOTTOM,
@@ -685,11 +776,11 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
 
             if (!state.isInstalledFromGooglePlay) {
                 item {
-                    SectionHeader("Experimental")
+                    SectionHeader(stringResource(R.string.experimental_header))
                     SettingsTile(
                         icon = Icons.Rounded.Block,
-                        title = "AdBlock for Channels",
-                        subtitle = "Hide sponsored posts in channels",
+                        title = stringResource(R.string.adblock_channels_title),
+                        subtitle = stringResource(R.string.adblock_channels_subtitle),
                         iconColor = redColor,
                         position = ItemPosition.STANDALONE,
                         onClick = component::onAdBlockClick
@@ -698,37 +789,35 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
             }
 
             item {
-                SectionHeader("Recent Media")
+                SectionHeader(stringResource(R.string.recent_media_header))
                 SettingsTile(
                     icon = Icons.AutoMirrored.Rounded.StickyNote2,
-                    title = "Clear Recent Stickers",
-                    subtitle = "Remove all recently used stickers",
+                    title = stringResource(R.string.clear_recent_stickers_title),
+                    subtitle = stringResource(R.string.clear_recent_stickers_subtitle),
                     iconColor = purpleColor,
                     position = ItemPosition.TOP,
                     onClick = component::onClearRecentStickers
                 )
                 SettingsTile(
                     icon = Icons.Rounded.EmojiEmotions,
-                    title = "Clear Recent Emojis",
-                    subtitle = "Remove all recently used emojis",
+                    title = stringResource(R.string.clear_recent_emojis_title),
+                    subtitle = stringResource(R.string.clear_recent_emojis_subtitle),
                     iconColor = tealColor,
                     position = ItemPosition.BOTTOM,
                     onClick = component::onClearRecentEmojis
                 )
             }
-
-            item { Spacer(modifier = Modifier.height(padding.calculateBottomPadding() - 16.dp)) }
         }
     }
 
     if (state.emojiPackToRemove != null) {
         val style = state.emojiPackToRemove!!
         val label = when (style) {
-            EmojiStyle.APPLE -> "Apple"
-            EmojiStyle.TWITTER -> "Twitter"
-            EmojiStyle.WINDOWS -> "Windows"
-            EmojiStyle.CATMOJI -> "Catmoji"
-            EmojiStyle.NOTO -> "Noto"
+            EmojiStyle.APPLE -> stringResource(R.string.emoji_style_apple)
+            EmojiStyle.TWITTER -> stringResource(R.string.emoji_style_twitter)
+            EmojiStyle.WINDOWS -> stringResource(R.string.emoji_style_windows)
+            EmojiStyle.CATMOJI -> stringResource(R.string.emoji_style_catmoji)
+            EmojiStyle.NOTO -> stringResource(R.string.emoji_style_noto)
             else -> ""
         }
 
@@ -746,7 +835,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                     .padding(bottom = 32.dp)
             ) {
                 Text(
-                    text = "Remove Emoji Pack",
+                    text = stringResource(R.string.remove_emoji_pack_title),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 4.dp)
@@ -778,14 +867,14 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Remove $label Pack?",
+                            text = stringResource(R.string.remove_pack_confirmation_format, label),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "This will delete the downloaded emoji pack from your device. You can download it again later.",
+                            text = stringResource(R.string.remove_pack_description),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -806,7 +895,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                             .height(56.dp),
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Cancel", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.cancel_button), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Button(
@@ -820,7 +909,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                             contentColor = MaterialTheme.colorScheme.onError
                         )
                     ) {
-                        Text("Remove", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.action_delete), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -884,7 +973,7 @@ private fun AppearanceSliderItem(
                 modifier = Modifier.height(32.dp)
             ) {
                 Text(
-                    "Reset",
+                    stringResource(R.string.reset_button),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -923,7 +1012,8 @@ private fun AppearanceSliderItem(
 private fun ThemeModeItem(
     mode: NightMode,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val icon = when (mode) {
         NightMode.SYSTEM -> Icons.Rounded.BrightnessAuto
@@ -933,13 +1023,7 @@ private fun ThemeModeItem(
         NightMode.BRIGHTNESS -> Icons.Rounded.Brightness4
     }
 
-    val label = when (mode) {
-        NightMode.SYSTEM -> "System"
-        NightMode.LIGHT -> "Light"
-        NightMode.DARK -> "Dark"
-        NightMode.SCHEDULED -> "Schedule"
-        NightMode.BRIGHTNESS -> "Auto"
-    }
+    val label = nightModeLabel(mode)
 
     val containerColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
@@ -959,38 +1043,66 @@ private fun ThemeModeItem(
 
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         color = containerColor,
         border = if (selected) BorderStroke(
             2.dp,
             MaterialTheme.colorScheme.primary.copy(alpha = borderAlpha)
         ) else null,
         modifier = Modifier
-            .height(80.dp)
+            .height(84.dp)
             .fillMaxWidth()
+            .then(modifier)
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(4.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = contentColor,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .background(contentColor.copy(alpha = if (selected) 0.16f else 0.1f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = contentColor,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Rounded.CheckCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun nightModeLabel(mode: NightMode): String = when (mode) {
+    NightMode.SYSTEM -> stringResource(R.string.night_mode_system)
+    NightMode.LIGHT -> stringResource(R.string.night_mode_light)
+    NightMode.DARK -> stringResource(R.string.night_mode_dark)
+    NightMode.SCHEDULED -> stringResource(R.string.night_mode_scheduled)
+    NightMode.BRIGHTNESS -> stringResource(R.string.night_mode_brightness)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1004,12 +1116,12 @@ private fun EmojiStyleItem(
     onLongClick: () -> Unit
 ) {
     val label = when (style) {
-        EmojiStyle.APPLE -> "Apple"
-        EmojiStyle.TWITTER -> "Twitter"
-        EmojiStyle.WINDOWS -> "Windows"
-        EmojiStyle.CATMOJI -> "Catmoji"
-        EmojiStyle.NOTO -> "Noto"
-        EmojiStyle.SYSTEM -> "System"
+        EmojiStyle.APPLE -> stringResource(R.string.emoji_style_apple)
+        EmojiStyle.TWITTER -> stringResource(R.string.emoji_style_twitter)
+        EmojiStyle.WINDOWS -> stringResource(R.string.emoji_style_windows)
+        EmojiStyle.CATMOJI -> stringResource(R.string.emoji_style_catmoji)
+        EmojiStyle.NOTO -> stringResource(R.string.emoji_style_noto)
+        EmojiStyle.SYSTEM -> stringResource(R.string.emoji_style_system)
     }
 
     val emojiFontFamily = if (isDownloaded) {
@@ -1089,7 +1201,7 @@ private fun EmojiStyleItem(
                     } else {
                         Icon(
                             imageVector = Icons.Rounded.Download,
-                            contentDescription = "Download",
+                            contentDescription = stringResource(R.string.action_download),
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
                         )
@@ -1140,4 +1252,29 @@ private fun TimeSettingCard(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialogWrapper(
+    onDismissRequest: () -> Unit,
+    onConfirm: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.ok_button))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.cancel_button))
+            }
+        },
+        text = {
+            content()
+        }
+    )
 }

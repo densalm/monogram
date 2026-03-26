@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import org.monogram.domain.models.InlineKeyboardButtonModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -26,6 +27,7 @@ import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.chatContent.shouldShowDate
 import org.monogram.presentation.features.chats.currentChat.components.channels.*
 import org.monogram.presentation.features.chats.currentChat.components.chats.DocumentMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageViaBotAttribution
 import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyMarkupView
 
 @Composable
@@ -56,6 +58,7 @@ fun ChannelMessageBubbleContainer(
     onCommentsClick: (Long) -> Unit = {},
     showComments: Boolean = true,
     toProfile: (Long) -> Unit = {},
+    onViaBotClick: (String) -> Unit = {},
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool
 ) {
@@ -80,7 +83,8 @@ fun ChannelMessageBubbleContainer(
     LaunchedEffect(highlighted) {
         if (highlighted) {
             animatedColor.animateTo(highlightColor, animationSpec = tween(300))
-            animatedColor.animateTo(Color.Transparent, animationSpec = tween(1000))
+            delay(450)
+            animatedColor.animateTo(Color.Transparent, animationSpec = tween(1800))
             onHighlightConsumed()
         }
     }
@@ -100,7 +104,7 @@ fun ChannelMessageBubbleContainer(
 
             Column(
                 modifier = Modifier
-                    .width(IntrinsicSize.Max)
+                    .fillMaxWidth()
                     .widthIn(max = maxWidth)
             ) {
                 var bubblePosition by remember { mutableStateOf(Offset.Zero) }
@@ -260,6 +264,13 @@ fun ChannelMessageBubbleContainer(
                         onButtonClick = { onReplyMarkupButtonClick(msg.id, it) }
                     )
                 }
+
+                MessageViaBotAttribution(
+                    msg = msg,
+                    isOutgoing = msg.isOutgoing,
+                    onViaBotClick = onViaBotClick,
+                    modifier = Modifier.align(Alignment.Start)
+                )
             }
             Spacer(modifier = Modifier.width(12.dp))
         }

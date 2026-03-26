@@ -1,6 +1,9 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -131,7 +134,6 @@ fun ChannelVoiceMessageBubble(
         }
 
         if (showComments && msg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,

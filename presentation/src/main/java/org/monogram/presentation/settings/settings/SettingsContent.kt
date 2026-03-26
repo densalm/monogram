@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PhoneIphone
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.*
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -36,12 +38,14 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.*
 import org.monogram.presentation.core.util.CountryManager
 import org.monogram.presentation.core.util.ScrollStrategy
 import org.monogram.presentation.core.util.formatMaskedGlobal
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import org.monogram.presentation.settings.sessions.SectionHeader
+import java.util.Locale
 
 val QrBackgroundColor = Color(0xFFEFF1E6)
 val QrDarkGreen = Color(0xFF3E4D36)
@@ -76,6 +80,11 @@ fun SettingsContent(component: SettingsComponent) {
         stop = expandedColor,
         fraction = collapsingToolbarState.toolbarState.progress
     )
+    val dynamicContainerColorTopBar = lerp(
+        start = collapsedColor,
+        stop = Color.Transparent,
+        fraction = collapsingToolbarState.toolbarState.progress
+    )
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -108,7 +117,7 @@ fun SettingsContent(component: SettingsComponent) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "QR Code",
+                    text = stringResource(R.string.qr_code_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -154,7 +163,7 @@ fun SettingsContent(component: SettingsComponent) {
                             .height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = QrDarkGreen),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Save") }
+                    ) { Text(stringResource(R.string.action_save)) }
 
                     Button(
                         onClick = {
@@ -166,7 +175,7 @@ fun SettingsContent(component: SettingsComponent) {
                             .height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = QrDarkGreen),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Share") }
+                    ) { Text(stringResource(R.string.action_share)) }
                 }
             }
         }
@@ -195,14 +204,14 @@ fun SettingsContent(component: SettingsComponent) {
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Support MonoGram",
+                    text = stringResource(R.string.support_monogram_title),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "MonoGram is a free and open-source project. Your support helps us to keep it alive and develop new features.",
+                    text = stringResource(R.string.support_monogram_description),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -215,15 +224,65 @@ fun SettingsContent(component: SettingsComponent) {
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Support on Boosty")
+                    Text(stringResource(R.string.action_support_boosty))
                 }
                 Spacer(modifier = Modifier.height(12.dp))
                 TextButton(
                     onClick = component::onSupportDismissed,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Maybe later")
+                    Text(stringResource(R.string.action_maybe_later))
                 }
+            }
+        }
+    }
+
+    if (state.isMoreOptionsVisible && state.currentUser?.username != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = component::onMoreOptionsDismissed,
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SettingsItem(
+                    icon = Icons.Default.Share,
+                    title = stringResource(R.string.share_profile_title),
+                    subtitle = stringResource(R.string.share_profile_subtitle),
+                    iconBackgroundColor = blueColor,
+                    position = ItemPosition.TOP,
+                    onClick = {
+                        state.currentUser?.username?.let { username ->
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, "https://t.me/$username")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, null))
+                        }
+                        component.onMoreOptionsDismissed()
+                    }
+                )
+                SettingsItem(
+                    icon = Icons.Rounded.Link,
+                    title = stringResource(R.string.copy_link_title),
+                    subtitle = stringResource(R.string.copy_link_subtitle),
+                    iconBackgroundColor = greenColor,
+                    position = ItemPosition.BOTTOM,
+                    onClick = {
+                        state.currentUser?.username?.let { username ->
+                            clipboardManager.setText(AnnotatedString("https://t.me/$username"))
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
+                        component.onMoreOptionsDismissed()
+                    }
+                )
             }
         }
     }
@@ -261,7 +320,7 @@ fun SettingsContent(component: SettingsComponent) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
                                     imageVector = Icons.Rounded.Verified,
-                                    contentDescription = "Verified",
+                                    contentDescription = stringResource(R.string.cd_verified),
                                     modifier = Modifier.size(22.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
@@ -295,7 +354,7 @@ fun SettingsContent(component: SettingsComponent) {
                         IconButton(onClick = component::onBackClicked) {
                             Icon(
                                 Icons.Rounded.ArrowBack,
-                                contentDescription = null,
+                                contentDescription = stringResource(R.string.cd_back),
                                 tint = iconTint
                             )
                         }
@@ -314,34 +373,49 @@ fun SettingsContent(component: SettingsComponent) {
                             IconButton(onClick = component::onQrCodeClicked) {
                                 Icon(
                                     imageVector = Icons.Default.QrCode2,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(R.string.action_qr_code),
                                     tint = iconTint
                                 )
                             }
                             IconButton(onClick = component::onEditProfileClicked) {
                                 Icon(
                                     imageVector = Icons.Rounded.Edit,
-                                    contentDescription = "Edit Profile",
+                                    contentDescription = stringResource(R.string.cd_edit_profile),
                                     tint = iconTint
                                 )
                             }
-                            IconButton(onClick = { }) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = null,
-                                    tint = iconTint
-                                )
+                            if (!state.currentUser?.username.isNullOrEmpty()) {
+                                IconButton(onClick = component::onMoreOptionsClicked) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = null,
+                                        tint = iconTint
+                                    )
+                                }
                             }
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent
+                    containerColor = dynamicContainerColorTopBar,
+                    scrolledContainerColor = Color.Transparent,
+
                 )
             )
         }
     ) { padding ->
+        var safeTopPadding by remember { mutableStateOf(0.dp) }
+        var safeBottomPadding by remember { mutableStateOf(0.dp) }
+        val language = remember {
+            Locale.getDefault().displayLanguage
+                .replaceFirstChar { it.uppercase() }
+        }
+        val currentTop = padding.calculateTopPadding()
+        val currentBottom = padding.calculateBottomPadding()
+
+        if (currentTop > 0.dp) safeTopPadding = currentTop
+        if (currentBottom > 0.dp) safeBottomPadding = currentBottom
+
         CollapsingToolbarScaffold(
             modifier = Modifier
                 .fillMaxSize()
@@ -352,7 +426,6 @@ fun SettingsContent(component: SettingsComponent) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(padding.calculateTopPadding())
                         .pin()
                 )
 
@@ -396,9 +469,6 @@ fun SettingsContent(component: SettingsComponent) {
                 }
             },
             body = {
-                val navBarInsets = WindowInsets.navigationBars.asPaddingValues()
-                val bottomPadding = navBarInsets.calculateBottomPadding() + 80.dp
-
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
@@ -407,8 +477,7 @@ fun SettingsContent(component: SettingsComponent) {
                         start = 16.dp,
                         end = 16.dp,
                         top = 0.dp,
-
-                        bottom = bottomPadding
+                        bottom = safeBottomPadding
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
@@ -424,7 +493,9 @@ fun SettingsContent(component: SettingsComponent) {
                                 ) else formatMaskedGlobal(
                                     rawPhone
                                 ),
-                                subtitle = if (isPhoneVisible) "Long press to mask" else "Hold to show, click to copy",
+                                subtitle = if (isPhoneVisible) stringResource(R.string.phone_subtitle_visible) else stringResource(
+                                    R.string.phone_subtitle_hidden
+                                ),
                                 iconBackgroundColor = phoneColor,
                                 position = ItemPosition.TOP,
                                 onLongClick = {
@@ -453,11 +524,11 @@ fun SettingsContent(component: SettingsComponent) {
                                     clipboardManager = clipboardManager,
                                     position = ItemPosition.MIDDLE
                                 )
-                            } else {
+                            } else if (!user.username.isNullOrEmpty()) {
                                 SettingsItem(
                                     icon = Icons.Rounded.Person,
                                     title = "@${user.username}",
-                                    subtitle = "Username",
+                                    subtitle = stringResource(R.string.username_label),
                                     iconBackgroundColor = usernameColor,
                                     position = ItemPosition.MIDDLE,
                                     onClick = {
@@ -470,7 +541,7 @@ fun SettingsContent(component: SettingsComponent) {
                             SettingsItem(
                                 icon = Icons.Rounded.Info,
                                 title = user.id.toString(),
-                                subtitle = "Your ID",
+                                subtitle = stringResource(R.string.your_id_label),
                                 iconBackgroundColor = idColor,
                                 position = ItemPosition.MIDDLE,
                                 onClick = {
@@ -481,8 +552,8 @@ fun SettingsContent(component: SettingsComponent) {
 
                             SettingsItem(
                                 icon = Icons.Rounded.Edit,
-                                title = "Edit Profile",
-                                subtitle = "Change your name, bio, and profile photo",
+                                title = stringResource(R.string.menu_edit),
+                                subtitle = stringResource(R.string.edit_profile_subtitle),
                                 iconBackgroundColor = blueColor,
                                 position = ItemPosition.BOTTOM,
                                 onClick = component::onEditProfileClicked
@@ -494,8 +565,8 @@ fun SettingsContent(component: SettingsComponent) {
                         item {
                             SettingsItem(
                                 icon = Icons.Rounded.Link,
-                                title = "Enable t.me links",
-                                subtitle = "Open Telegram links to open them in-app",
+                                title = stringResource(R.string.enable_tme_links),
+                                subtitle = stringResource(R.string.enable_tme_links_subtitle),
                                 iconBackgroundColor = blueColor,
                                 position = ItemPosition.STANDALONE,
                                 onClick = component::onLinkSettingsClicked
@@ -504,97 +575,92 @@ fun SettingsContent(component: SettingsComponent) {
                     }
 
                     item {
-                        SectionHeader("General")
+                        SectionHeader(stringResource(R.string.section_general))
                         SettingsItem(
                             icon = Icons.AutoMirrored.Rounded.Chat,
-                            title = "Chat Settings",
-                            subtitle = "Themes, text size, video player",
+                            title = stringResource(R.string.chat_settings_title),
+                            subtitle = stringResource(R.string.chat_settings_subtitle),
                             iconBackgroundColor = blueColor,
                             position = ItemPosition.TOP,
                             onClick = component::onChatSettingsClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Lock,
-                            title = "Privacy and Security",
-                            subtitle = "Passcode, active sessions, privacy",
+                            title = stringResource(R.string.privacy_security_title),
+                            subtitle = stringResource(R.string.privacy_security_subtitle),
                             iconBackgroundColor = greenColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onPrivacyClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Notifications,
-                            title = "Notifications and Sounds",
-                            subtitle = "Messages, groups, calls",
+                            title = stringResource(R.string.notifications_sounds_title),
+                            subtitle = stringResource(R.string.notifications_sounds_subtitle),
                             iconBackgroundColor = pinkColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onNotificationsClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.DataUsage,
-                            title = "Data and Storage",
-                            subtitle = "Network usage, auto-download",
+                            title = stringResource(R.string.data_storage_title),
+                            subtitle = stringResource(R.string.data_storage_subtitle),
                             iconBackgroundColor = tealColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onDataStorageClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.PowerSettingsNew,
-                            title = "Power Saving",
-                            subtitle = "Battery usage settings",
+                            title = stringResource(R.string.power_saving_title),
+                            subtitle = stringResource(R.string.power_saving_subtitle),
                             iconBackgroundColor = orangeColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onPowerSavingClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Folder,
-                            title = "Chat Folders",
-                            subtitle = "Organize your chats",
+                            title = stringResource(R.string.chat_folders_title),
+                            subtitle = stringResource(R.string.chat_folders_subtitle),
                             iconBackgroundColor = indigoColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onFoldersClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.SentimentSatisfiedAlt,
-                            title = "Stickers and Emoji",
-                            subtitle = "Manage sticker sets and emoji packs",
+                            title = stringResource(R.string.stickers_emoji_title),
+                            subtitle = stringResource(R.string.stickers_emoji_subtitle),
                             iconBackgroundColor = orangeColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onStickersClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Person,
-                            title = "Devices",
-                            subtitle = "Linked devices",
+                            title = stringResource(R.string.devices_title),
+                            subtitle = stringResource(R.string.devices_subtitle),
                             iconBackgroundColor = tealColor,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onDevicesClicked
                         )
-                        SettingsItem(
-                            icon = Icons.Rounded.Language,
-                            title = "Language",
-                            subtitle = "English",
-                            iconBackgroundColor = blueColor,
-                            position = ItemPosition.MIDDLE,
-                            onClick = {
-                                val intent =
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            SettingsItem(
+                                icon = Icons.Rounded.Language,
+                                title = stringResource(R.string.language_title),
+                                subtitle = language,
+                                iconBackgroundColor = blueColor,
+                                position = ItemPosition.MIDDLE,
+                                onClick = {
+                                    val intent =
                                         Intent(Settings.ACTION_APP_LOCALE_SETTINGS).apply {
                                             data =
                                                 Uri.fromParts("package", context.packageName, null)
                                         }
-                                    } else {
-                                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                            data =
-                                                Uri.fromParts("package", context.packageName, null)
-                                        }
-                                    }
-                                context.startActivity(intent)
-                            }
-                        )
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
                         SettingsItem(
                             icon = Icons.Rounded.SettingsEthernet,
-                            title = "Proxy Settings",
-                            subtitle = "MTProto, SOCKS5, HTTP",
+                            title = stringResource(R.string.proxy_settings_title),
+                            subtitle = stringResource(R.string.proxy_settings_subtitle),
                             iconBackgroundColor = purpleColor,
                             position = ItemPosition.BOTTOM,
                             onClick = component::onProxySettingsClicked
@@ -604,16 +670,16 @@ fun SettingsContent(component: SettingsComponent) {
                     item {
                         SettingsItem(
                             icon = Icons.Rounded.Star,
-                            title = "Telegram Premium",
-                            subtitle = "Unlock exclusive features",
+                            title = stringResource(R.string.telegram_premium_title),
+                            subtitle = stringResource(R.string.telegram_premium_subtitle),
                             iconBackgroundColor = purpleColor,
                             position = ItemPosition.TOP,
                             onClick = component::onPremiumClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Favorite,
-                            title = "Support MonoGram",
-                            subtitle = "Help us develop the project",
+                            title = stringResource(R.string.support_monogram_title),
+                            subtitle = stringResource(R.string.support_monogram_subtitle_settings),
                             iconBackgroundColor = pinkColor,
                             position = ItemPosition.BOTTOM,
                             onClick = component::onShowSupportClicked
@@ -623,24 +689,24 @@ fun SettingsContent(component: SettingsComponent) {
                     item {
                         SettingsItem(
                             icon = Icons.Rounded.Info,
-                            title = "About",
-                            subtitle = "MonoGram version and info",
+                            title = stringResource(R.string.about_title),
+                            subtitle = stringResource(R.string.about_subtitle_settings),
                             iconBackgroundColor = blueColor,
                             position = ItemPosition.TOP,
                             onClick = component::onAboutClicked
                         )
                         SettingsItem(
                             icon = Icons.Rounded.BugReport,
-                            title = "Debug",
-                            subtitle = "Debug options",
+                            title = stringResource(R.string.debug_title),
+                            subtitle = stringResource(R.string.debug_subtitle),
                             iconBackgroundColor = Color.Gray,
                             position = ItemPosition.MIDDLE,
                             onClick = component::onDebugClicked
                         )
                         SettingsItem(
                             icon = Icons.AutoMirrored.Rounded.ExitToApp,
-                            title = "Log Out",
-                            subtitle = "Disconnect from account",
+                            title = stringResource(R.string.log_out_title),
+                            subtitle = stringResource(R.string.log_out_subtitle),
                             iconBackgroundColor = MaterialTheme.colorScheme.error,
                             position = ItemPosition.BOTTOM,
                             onClick = component::onLogoutClicked
@@ -648,17 +714,6 @@ fun SettingsContent(component: SettingsComponent) {
                     }
                 }
             }
-        )
-    }
-
-    @Composable
-    fun SectionHeader(text: String) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(start = 12.dp, bottom = 8.dp, top = 16.dp),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold
         )
     }
 }

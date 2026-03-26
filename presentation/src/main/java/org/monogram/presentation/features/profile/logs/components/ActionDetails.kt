@@ -1,7 +1,9 @@
 package org.monogram.presentation.features.profile.logs.components
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,11 +20,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import org.monogram.domain.models.ChatEventActionModel
 import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.features.profile.logs.ProfileLogsComponent
 import java.io.File
@@ -39,14 +46,14 @@ fun ActionDetails(
         is ChatEventActionModel.MessageEdited -> {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Original message:",
+                    text = stringResource(R.string.logs_original_message),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 MessagePreview(action.oldMessage, component = component)
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "New message:",
+                    text = stringResource(R.string.logs_new_message),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -61,7 +68,7 @@ fun ActionDetails(
         is ChatEventActionModel.MessageDeleted -> {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Deleted message:",
+                    text = stringResource(R.string.logs_deleted_message),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -72,7 +79,7 @@ fun ActionDetails(
         is ChatEventActionModel.MessagePinned -> {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Pinned message:",
+                    text = stringResource(R.string.logs_pinned_message),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -83,7 +90,7 @@ fun ActionDetails(
         is ChatEventActionModel.MessageUnpinned -> {
             Column(modifier = Modifier.padding(top = 8.dp)) {
                 Text(
-                    text = "Unpinned message:",
+                    text = stringResource(R.string.logs_unpinned_message),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -127,7 +134,7 @@ fun ActionDetails(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Until: ",
+                            text = stringResource(R.string.logs_restricted_until, ""),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -155,7 +162,7 @@ fun ActionDetails(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Restricted permanently",
+                            text = stringResource(R.string.logs_restricted_permanently),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.error,
                             fontWeight = FontWeight.Medium
@@ -176,12 +183,12 @@ fun ActionDetails(
             ) {
                 if (action.oldPhotoPath != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Old", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.logs_photo_old), style = MaterialTheme.typography.labelSmall)
                         AsyncImage(
                             model = File(action.oldPhotoPath.toString()),
                             contentDescription = null,
                             modifier = Modifier
-                                .size(60.dp)
+                                .size(64.dp)
                                 .clip(CircleShape)
                                 .clickable {
                                     component.onPhotoClick(
@@ -195,12 +202,12 @@ fun ActionDetails(
                 }
                 if (action.newPhotoPath != null) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("New", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.logs_photo_new), style = MaterialTheme.typography.labelSmall)
                         AsyncImage(
                             model = File(action.newPhotoPath.toString()),
                             contentDescription = null,
                             modifier = Modifier
-                                .size(60.dp)
+                                .size(64.dp)
                                 .clip(CircleShape)
                                 .clickable {
                                     component.onPhotoClick(
@@ -227,25 +234,34 @@ private fun TargetUserRow(
 ) {
     val info = allSenderInfo[userId]
     val name = info?.name ?: "User $userId"
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { component.onUserClick(userId) }
-            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .combinedClickable(
+                onClick = { component.onUserClick(userId) },
+                onLongClick = {
+                    clipboardManager.setText(AnnotatedString(userId.toString()))
+                    Toast.makeText(context, context.getString(R.string.logs_user_id_copied), Toast.LENGTH_SHORT).show()
+                }
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         Avatar(
             path = info?.avatarPath,
             name = name,
-            size = 24.dp,
-            fontSize = 10,
+            size = 28.dp,
+            fontSize = 12,
             videoPlayerPool = component.videoPlayerPool
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = name,
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -258,14 +274,14 @@ private fun StatusTransition(oldStatus: String, newStatus: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        StatusChangeRow("From", oldStatus)
+        StatusChangeRow(stringResource(R.string.logs_status_from), oldStatus)
         Icon(
             imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
             contentDescription = null,
-            modifier = Modifier.size(12.dp),
+            modifier = Modifier.size(14.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        StatusChangeRow("To", newStatus)
+        StatusChangeRow(stringResource(R.string.logs_status_to), newStatus)
     }
 }
 
@@ -274,49 +290,49 @@ private fun StatusTransition(oldStatus: String, newStatus: String) {
 private fun PermissionsDiff(old: ChatPermissionsModel?, new: ChatPermissionsModel) {
     Column(modifier = Modifier.padding(top = 12.dp)) {
         Text(
-            text = if (old != null) "Permission changes:" else "Current permissions:",
+            text = if (old != null) stringResource(R.string.logs_permissions_changes) else stringResource(R.string.logs_permissions_current),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 6.dp),
+            modifier = Modifier.padding(bottom = 8.dp),
             fontWeight = FontWeight.Bold
         )
         FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             PermissionChip(
-                "Messages",
+                stringResource(R.string.logs_perm_messages),
                 old?.canSendBasicMessages,
                 new.canSendBasicMessages,
                 Icons.Rounded.ChatBubble
             )
             PermissionChip(
-                "Media",
+                stringResource(R.string.logs_perm_media),
                 (old?.canSendPhotos ?: true) || (old?.canSendVideos ?: true),
                 new.canSendPhotos || new.canSendVideos,
                 Icons.Rounded.PermMedia
             )
             PermissionChip(
-                "Stickers",
+                stringResource(R.string.logs_perm_stickers),
                 old?.canSendOtherMessages,
                 new.canSendOtherMessages,
                 Icons.AutoMirrored.Rounded.StickyNote2
             )
             PermissionChip(
-                "Links",
+                stringResource(R.string.logs_perm_links),
                 old?.canAddLinkPreviews,
                 new.canAddLinkPreviews,
                 Icons.Rounded.Link
             )
-            PermissionChip("Polls", old?.canSendPolls, new.canSendPolls, Icons.Rounded.Poll)
+            PermissionChip(stringResource(R.string.logs_perm_polls), old?.canSendPolls, new.canSendPolls, Icons.Rounded.Poll)
             PermissionChip(
-                "Invite",
+                stringResource(R.string.logs_perm_invite),
                 old?.canInviteUsers,
                 new.canInviteUsers,
                 Icons.Rounded.PersonAdd
             )
-            PermissionChip("Pin", old?.canPinMessages, new.canPinMessages, Icons.Rounded.PushPin)
-            PermissionChip("Info", old?.canChangeInfo, new.canChangeInfo, Icons.Rounded.Info)
+            PermissionChip(stringResource(R.string.logs_perm_pin), old?.canPinMessages, new.canPinMessages, Icons.Rounded.PushPin)
+            PermissionChip(stringResource(R.string.logs_perm_info), old?.canChangeInfo, new.canChangeInfo, Icons.Rounded.Info)
         }
     }
 }
@@ -329,25 +345,25 @@ private fun PermissionChip(label: String, oldVal: Boolean?, newVal: Boolean, ico
         val isRestricted = !newVal
         val color =
             if (isRestricted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-        val containerColor = color.copy(alpha = 0.1f)
+        val containerColor = color.copy(alpha = 0.12f)
 
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(containerColor)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Icon(
                 imageVector = if (isRestricted) Icons.Rounded.Block else icon,
                 contentDescription = null,
-                modifier = Modifier.size(14.dp),
+                modifier = Modifier.size(16.dp),
                 tint = color
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 color = color,
                 fontWeight = FontWeight.Bold
             )

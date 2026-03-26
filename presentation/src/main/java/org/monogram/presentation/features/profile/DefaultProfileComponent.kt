@@ -393,13 +393,18 @@ class DefaultProfileComponent(
             it.copy(
                 selectedTabIndex = index,
                 canLoadMoreMedia = true,
-                isLoadingMedia = false
+                isLoadingMedia = true,
+                isLoadingMoreMedia = false
             )
         }
 
         val isGroup = _state.value.chat?.let { it.isGroup || it.isChannel } ?: false
         if (isGroup && index == 1) {
-            if (_state.value.members.isEmpty()) loadMembersNextPage()
+            if (_state.value.members.isEmpty()) {
+                loadMembersNextPage()
+            } else {
+                 _state.update { it.copy(isLoadingMedia = false) }
+            }
         } else {
             val filterIndex = if (isGroup && index > 1) index - 1 else index
             val isEmpty = when (filterIndex) {
@@ -414,6 +419,8 @@ class DefaultProfileComponent(
 
             if (isEmpty) {
                 loadMediaNextPage(isFirstLoad = true)
+            } else {
+                _state.update { it.copy(isLoadingMedia = false) }
             }
         }
     }
@@ -500,6 +507,30 @@ class DefaultProfileComponent(
                             fullScreenVideoPath = path,
                             fullScreenVideoCaption = content.caption
                         )
+                    }
+                } ?: run {
+                    if (content.fileId != 0) {
+                        scope.launch {
+                            messageRepository.downloadFile(content.fileId, priority = 32)
+                            var attempts = 0
+                            while (attempts < 60) {
+                                delay(500)
+                                val fileInfo = messageRepository.getFileInfo(content.fileId)
+                                if (fileInfo?.local?.isDownloadingCompleted == true && fileInfo.local.path.isNotEmpty()) {
+                                    withContext(Dispatchers.Main) {
+                                        _state.update {
+                                            it.copy(
+                                                fullScreenVideoPath = fileInfo.local.path,
+                                                fullScreenVideoCaption = content.caption
+                                            )
+                                        }
+                                        onFileDownloaded(content.fileId, fileInfo.local.path)
+                                    }
+                                    break
+                                }
+                                attempts++
+                            }
+                        }
                     }
                 }
             }
@@ -724,15 +755,24 @@ class DefaultProfileComponent(
     override fun onShowStatistics() {
         scope.launch {
             val stats = userRepository.getChatStatistics(chatId, false)
-            _state.update { it.copy(statistics = stats, isStatisticsVisible = true) }
+            if (stats != null) {
+                val enrichedStats = enrichInteractionPreviews(stats)
+                _state.update { it.copy(statistics = enrichedStats, isStatisticsVisible = true) }
+            } else {
+                loadData()
+            }
         }
     }
 
     override fun onShowRevenueStatistics() {
         scope.launch {
             val stats = userRepository.getChatRevenueStatistics(chatId, false)
-            _state.update {
-                it.copy(revenueStatistics = stats, isRevenueStatisticsVisible = true)
+            if (stats != null) {
+                _state.update {
+                    it.copy(revenueStatistics = stats, isRevenueStatisticsVisible = true)
+                }
+            } else {
+                loadData()
             }
         }
     }
@@ -750,13 +790,19 @@ class DefaultProfileComponent(
 
     override fun onLoadStatisticsGraph(token: String) {
         scope.launch {
-            val stats = _state.value.statistics ?: return@launch
-            val x = stats.period.endDate.toLong()
-            val graph = userRepository.loadStatisticsGraph(chatId, token, x)
+            val graph = userRepository.loadStatisticsGraph(chatId, token, 0L)
 
             if (graph != null) {
-                val updatedStats = updateStatisticsWithGraph(stats, token, graph)
-                _state.update { it.copy(statistics = updatedStats) }
+                _state.update { state ->
+                    val updatedStats = state.statistics?.let { updateStatisticsWithGraph(it, token, graph) }
+                    val updatedRevenueStats = state.revenueStatistics?.let {
+                        updateRevenueStatisticsWithGraph(it, token, graph)
+                    }
+                    state.copy(
+                        statistics = updatedStats ?: state.statistics,
+                        revenueStatistics = updatedRevenueStats ?: state.revenueStatistics
+                    )
+                }
             }
         }
     }
@@ -844,13 +890,56 @@ class DefaultProfileComponent(
         _state.update { it.copy(selectedLocation = null) }
     }
 
+    private suspend fun enrichInteractionPreviews(stats: ChatStatisticsModel): ChatStatisticsModel {
+        if (stats.recentInteractions.isEmpty()) return stats
+        val enriched = stats.recentInteractions.map { interaction ->
+            if (interaction.type != ChatInteractionType.MESSAGE || interaction.objectId == 0L) {
+                interaction
+            } else {
+                val preview = runCatching {
+                    messageRepository
+                        .getMessagesAround(chatId = chatId, messageId = interaction.objectId, limit = 1)
+                        .firstOrNull { it.id == interaction.objectId }
+                        ?.content
+                        ?.toStatisticsPreview()
+                }.getOrNull()
+                interaction.copy(previewText = preview)
+            }
+        }
+        return stats.copy(recentInteractions = enriched)
+    }
+
+    private fun MessageContent.toStatisticsPreview(): String {
+        return when (this) {
+            is MessageContent.Text -> text.ifBlank { "Message" }
+            is MessageContent.Photo -> caption.ifBlank { "Photo" }
+            is MessageContent.Video -> caption.ifBlank { "Video" }
+            is MessageContent.Gif -> caption.ifBlank { "GIF" }
+            is MessageContent.Document -> caption.ifBlank { fileName.ifBlank { "Document" } }
+            is MessageContent.Audio -> caption.ifBlank { title.ifBlank { "Audio" } }
+            is MessageContent.Voice -> "Voice message"
+            is MessageContent.VideoNote -> "Video message"
+            is MessageContent.Sticker -> "Sticker ${emoji.ifBlank { "" }}".trim()
+            is MessageContent.Contact -> "Contact: ${firstName} ${lastName}".trim()
+            is MessageContent.Location -> "Location"
+            is MessageContent.Venue -> "Venue: $title"
+            is MessageContent.Poll -> "Poll: $question"
+            is MessageContent.Service -> text.ifBlank { "Service message" }
+            MessageContent.Unsupported -> "Unsupported message"
+        }
+    }
+
     private fun updateStatisticsWithGraph(
         stats: ChatStatisticsModel,
         token: String,
         newGraph: StatisticsGraphModel
     ): ChatStatisticsModel {
         fun StatisticsGraphModel?.matchesToken(token: String): Boolean {
-            return this is StatisticsGraphModel.Async && this.token == token
+            return when (this) {
+                is StatisticsGraphModel.Async -> this.token == token
+                is StatisticsGraphModel.Data -> this.zoomToken == token
+                else -> false
+            }
         }
 
         return stats.copy(
@@ -865,7 +954,29 @@ class DefaultProfileComponent(
             actionGraph = if (stats.actionGraph.matchesToken(token)) newGraph else stats.actionGraph,
             dayGraph = if (stats.dayGraph.matchesToken(token)) newGraph else stats.dayGraph,
             weekGraph = if (stats.weekGraph.matchesToken(token)) newGraph else stats.weekGraph,
-            topHoursGraph = if (stats.topHoursGraph.matchesToken(token)) newGraph else stats.topHoursGraph
+            topHoursGraph = if (stats.topHoursGraph.matchesToken(token)) newGraph else stats.topHoursGraph,
+            messageReactionGraph = if (stats.messageReactionGraph.matchesToken(token)) newGraph else stats.messageReactionGraph,
+            storyInteractionGraph = if (stats.storyInteractionGraph.matchesToken(token)) newGraph else stats.storyInteractionGraph,
+            storyReactionGraph = if (stats.storyReactionGraph.matchesToken(token)) newGraph else stats.storyReactionGraph
+        )
+    }
+
+    private fun updateRevenueStatisticsWithGraph(
+        stats: ChatRevenueStatisticsModel,
+        token: String,
+        newGraph: StatisticsGraphModel
+    ): ChatRevenueStatisticsModel {
+        fun StatisticsGraphModel?.matchesToken(token: String): Boolean {
+            return when (this) {
+                is StatisticsGraphModel.Async -> this.token == token
+                is StatisticsGraphModel.Data -> this.zoomToken == token
+                else -> false
+            }
+        }
+
+        return stats.copy(
+            revenueByHourGraph = if (stats.revenueByHourGraph.matchesToken(token)) newGraph else stats.revenueByHourGraph,
+            revenueGraph = if (stats.revenueGraph.matchesToken(token)) newGraph else stats.revenueGraph
         )
     }
 

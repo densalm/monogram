@@ -38,7 +38,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -52,7 +51,6 @@ import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.*
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelMessageBubbleContainer
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
-import kotlin.math.abs
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -71,13 +69,14 @@ fun ChatContentList(
     modifier: Modifier = Modifier,
     selectedMessageId: Long? = null,
     onMessagePositionChange: (Offset, IntSize) -> Unit = { _, _ -> },
+    onViaBotClick: (String) -> Unit = {},
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val isComments = state.rootMessage != null
-    val isScrollingFast = rememberIsScrollingFast(scrollState)
+    val isScrolling by remember(scrollState) { derivedStateOf { scrollState.isScrollInProgress } }
 
     LaunchedEffect(
         scrollState,
@@ -128,7 +127,9 @@ fun ChatContentList(
 
     LazyColumn(
         state = scrollState,
-        modifier = modifier.fillMaxSize().semantics { contentDescription = "ChatMessages" },
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { contentDescription = "ChatMessages" },
         reverseLayout = !isComments,
         contentPadding = PaddingValues(vertical = 8.dp)
     ) {
@@ -144,6 +145,7 @@ fun ChatContentList(
                         onAudioClick,
                         onMessageOptionsClick,
                         onGoToReply,
+                        onViaBotClick,
                         toProfile,
                         downloadUtils,
                         videoPlayerPool,
@@ -180,8 +182,9 @@ fun ChatContentList(
                     onMessageOptionsClick = onMessageOptionsClick,
                     onGoToReply = onGoToReply,
                     onMessagePositionChange = onMessagePositionChange,
+                    onViaBotClick = onViaBotClick,
                     toProfile = toProfile,
-                    isScrollingFast = isScrollingFast,
+                    isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
                     videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
@@ -210,6 +213,7 @@ fun ChatContentList(
                         onAudioClick,
                         onMessageOptionsClick,
                         onGoToReply,
+                        onViaBotClick,
                         toProfile,
                         downloadUtils,
                         videoPlayerPool,
@@ -245,8 +249,9 @@ fun ChatContentList(
                     onMessageOptionsClick = onMessageOptionsClick,
                     onGoToReply = onGoToReply,
                     onMessagePositionChange = onMessagePositionChange,
+                    onViaBotClick = onViaBotClick,
                     toProfile = toProfile,
-                    isScrollingFast = isScrollingFast,
+                    isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
                     videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
@@ -285,8 +290,9 @@ private fun MessageRowItem(
     onMessageOptionsClick: (MessageModel, Offset, IntSize, Offset) -> Unit,
     onGoToReply: (MessageModel) -> Unit,
     onMessagePositionChange: (Offset, IntSize) -> Unit,
+    onViaBotClick: (String) -> Unit,
     toProfile: (Long) -> Unit,
-    isScrollingFast: Boolean,
+    isScrolling: Boolean,
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
@@ -295,27 +301,38 @@ private fun MessageRowItem(
         if (item is GroupedMessageItem.Single) item.message else (item as GroupedMessageItem.Album).messages.last()
     }
 
-    val scale = remember {
+    val shouldAnimateEntry = state.isChatAnimationsEnabled && !isScrolling
+
+    val scale = remember(mainMsg.id) {
         Animatable(
-            if (state.isChatAnimationsEnabled) {
-                if (isScrollingFast) 0.95f else 0.8f
-            } else 1f
+            if (shouldAnimateEntry) 0.98f else 1f
         )
     }
-    val alpha = remember {
+    val itemAlpha = remember(mainMsg.id) {
         Animatable(
-            if (state.isChatAnimationsEnabled) {
-                if (isScrollingFast) 0.8f else 0f
-            } else 1f
+            if (shouldAnimateEntry) 0f else 1f
+        )
+    }
+    val offsetY = remember(mainMsg.id) {
+        Animatable(
+            if (shouldAnimateEntry) 10f else 0f
         )
     }
 
     LaunchedEffect(mainMsg.id) {
         component.onMessageVisible(mainMsg.id)
-        if (state.isChatAnimationsEnabled && scale.value < 1f) {
-            val stiffness = if (isScrollingFast) Spring.StiffnessMedium else Spring.StiffnessLow
+    }
+
+    LaunchedEffect(mainMsg.id, shouldAnimateEntry) {
+        if (shouldAnimateEntry && scale.value < 1f) {
+            val stiffness = Spring.StiffnessMediumLow
             launch { scale.animateTo(1f, spring(Spring.DampingRatioLowBouncy, stiffness)) }
-            launch { alpha.animateTo(1f, spring(stiffness = stiffness)) }
+            launch { itemAlpha.animateTo(1f, spring(stiffness = stiffness)) }
+            launch { offsetY.animateTo(0f, spring(stiffness = Spring.StiffnessLow)) }
+        } else if (!shouldAnimateEntry) {
+            scale.snapTo(1f)
+            itemAlpha.snapTo(1f)
+            offsetY.snapTo(0f)
         }
     }
 
@@ -328,7 +345,12 @@ private fun MessageRowItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { this.scaleX = scale.value; this.scaleY = scale.value; this.alpha = alpha.value }
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+                alpha = itemAlpha.value
+                translationY = offsetY.value
+            }
             .background(backgroundColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -368,6 +390,7 @@ private fun MessageRowItem(
                     onMessageOptionsClick = onMessageOptionsClick,
                     onGoToReply = onGoToReply,
                     onMessagePositionChange = onMessagePositionChange,
+                    onViaBotClick = onViaBotClick,
                     toProfile = toProfile,
                     downloadUtils = downloadUtils,
                     videoPlayerPool = videoPlayerPool,
@@ -394,6 +417,7 @@ private fun MessageBubbleSwitcher(
     onMessageOptionsClick: (MessageModel, Offset, IntSize, Offset) -> Unit,
     onGoToReply: (MessageModel) -> Unit,
     onMessagePositionChange: (Offset, IntSize) -> Unit,
+    onViaBotClick: (String) -> Unit,
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool,
@@ -493,6 +517,7 @@ private fun MessageBubbleSwitcher(
                     onPositionChange = { _, pos, size -> onMessagePositionChange(pos, size) },
                     onCommentsClick = { component.onCommentsClick(it) },
                     toProfile = toProfile,
+                    onViaBotClick = onViaBotClick,
                     onYouTubeClick = { component.onOpenYouTube(it) },
                     onInstantViewClick = { component.onOpenInstantView(it) },
                     downloadUtils = downloadUtils,
@@ -593,6 +618,7 @@ private fun MessageBubbleSwitcher(
                     shouldReportPosition = item.message.id == selectedMessageId,
                     onPositionChange = { _, pos, size -> onMessagePositionChange(pos, size) },
                     toProfile = toProfile,
+                    onViaBotClick = onViaBotClick,
                     canReply = state.canWrite && !isSelectionMode,
                     onReplySwipe = { component.onReplyMessage(it) },
                     swipeEnabled = !isSelectionMode,
@@ -660,6 +686,7 @@ private fun MessageBubbleSwitcher(
                 onPositionChange = { _, pos, size -> onMessagePositionChange(pos, size) },
                 onCommentsClick = { component.onCommentsClick(it) },
                 toProfile = toProfile,
+                onViaBotClick = onViaBotClick,
                 canReply = state.canWrite && !isSelectionMode,
                 onReplySwipe = { component.onReplyMessage(it) },
                 swipeEnabled = !isSelectionMode,
@@ -704,6 +731,7 @@ private fun RootMessageSection(
     onAudioClick: (MessageModel) -> Unit,
     onMessageOptionsClick: (MessageModel, Offset, IntSize, Offset) -> Unit,
     onGoToReply: (MessageModel) -> Unit,
+    onViaBotClick: (String) -> Unit,
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool,
@@ -737,6 +765,7 @@ private fun RootMessageSection(
                 fontSize = state.fontSize, bubbleRadius = state.bubbleRadius,
                 onCommentsClick = {}, showComments = false,
                 toProfile = toProfile,
+                onViaBotClick = onViaBotClick,
                 onYouTubeClick = { component.onOpenYouTube(it) },
                 onInstantViewClick = { component.onOpenInstantView(it) },
                 downloadUtils = downloadUtils,
@@ -765,6 +794,7 @@ private fun RootMessageSection(
                 onShowVoters = { id, opt -> component.onShowVoters(id, opt) },
                 onClosePoll = { component.onClosePoll(it) },
                 toProfile = toProfile, swipeEnabled = false,
+                onViaBotClick = onViaBotClick,
                 onInstantViewClick = { component.onOpenInstantView(it) },
                 onYouTubeClick = { component.onOpenYouTube(it) },
                 downloadUtils = downloadUtils,
@@ -1039,31 +1069,3 @@ fun TopicItem(
     }
 }
 
-@Composable
-private fun rememberIsScrollingFast(state: LazyListState): Boolean {
-    var isFast by remember { mutableStateOf(false) }
-    LaunchedEffect(state) {
-        var lastIndex = state.firstVisibleItemIndex
-        var lastTime = System.nanoTime()
-        while (true) {
-            delay(50)
-            if (state.isScrollInProgress) {
-                val currentIndex = state.firstVisibleItemIndex
-                val now = System.nanoTime()
-                val dt = (now - lastTime) / 1_000_000_000f
-                if (dt > 0.05f) {
-                    val itemsMoved = abs(currentIndex - lastIndex)
-                    val speed = itemsMoved / dt
-                    isFast = speed > 8f
-                    lastIndex = currentIndex
-                    lastTime = now
-                }
-            } else {
-                isFast = false
-                lastIndex = state.firstVisibleItemIndex
-                lastTime = System.nanoTime()
-            }
-        }
-    }
-    return isFast
-}

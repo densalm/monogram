@@ -1,8 +1,7 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.annotation.OptIn
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -10,12 +9,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -24,11 +27,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.rememberAsyncImagePainter
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
-import org.monogram.domain.models.MessageSendingState
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
@@ -64,7 +67,14 @@ fun GifMessageBubble(
     val smallCorner = 4.dp
     val tailCorner = 2.dp
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading) {
@@ -112,12 +122,24 @@ fun GifMessageBubble(
                 .widthIn(min = 160.dp, max = 320.dp)
                 .animateContentSize()) {
                 msg.forwardInfo?.let { forward ->
-                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .zIndex(1f)
+                    ) {
                         ForwardContent(forward, isOutgoing, onForwardClick = toProfile)
                     }
                 }
                 msg.replyToMsg?.let { reply ->
-                    Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                            .zIndex(1f)
+                    ) {
                         ReplyContent(
                             replyToMsg = reply,
                             isOutgoing = isOutgoing,
@@ -129,12 +151,13 @@ fun GifMessageBubble(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 160.dp, max = 400.dp)
+                        .heightIn(min = 160.dp, max = 360.dp)
                         .aspectRatio(
                             if (content.width > 0 && content.height > 0)
                                 (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
                             else 1f
                         )
+                        .clipToBounds()
                         .onGloballyPositioned { gifPosition = it.positionInWindow() }
                         .pointerInput(Unit) {
                             detectTapGestures(
@@ -151,27 +174,22 @@ fun GifMessageBubble(
                             )
                         }
                 ) {
-                    Crossfade(
-                        targetState = content.path,
-                        animationSpec = tween(300),
-                        label = "GifLoading"
-                    ) { path ->
-                        if (!path.isNullOrBlank()) {
+                    if (!stablePath.isNullOrBlank()) {
                             if (autoplayGifs) {
                                 VideoStickerPlayer(
-                                    path = path,
+                                    path = stablePath ?: "",
                                     type = VideoType.Gif,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
+                                    contentScale = ContentScale.Fit,
                                     animate = !isAnyViewerOpen,
                                     videoPlayerPool = videoPlayerPool
                                 )
                             } else {
                                 Image(
-                                    painter = rememberAsyncImagePainter(path),
+                                    painter = rememberAsyncImagePainter(stablePath),
                                     contentDescription = content.caption,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Fit
                                 )
 
                                 Box(
@@ -203,7 +221,7 @@ fun GifMessageBubble(
                                     color = Color.White
                                 )
                             }
-                        } else {
+                    } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -217,7 +235,7 @@ fun GifMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(10.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
 
@@ -250,7 +268,6 @@ fun GifMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
                     if (content.isUploading) {
@@ -297,36 +314,13 @@ fun GifMessageBubble(
                                 )
                                 if (isOutgoing) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
-                                            )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                                        }
-                                        val statusTint = if (sendingState is MessageSendingState.Failed) {
-                                            Color.Red
-                                        } else if (isRead) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            Color.White
-                                        }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = statusTint
-                                        )
-                                    }
+                                    MessageSendingStatusIcon(
+                                        sendingState = msg.sendingState,
+                                        isRead = msg.isRead,
+                                        baseColor = Color.White,
+                                        size = 12.dp,
+                                        usePrimaryForRead = false
+                                    )
                                 }
                             }
                         }
@@ -341,7 +335,9 @@ fun GifMessageBubble(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)
+                            .zIndex(1f)
                     ) {
                         val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
                         val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(
@@ -388,36 +384,12 @@ fun GifMessageBubble(
                                 )
                                 if (isOutgoing) {
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
-                                            )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                                        }
-                                        val statusTint = if (sendingState is MessageSendingState.Failed) {
-                                            MaterialTheme.colorScheme.error
-                                        } else if (isRead) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            timeColor
-                                        }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = statusTint
-                                        )
-                                    }
+                                    MessageSendingStatusIcon(
+                                        sendingState = msg.sendingState,
+                                        isRead = msg.isRead,
+                                        baseColor = timeColor,
+                                        size = 14.dp
+                                    )
                                 }
                             }
                         }

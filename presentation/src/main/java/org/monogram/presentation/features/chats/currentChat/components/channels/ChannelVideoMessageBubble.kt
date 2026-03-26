@@ -1,8 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -33,6 +32,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -94,8 +94,15 @@ fun ChannelVideoMessageBubble(
     val screenHeightPx = remember { context.resources.displayMetrics.heightPixels }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
     val hasCaption = content.caption.isNotEmpty()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading && !content.supportsStreaming) {
@@ -127,54 +134,63 @@ fun ChannelVideoMessageBubble(
                 .animateContentSize()) {
                 // Headers
                 if (msg.forwardInfo != null || msg.replyToMsg != null) {
-                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .zIndex(1f)
+                    ) {
                         msg.forwardInfo?.let { ForwardContent(it, false, onForwardClick = toProfile) }
                         msg.replyToMsg?.let { ReplyContent(it, false, onClick = { onReplyClick(it) }) }
                     }
                 }
 
-                val ratio = if (content.width > 0 && content.height > 0)
-                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.6f, 1.8f)
+                val mediaRatio = if (content.width > 0 && content.height > 0)
+                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
                 else 1f
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 130.dp, max = 420.dp)
-                        .aspectRatio(ratio)
-                        .clip(if (hasCaption) RoundedCornerShape(topStart = topStart, topEnd = topEnd) else bubbleShape)
-                        .onGloballyPositioned { videoPosition = it.positionInWindow() }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (content.isDownloading) {
-                                        onCancelDownload(content.fileId)
-                                    } else {
-                                        onVideoClick(msg)
-                                    }
-                                },
-                                onLongPress = { offset -> onLongClick(videoPosition + offset) }
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val mediaHeight = (maxWidth / mediaRatio).coerceIn(160.dp, 320.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(mediaHeight)
+                            .clip(
+                                if (hasCaption) RoundedCornerShape(
+                                    topStart = topStart,
+                                    topEnd = topEnd
+                                ) else bubbleShape
                             )
-                        }
-                ) {
-                    Crossfade(
-                        targetState = hasPath || content.supportsStreaming,
-                        animationSpec = tween(300),
-                        label = "VideoLoading"
-                    ) { targetHasPathOrStreaming ->
-                        if (targetHasPathOrStreaming) {
+                            .clipToBounds()
+                            .onGloballyPositioned { videoPosition = it.positionInWindow() }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (content.isDownloading) {
+                                            onCancelDownload(content.fileId)
+                                        } else {
+                                            onVideoClick(msg)
+                                        }
+                                    },
+                                    onLongPress = { offset -> onLongClick(videoPosition + offset) }
+                                )
+                            }
+                    ) {
+                        if (hasPath || content.supportsStreaming) {
                             if (autoplayVideos) {
-                                val videoPath = content.path ?: "http://streaming/${content.fileId}"
+                                val videoPath = stablePath ?: "http://streaming/${content.fileId}"
                                 VideoStickerPlayer(
                                     path = videoPath,
                                     type = VideoType.Gif,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
+                                    contentScale = ContentScale.Fit,
                                     animate = isVisible && !isAnyViewerOpen,
                                     volume = if (isMuted) 0f else 1f,
                                     onProgressUpdate = { currentPosition = it },
                                     videoPlayerPool = videoPlayerPool,
-                                    fileId = if (content.path == null) content.fileId else 0
+                                    fileId = if (!hasPath && content.supportsStreaming) content.fileId else 0
                                 )
 
                                 // Volume Toggle
@@ -197,10 +213,10 @@ fun ChannelVideoMessageBubble(
                             } else {
                                 if (hasPath) {
                                     Image(
-                                        painter = rememberAsyncImagePainter(content.path),
+                                        painter = rememberAsyncImagePainter(stablePath),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 } else {
                                     if (content.minithumbnail != null) {
@@ -210,7 +226,7 @@ fun ChannelVideoMessageBubble(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .blur(10.dp),
-                                            contentScale = ContentScale.Crop
+                                            contentScale = ContentScale.Fit
                                         )
                                     }
                                 }
@@ -240,9 +256,9 @@ fun ChannelVideoMessageBubble(
                             ) {
                                 Text(
                                     text = if ((hasPath || content.supportsStreaming) && autoplayVideos) {
-                                        "${formatDuration((currentPosition / 1000).toInt())} / ${formatDuration(content.duration)}"
+                                        "${formatDuration(context, (currentPosition / 1000).toInt())} / ${formatDuration(context, content.duration)}"
                                     } else {
-                                        formatDuration(content.duration)
+                                        formatDuration(context, content.duration)
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = Color.White
@@ -263,7 +279,7 @@ fun ChannelVideoMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(10.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
                                 Box(
@@ -294,18 +310,18 @@ fun ChannelVideoMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
-                    if (!hasCaption && showMetadata) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            MessageMetadata(msg, msg.isOutgoing, Color.White)
+                        if (!hasCaption && showMetadata) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                MessageMetadata(msg, msg.isOutgoing, Color.White)
+                            }
                         }
                     }
                 }
@@ -315,7 +331,9 @@ fun ChannelVideoMessageBubble(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = 4.dp)
+                            .zIndex(1f)
                     ) {
                         val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
                         val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(
@@ -361,7 +379,6 @@ fun ChannelVideoMessageBubble(
         }
 
         if (showComments && msg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,

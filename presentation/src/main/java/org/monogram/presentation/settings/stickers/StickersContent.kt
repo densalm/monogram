@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,8 +42,10 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import org.koin.compose.koinInject
 import org.monogram.domain.models.StickerSetModel
+import org.monogram.presentation.R
 import org.monogram.presentation.features.stickers.ui.view.LocalIsScrolling
 import org.monogram.presentation.features.webapp.MiniAppViewer
 import org.monogram.presentation.core.ui.ItemPosition
@@ -50,9 +53,9 @@ import org.monogram.presentation.core.ui.SettingsTile
 import org.monogram.presentation.core.ui.StickerSetItem
 import org.monogram.presentation.core.ui.getItemShape
 
-private enum class StickerTab(val title: String, val icon: ImageVector) {
-    Stickers("Stickers", Icons.AutoMirrored.Rounded.StickyNote2),
-    Emoji("Emoji", Icons.Rounded.EmojiEmotions)
+private enum class StickerTab(val titleRes: Int, val icon: ImageVector) {
+    Stickers(R.string.stickers_tab, Icons.AutoMirrored.Rounded.StickyNote2),
+    Emoji(R.string.emoji_tab, Icons.Rounded.EmojiEmotions)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,14 +76,17 @@ fun StickersContent(component: StickersComponent) {
                     TopAppBar(
                         title = {
                             Text(
-                                text = "Stickers and Emoji",
+                                text = stringResource(R.string.stickers_emoji_header),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
                         },
                         navigationIcon = {
                             IconButton(onClick = component::onBackClicked) {
-                                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.ArrowBack,
+                                    contentDescription = stringResource(R.string.cd_back)
+                                )
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -136,7 +142,7 @@ fun StickersContent(component: StickersComponent) {
                                     )
                                     Spacer(Modifier.width(8.dp))
                                     Text(
-                                        text = tab.title,
+                                        text = stringResource(tab.titleRes),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = contentColor,
                                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
@@ -194,13 +200,13 @@ fun StickersContent(component: StickersComponent) {
                                 GenericStickerList(
                                     sets = filteredSets,
                                     archivedSets = state.archivedStickerSets,
-                                    recentHeader = "Recent Stickers",
-                                    setsHeader = "Sticker Sets",
-                                    archivedHeader = "Archived Stickers",
-                                    addStickersTitle = "Add own stickers",
-                                    addStickersSubtitle = "Create your own sticker sets using @Stickers bot",
-                                    clearRecentTitle = "Clear Recent Stickers",
-                                    clearRecentSubtitle = "Remove all recently used stickers",
+                                    recentHeader = stringResource(R.string.recent_stickers_header),
+                                    setsHeader = stringResource(R.string.sticker_sets_header),
+                                    archivedHeader = stringResource(R.string.archived_stickers_header),
+                                    addStickersTitle = stringResource(R.string.add_own_stickers_title),
+                                    addStickersSubtitle = stringResource(R.string.add_own_stickers_subtitle),
+                                    clearRecentTitle = stringResource(R.string.clear_recent_stickers_title),
+                                    clearRecentSubtitle = stringResource(R.string.clear_recent_stickers_subtitle),
                                     clearRecentIcon = Icons.AutoMirrored.Rounded.StickyNote2,
                                     clearRecentIconColor = orangeColor,
                                     onClearRecent = component::onClearRecentStickers,
@@ -211,7 +217,10 @@ fun StickersContent(component: StickersComponent) {
                                     listState = stickersListState,
                                     searchQuery = state.searchQuery,
                                     onSearchQueryChange = component::onSearchQueryChanged,
-                                    emptyText = if (state.searchQuery.isEmpty()) "No sticker sets installed" else "No stickers found for \"${state.searchQuery}\"",
+                                    emptyText = if (state.searchQuery.isEmpty()) stringResource(R.string.no_sticker_sets_installed) else stringResource(
+                                        R.string.no_stickers_found_format,
+                                        state.searchQuery
+                                    ),
                                     onAddStickers = component::onAddStickersClicked
                                 )
                             }
@@ -229,13 +238,13 @@ fun StickersContent(component: StickersComponent) {
                                 GenericStickerList(
                                     sets = filteredSets,
                                     archivedSets = state.archivedEmojiSets,
-                                    recentHeader = "Recent Emojis",
-                                    setsHeader = "Emoji Packs",
-                                    archivedHeader = "Archived Emojis",
-                                    addStickersTitle = "Add own emoji",
-                                    addStickersSubtitle = "Create your own emoji packs using @Stickers bot",
-                                    clearRecentTitle = "Clear Recent Emojis",
-                                    clearRecentSubtitle = "Remove all recently used emojis",
+                                    recentHeader = stringResource(R.string.recent_emojis_header),
+                                    setsHeader = stringResource(R.string.emoji_packs_header),
+                                    archivedHeader = stringResource(R.string.archived_emojis_header),
+                                    addStickersTitle = stringResource(R.string.add_own_emoji_title),
+                                    addStickersSubtitle = stringResource(R.string.add_own_emoji_subtitle),
+                                    clearRecentTitle = stringResource(R.string.clear_recent_emojis_title_settings),
+                                    clearRecentSubtitle = stringResource(R.string.clear_recent_emojis_subtitle_settings),
                                     clearRecentIcon = Icons.Rounded.EmojiEmotions,
                                     clearRecentIconColor = tealColor,
                                     onClearRecent = component::onClearRecentEmojis,
@@ -246,7 +255,10 @@ fun StickersContent(component: StickersComponent) {
                                     listState = emojisListState,
                                     searchQuery = state.searchQuery,
                                     onSearchQueryChange = component::onSearchQueryChanged,
-                                    emptyText = if (state.searchQuery.isEmpty()) "No emoji packs installed" else "No emojis found for \"${state.searchQuery}\"",
+                                    emptyText = if (state.searchQuery.isEmpty()) stringResource(R.string.no_emoji_packs_installed) else stringResource(
+                                        R.string.no_emojis_found_format,
+                                        state.searchQuery
+                                    ),
                                     onAddStickers = component::onAddStickersClicked
                                 )
                             }
@@ -310,6 +322,7 @@ private fun GenericStickerList(
     var initialPointerY by remember { mutableStateOf(0f) }
     var totalDragDistance by remember { mutableStateOf(0f) }
     var autoScrollJob by remember { mutableStateOf<Job?>(null) }
+    var autoScrollVelocity by remember { mutableStateOf(0f) }
 
     CompositionLocalProvider(LocalIsScrolling provides isScrolling) {
         LazyColumn(
@@ -325,14 +338,14 @@ private fun GenericStickerList(
                     onSearch = { },
                     active = false,
                     onActiveChange = { },
-                    placeholder = { Text("Search packs") },
+                    placeholder = { Text(stringResource(R.string.search_packs_placeholder)) },
                     leadingIcon = {
-                        Icon(Icons.Rounded.Search, contentDescription = "Search")
+                        Icon(Icons.Rounded.Search, contentDescription = stringResource(R.string.action_search))
                     },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { onSearchQueryChange("") }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Clear")
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_clear))
                             }
                         }
                     },
@@ -397,7 +410,7 @@ private fun GenericStickerList(
                     Box(
                         modifier = Modifier
                             .zIndex(if (isDragging) 1f else 0f)
-                            .animateItem()
+                            .then(if (isDragging) Modifier else Modifier.animateItem())
                             .graphicsLayer {
                                 translationY = if (isDragging) dragOffset else 0f
                                 scaleX = if (isDragging) 1.02f else 1f
@@ -452,32 +465,35 @@ private fun GenericStickerList(
                                         val pointerY = initialPointerY + totalDragDistance
 
                                         if (pointerY < topThreshold) {
-                                            if (autoScrollJob == null) {
-                                                autoScrollJob = scope.launch {
-                                                    while (true) {
-                                                        listState.scrollBy(-15f)
-                                                        delay(10)
-                                                    }
-                                                }
-                                            }
+                                            val intensity = ((topThreshold - pointerY) / topThreshold).coerceIn(0f, 1f)
+                                            autoScrollVelocity = -(6f + (18f * intensity))
                                         } else if (pointerY > bottomThreshold) {
-                                            if (autoScrollJob == null) {
-                                                autoScrollJob = scope.launch {
-                                                    while (true) {
-                                                        listState.scrollBy(15f)
-                                                        delay(10)
-                                                    }
-                                                }
-                                            }
+                                            val intensity = ((pointerY - bottomThreshold) / topThreshold).coerceIn(0f, 1f)
+                                            autoScrollVelocity = 6f + (18f * intensity)
                                         } else {
+                                            autoScrollVelocity = 0f
                                             autoScrollJob?.cancel()
                                             autoScrollJob = null
+                                        }
+
+                                        if (autoScrollJob == null && abs(autoScrollVelocity) > 0f) {
+                                            autoScrollJob = scope.launch {
+                                                while (abs(autoScrollVelocity) > 0f) {
+                                                    listState.scrollBy(autoScrollVelocity)
+                                                    delay(16)
+                                                }
+                                            }.also { job ->
+                                                job.invokeOnCompletion {
+                                                    if (autoScrollJob === job) autoScrollJob = null
+                                                }
+                                            }
                                         }
                                     },
                                     onDragEnd = {
                                         draggedItemId = null
                                         dragOffset = 0f
                                         totalDragDistance = 0f
+                                        autoScrollVelocity = 0f
                                         autoScrollJob?.cancel()
                                         autoScrollJob = null
                                     },
@@ -485,6 +501,7 @@ private fun GenericStickerList(
                                         draggedItemId = null
                                         dragOffset = 0f
                                         totalDragDistance = 0f
+                                        autoScrollVelocity = 0f
                                         autoScrollJob?.cancel()
                                         autoScrollJob = null
                                     }

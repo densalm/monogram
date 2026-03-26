@@ -1,4 +1,4 @@
-package org.monogram.presentation.features.folders
+package org.monogram.presentation.settings.folders
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,10 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.monogram.domain.models.ChatModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.features.chats.chatList.components.SectionHeader
@@ -87,7 +89,7 @@ fun FolderDialog(
                     IconButton(onClick = onDelete) {
                         Icon(
                             Icons.Rounded.Delete,
-                            contentDescription = "Delete",
+                            contentDescription = stringResource(R.string.folders_delete),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -99,13 +101,13 @@ fun FolderDialog(
             SettingsTextField(
                 value = text,
                 onValueChange = { text = it },
-                placeholder = "Folder Name",
+                placeholder = stringResource(R.string.folders_name_placeholder),
                 icon = getFolderIcon(selectedIcon) ?: Icons.Rounded.Folder,
                 position = ItemPosition.STANDALONE,
                 singleLine = true
             )
 
-            SectionHeader("Choose Icon")
+            SectionHeader(stringResource(R.string.folders_choose_icon))
 
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer,
@@ -148,7 +150,7 @@ fun FolderDialog(
                 }
             }
 
-            SectionHeader("Included Chats")
+            SectionHeader(stringResource(R.string.folders_included_chats))
 
             SettingsTextField(
                 value = searchQuery,
@@ -156,7 +158,7 @@ fun FolderDialog(
                     searchQuery = it
                     onSearchChats(it)
                 },
-                placeholder = "Search chats...",
+                placeholder = stringResource(R.string.folders_search_chats),
                 icon = Icons.Rounded.Search,
                 position = ItemPosition.TOP,
                 singleLine = true
@@ -188,7 +190,13 @@ fun FolderDialog(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Avatar(path = chat.avatarPath, name = chat.title, size = 36.dp, videoPlayerPool = videoPlayerPool)
+                            Avatar(
+                                path = chat.avatarPath,
+                                fallbackPath = chat.personalAvatarPath,
+                                name = chat.title,
+                                size = 36.dp,
+                                videoPlayerPool = videoPlayerPool
+                            )
                             Spacer(Modifier.width(12.dp))
                             Text(
                                 text = chat.title,
@@ -221,7 +229,7 @@ fun FolderDialog(
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Cancel", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.folders_cancel), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(

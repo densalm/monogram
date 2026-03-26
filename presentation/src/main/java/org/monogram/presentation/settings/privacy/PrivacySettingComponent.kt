@@ -7,13 +7,13 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.ChatModel
-import org.monogram.domain.models.PrivacyRule
 import org.monogram.domain.models.PrivacyValue
 import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.ChatsListRepository
 import org.monogram.domain.repository.PrivacyKey
 import org.monogram.domain.repository.PrivacyRepository
 import org.monogram.domain.repository.UserRepository
+import org.monogram.presentation.R
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
@@ -30,7 +30,7 @@ interface PrivacySettingComponent {
     fun onRemoveChat(chatId: Long, isAllow: Boolean)
 
     data class State(
-        val title: String,
+        val titleRes: Int,
         val privacyKey: PrivacyKey,
         val selectedValue: PrivacyValue = PrivacyValue.EVERYBODY,
         val searchSelectedValue: PrivacyValue = PrivacyValue.EVERYBODY,
@@ -56,7 +56,7 @@ class DefaultPrivacySettingComponent(
     override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
 
     private val _state =
-        MutableValue(PrivacySettingComponent.State(title = getTitle(privacyKey), privacyKey = privacyKey))
+        MutableValue(PrivacySettingComponent.State(titleRes = getTitleRes(privacyKey), privacyKey = privacyKey))
     override val state: Value<PrivacySettingComponent.State> = _state
     private val scope = componentScope
 
@@ -70,23 +70,9 @@ class DefaultPrivacySettingComponent(
     private fun observePrivacyRules() {
         privacyRepository.getPrivacyRules(privacyKey)
             .onEach { rules ->
-                val selectedValue = rules.toPrivacyValue()
-                val allowUserIds = mutableListOf<Long>()
-                val disallowUserIds = mutableListOf<Long>()
-                val allowChatIds = mutableListOf<Long>()
-                val disallowChatIds = mutableListOf<Long>()
+                val config = rules.toPrivacyRuleConfig()
 
-                rules.forEach { rule ->
-                    when (rule) {
-                        is PrivacyRule.AllowUsers -> allowUserIds.addAll(rule.userIds)
-                        is PrivacyRule.DisallowUsers -> disallowUserIds.addAll(rule.userIds)
-                        is PrivacyRule.AllowChatMembers -> allowChatIds.addAll(rule.chatIds)
-                        is PrivacyRule.DisallowChatMembers -> disallowChatIds.addAll(rule.chatIds)
-                        else -> {}
-                    }
-                }
-
-                val allowUsers = allowUserIds.mapNotNull { id ->
+                val allowUsers = config.allowUsers.mapNotNull { id ->
                     try {
                         userRepository.getUser(id)
                     } catch (e: Exception) {
@@ -94,7 +80,7 @@ class DefaultPrivacySettingComponent(
                     }
                 }
 
-                val disallowUsers = disallowUserIds.mapNotNull { id ->
+                val disallowUsers = config.disallowUsers.mapNotNull { id ->
                     try {
                         userRepository.getUser(id)
                     } catch (e: Exception) {
@@ -102,7 +88,7 @@ class DefaultPrivacySettingComponent(
                     }
                 }
 
-                val allowChats = allowChatIds.mapNotNull { id ->
+                val allowChats = config.allowChats.mapNotNull { id ->
                     try {
                         chatsRepository.getChatById(id)
                     } catch (e: Exception) {
@@ -110,7 +96,7 @@ class DefaultPrivacySettingComponent(
                     }
                 }
 
-                val disallowChats = disallowChatIds.mapNotNull { id ->
+                val disallowChats = config.disallowChats.mapNotNull { id ->
                     try {
                         chatsRepository.getChatById(id)
                     } catch (e: Exception) {
@@ -120,7 +106,7 @@ class DefaultPrivacySettingComponent(
 
                 _state.update {
                     it.copy(
-                        selectedValue = selectedValue,
+                        selectedValue = config.baseValue,
                         allowUsers = allowUsers,
                         disallowUsers = disallowUsers,
                         allowChats = allowChats,
@@ -137,22 +123,6 @@ class DefaultPrivacySettingComponent(
                 _state.update { it.copy(searchSelectedValue = rules.toPrivacyValue()) }
             }
             .launchIn(scope)
-    }
-
-    private fun List<PrivacyRule>.toPrivacyValue(): PrivacyValue {
-        return when {
-            any { it is PrivacyRule.AllowAll } -> PrivacyValue.EVERYBODY
-            any { it is PrivacyRule.AllowContacts } -> PrivacyValue.MY_CONTACTS
-            any { it is PrivacyRule.AllowNone } -> PrivacyValue.NOBODY
-            any { it is PrivacyRule.AllowUsers } -> PrivacyValue.MY_CONTACTS
-            any { it is PrivacyRule.AllowChatMembers } -> PrivacyValue.MY_CONTACTS
-
-            any { it is PrivacyRule.DisallowUsers } -> PrivacyValue.MY_CONTACTS
-            any { it is PrivacyRule.DisallowContacts } -> PrivacyValue.MY_CONTACTS
-            any { it is PrivacyRule.DisallowChatMembers } -> PrivacyValue.MY_CONTACTS
-
-            else -> PrivacyValue.NOBODY
-        }
     }
 
     override fun onBackClicked() {
@@ -246,49 +216,22 @@ class DefaultPrivacySettingComponent(
         disallowChats: List<Long>,
         value: PrivacyValue
     ) {
-        val newRules = mutableListOf<PrivacyRule>()
-
-        if (allowUsers.isNotEmpty()) {
-            newRules.add(PrivacyRule.AllowUsers(allowUsers))
-        }
-
-        if (disallowUsers.isNotEmpty()) {
-            newRules.add(PrivacyRule.DisallowUsers(disallowUsers))
-        }
-
-        if (allowChats.isNotEmpty()) {
-            newRules.add(PrivacyRule.AllowChatMembers(allowChats))
-        }
-
-        if (disallowChats.isNotEmpty()) {
-            newRules.add(PrivacyRule.DisallowChatMembers(disallowChats))
-        }
-
-        when (value) {
-            PrivacyValue.EVERYBODY -> newRules.add(PrivacyRule.AllowAll)
-            PrivacyValue.MY_CONTACTS -> {
-                newRules.add(PrivacyRule.AllowContacts)
-                newRules.add(PrivacyRule.AllowNone)
-            }
-
-            PrivacyValue.NOBODY -> newRules.add(PrivacyRule.AllowNone)
-        }
-
-        privacyRepository.setPrivacyRule(key, newRules)
+        privacyRepository.setPrivacyRule(
+            key,
+            buildPrivacyRules(key, value, allowUsers, disallowUsers, allowChats, disallowChats)
+        )
     }
 
-    companion object {
-        fun getTitle(key: PrivacyKey): String {
-            return when (key) {
-                PrivacyKey.PHONE_NUMBER -> "Phone Number"
-                PrivacyKey.PHONE_NUMBER_SEARCH -> "Phone Number Search"
-                PrivacyKey.LAST_SEEN -> "Last Seen & Online"
-                PrivacyKey.PROFILE_PHOTO -> "Profile Photos"
-                PrivacyKey.BIO -> "Bio"
-                PrivacyKey.FORWARDED_MESSAGES -> "Forwarded Messages"
-                PrivacyKey.CALLS -> "Calls"
-                PrivacyKey.GROUPS_AND_CHANNELS -> "Groups & Channels"
-            }
+    private fun getTitleRes(key: PrivacyKey): Int {
+        return when (key) {
+            PrivacyKey.PHONE_NUMBER -> R.string.phone_number_title
+            PrivacyKey.PHONE_NUMBER_SEARCH -> R.string.privacy_phone_number_search_title
+            PrivacyKey.LAST_SEEN -> R.string.last_seen_title
+            PrivacyKey.PROFILE_PHOTO -> R.string.profile_photos_title
+            PrivacyKey.BIO -> R.string.bio_label
+            PrivacyKey.FORWARDED_MESSAGES -> R.string.forwarded_messages_title
+            PrivacyKey.CALLS -> R.string.calls_title
+            PrivacyKey.GROUPS_AND_CHANNELS -> R.string.groups_channels_title
         }
     }
 }

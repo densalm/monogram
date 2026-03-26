@@ -5,7 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
-import org.monogram.domain.models.MessageSendingState
 
 
 @Composable
@@ -175,32 +174,12 @@ fun TextMessageBubble(
 
                     if (isOutgoing) {
                         Spacer(modifier = Modifier.width(4.dp))
-                        AnimatedContent(
-                            targetState = msg.sendingState to msg.isRead,
-                            transitionSpec = {
-                                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-                            },
-                            label = "SendingState"
-                        ) { (sendingState, isRead) ->
-                            val statusIcon = when (sendingState) {
-                                is MessageSendingState.Pending -> Icons.Default.Schedule
-                                is MessageSendingState.Failed -> Icons.Default.Error
-                                null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
-                            }
-                            val statusTint = if (sendingState is MessageSendingState.Failed) {
-                                MaterialTheme.colorScheme.error
-                            } else if (isRead) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                timeColor
-                            }
-                            Icon(
-                                imageVector = statusIcon,
-                                contentDescription = "Status",
-                                modifier = Modifier.size(14.dp),
-                                tint = statusTint
-                            )
-                        }
+                        MessageSendingStatusIcon(
+                            sendingState = msg.sendingState,
+                            isRead = msg.isRead,
+                            baseColor = timeColor,
+                            size = 14.dp
+                        )
                     }
                 }
             }

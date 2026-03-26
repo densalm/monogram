@@ -24,6 +24,7 @@ import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.chatContent.shouldShowDate
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelAlbumMessageBubble
 import org.monogram.presentation.features.chats.currentChat.components.chats.ChatAlbumMessageBubble
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageViaBotAttribution
 import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyMarkupView
 
 @Composable
@@ -54,6 +55,7 @@ fun AlbumMessageBubbleContainer(
     onCommentsClick: (Long) -> Unit = {},
     showComments: Boolean = true,
     toProfile: (Long) -> Unit,
+    onViaBotClick: (String) -> Unit = {},
     canReply: Boolean = false,
     onReplySwipe: (MessageModel) -> Unit = {},
     swipeEnabled: Boolean = true,
@@ -126,7 +128,8 @@ fun AlbumMessageBubbleContainer(
         ) {
             if (isGroup && !isOutgoing && !isChannel) {
                 Avatar(
-                    path = firstMsg.senderPersonalAvatar ?: firstMsg.senderAvatar,
+                    path = firstMsg.senderAvatar,
+                    fallbackPath = firstMsg.senderPersonalAvatar,
                     name = firstMsg.senderName,
                     size = 40.dp,
                     onClick = { toProfile(firstMsg.senderId) },
@@ -138,7 +141,6 @@ fun AlbumMessageBubbleContainer(
             Column(
                 modifier = Modifier
                     .then(if (isChannel) Modifier.padding(horizontal = 8.dp) else Modifier)
-                    .width(IntrinsicSize.Max)
                     .widthIn(max = maxWidth)
                     .then(if (isChannel) Modifier.fillMaxWidth() else Modifier)
                     .onGloballyPositioned { coordinates ->
@@ -181,7 +183,7 @@ fun AlbumMessageBubbleContainer(
                             )
                         },
                         onReplyClick = onGoToReply,
-                        onReactionClick = { onReactionClick(firstMsg.id, it) },
+                        onReactionClick = { onReactionClick(lastMsg.id, it) },
                         onCommentsClick = onCommentsClick,
                         showComments = showComments,
                         toProfile = toProfile,
@@ -216,7 +218,7 @@ fun AlbumMessageBubbleContainer(
                             )
                         },
                         onReplyClick = onGoToReply,
-                        onReactionClick = { onReactionClick(firstMsg.id, it) },
+                        onReactionClick = { onReactionClick(lastMsg.id, it) },
                         toProfile = toProfile,
                         modifier = Modifier,
                         fontSize = fontSize,
@@ -232,6 +234,13 @@ fun AlbumMessageBubbleContainer(
                         onButtonClick = { onReplyMarkupButtonClick(lastMsg.id, it) }
                     )
                 }
+
+                MessageViaBotAttribution(
+                    msg = lastMsg,
+                    isOutgoing = isOutgoing,
+                    onViaBotClick = onViaBotClick,
+                    modifier = Modifier.align(if (isOutgoing) Alignment.End else Alignment.Start)
+                )
             }
         }
     }

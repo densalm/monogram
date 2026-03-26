@@ -8,6 +8,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,19 +47,24 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.monogram.domain.models.ChatType
 import org.monogram.domain.repository.ConnectionStatus
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.features.chats.ChatListComponent
 import org.monogram.presentation.features.chats.chatList.components.*
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
 import org.monogram.presentation.features.instantview.InstantViewer
+import org.monogram.presentation.features.stickers.ui.menu.EmojisGrid
 import org.monogram.presentation.features.webapp.MiniAppViewer
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -71,6 +78,7 @@ fun ChatListContent(component: ChatListComponent) {
     val haptic = LocalHapticFeedback.current
 
     var showAccountMenu by remember { mutableStateOf(false) }
+    var showStatusMenu by remember { mutableStateOf(false) }
 
     val isPermissionRequested by component.appPreferences.isPermissionRequested.collectAsState()
     var showPermissionRequest by remember { mutableStateOf(!isPermissionRequested) }
@@ -78,10 +86,15 @@ fun ChatListContent(component: ChatListComponent) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val isTablet = adaptiveInfo.windowSizeClass.windowWidthSizeClass == WindowWidthSizeClass.EXPANDED
 
-    val isCustomBackHandlingEnabled = state.isSearchActive || state.selectedChatIds.isNotEmpty() || state.selectedFolderId == -2 || state.isForwarding || state.instantViewUrl != null || state.webAppUrl != null || state.webViewUrl != null
+    val isCustomBackHandlingEnabled =
+        state.isSearchActive || state.selectedChatIds.isNotEmpty() || state.selectedFolderId == -2 || state.isForwarding || state.instantViewUrl != null || state.webAppUrl != null || state.webViewUrl != null || showStatusMenu
 
     BackHandler(enabled = isCustomBackHandlingEnabled) {
-        component.handleBack()
+        if (showStatusMenu) {
+            showStatusMenu = false
+        } else {
+            component.handleBack()
+        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -134,7 +147,7 @@ fun ChatListContent(component: ChatListComponent) {
     val currentFolder = state.folders.getOrNull(pagerState.currentPage)
     val isMainFolder = currentFolder?.id == -1
 
-    val isArchivePersistent = state.isArchiveAlwaysVisible || (state.isArchivePinned && isMainFolder)
+    val isArchivePersistent = state.isArchivePinned && (state.isArchiveAlwaysVisible || isMainFolder)
     val canShowArchive = isArchivePersistent || isMainFolder
 
     val lastArchivePersistent = remember { mutableStateOf(isArchivePersistent) }
@@ -332,13 +345,34 @@ fun ChatListContent(component: ChatListComponent) {
 
     val isFabExpanded by remember { derivedStateOf { headerOffsetPx > -10f } }
 
+    var cachedStatusEmojiPath by remember(state.currentUser?.id) {
+        mutableStateOf(state.currentUser?.statusEmojiPath)
+    }
+
+    LaunchedEffect(state.currentUser?.id, state.currentUser?.statusEmojiPath) {
+        val statusEmojiPath = state.currentUser?.statusEmojiPath
+        if (!statusEmojiPath.isNullOrBlank()) {
+            cachedStatusEmojiPath = statusEmojiPath
+        }
+    }
+
+    val currentUser = remember(state.currentUser, cachedStatusEmojiPath) {
+        state.currentUser?.let { user ->
+            if (user.statusEmojiId != 0L && user.statusEmojiPath.isNullOrBlank() && !cachedStatusEmojiPath.isNullOrBlank()) {
+                user.copy(statusEmojiPath = cachedStatusEmojiPath)
+            } else {
+                user
+            }
+        }
+    }
+
     if (showAccountMenu) {
         AccountMenu(
-            user = state.currentUser,
+            user = currentUser,
             attachMenuBots = state.attachMenuBots,
             onDismiss = { showAccountMenu = false },
             onSavedMessagesClick = {
-                state.currentUser?.id?.let { component.onChatClicked(it) }
+                currentUser?.id?.let { component.onChatClicked(it) }
             },
             onSettingsClick = { component.onSettingsClicked() },
             onAddAccountClick = { /* TODO */ },
@@ -346,7 +380,7 @@ fun ChatListContent(component: ChatListComponent) {
                 component.onOpenInstantView("https://telegram.org/faq#general-questions")
             },
             onProfileClick = {
-                state.currentUser?.id?.let { component.onProfileClicked(it) }
+                currentUser?.id?.let { component.onProfileClicked(it) }
             },
             updateState = state.updateState,
             onUpdateClick = { component.onUpdateClicked() },
@@ -359,6 +393,54 @@ fun ChatListContent(component: ChatListComponent) {
             },
             videoPlayerPool = component.videoPlayerPool
         )
+    }
+
+    if (showStatusMenu) {
+        Popup(
+            onDismissRequest = { showStatusMenu = false },
+            properties = PopupProperties(focusable = true)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showStatusMenu = false }
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 56.dp)
+                        .heightIn(max = 520.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .align(Alignment.TopCenter)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { },
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    EmojisGrid(
+                        onEmojiSelected = { _, sticker ->
+                            val customEmojiId = sticker?.customEmojiId
+                            if (sticker != null && customEmojiId != null) {
+                                if (!sticker.path.isNullOrBlank()) {
+                                    cachedStatusEmojiPath = sticker.path
+                                }
+                                component.onSetEmojiStatus(customEmojiId, sticker.path)
+                                showStatusMenu = false
+                            }
+                        },
+                        contentPadding = PaddingValues(bottom = 12.dp)
+                    )
+                }
+            }
+        }
     }
 
     if (showPermissionRequest) {
@@ -405,13 +487,16 @@ fun ChatListContent(component: ChatListComponent) {
                                 title = {
                                     Column {
                                         Text(
-                                            "Forward to...",
+                                            stringResource(R.string.forward_to_title),
                                             fontWeight = FontWeight.SemiBold,
                                             style = MaterialTheme.typography.titleMedium
                                         )
                                         if (state.selectedChatIds.isNotEmpty()) {
                                             Text(
-                                                text = "${state.selectedChatIds.size} chats selected",
+                                                text = stringResource(
+                                                    R.string.chats_selected_format,
+                                                    state.selectedChatIds.size
+                                                ),
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.primary
                                             )
@@ -420,7 +505,7 @@ fun ChatListContent(component: ChatListComponent) {
                                 },
                                 navigationIcon = {
                                     IconButton(onClick = { component.handleBack() }) {
-                                        Icon(Icons.Rounded.Close, "Cancel")
+                                        Icon(Icons.Rounded.Close, stringResource(R.string.cancel_button))
                                     }
                                 },
                                 actions = {
@@ -428,7 +513,7 @@ fun ChatListContent(component: ChatListComponent) {
                                         IconButton(onClick = { component.onConfirmForwarding() }) {
                                             Icon(
                                                 Icons.AutoMirrored.Rounded.Send,
-                                                "Send",
+                                                stringResource(R.string.action_send),
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
                                         }
@@ -438,17 +523,22 @@ fun ChatListContent(component: ChatListComponent) {
                             )
                         } else if (state.selectedFolderId == -2 && !state.isSearchActive) {
                             TopAppBar(
-                                title = { Text("Archived Chats", fontWeight = FontWeight.SemiBold) },
+                                title = {
+                                    Text(
+                                        stringResource(R.string.archived_chats_title),
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                },
                                 navigationIcon = {
                                     IconButton(onClick = { component.handleBack() }) {
-                                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back")
+                                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.cd_back))
                                     }
                                 },
                                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                             )
                         } else {
                             ChatListTopBar(
-                                user = state.currentUser,
+                                user = currentUser,
                                 connectionStatus = state.connectionStatus,
                                 isProxyEnabled = state.isProxyEnabled,
                                 onRetryConnection = { component.retryConnection() },
@@ -457,6 +547,7 @@ fun ChatListContent(component: ChatListComponent) {
                                 searchQuery = state.searchQuery,
                                 onSearchQueryChange = component::onSearchQueryChange,
                                 onSearchToggle = component::onSearchToggle,
+                                onStatusClick = { showStatusMenu = true },
                                 onMenuClick = { showAccountMenu = true },
                                 videoPlayerPool = component.videoPlayerPool
                             )
@@ -577,32 +668,34 @@ fun ChatListContent(component: ChatListComponent) {
             }
         },
         floatingActionButton = {
-            AnimatedVisibility(
-                visible = !state.isSearchActive && state.selectedFolderId != -2 && !state.isForwarding,
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                ExtendedFloatingActionButton(
-                    onClick = { component.onNewChatClicked() },
-                    icon = { Icon(Icons.Rounded.Edit, null) },
-                    text = { Text("New Chat") },
-                    expanded = isFabExpanded,
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-
-            AnimatedVisibility(
-                visible = state.isForwarding && state.selectedChatIds.isNotEmpty(),
-                enter = scaleIn() + fadeIn(),
-                exit = scaleOut() + fadeOut()
-            ) {
-                FloatingActionButton(
-                    onClick = { component.onConfirmForwarding() },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+            if (!isTablet) {
+                AnimatedVisibility(
+                    visible = !state.isSearchActive && state.selectedFolderId != -2 && !state.isForwarding,
+                    enter = scaleIn() + fadeIn(),
+                    exit = scaleOut() + fadeOut()
                 ) {
-                    Icon(Icons.AutoMirrored.Rounded.Send, "Send")
+                    ExtendedFloatingActionButton(
+                        onClick = { component.onNewChatClicked() },
+                        icon = { Icon(Icons.Rounded.Edit, null) },
+                        text = { Text(stringResource(R.string.new_chat_fab)) },
+                        expanded = isFabExpanded,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = state.isForwarding && state.selectedChatIds.isNotEmpty(),
+                    enter = scaleIn() + fadeIn(),
+                    exit = scaleOut() + fadeOut()
+                ) {
+                    FloatingActionButton(
+                        onClick = { component.onConfirmForwarding() },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.Send, stringResource(R.string.action_send))
+                    }
                 }
             }
         }
@@ -627,17 +720,13 @@ fun ChatListContent(component: ChatListComponent) {
                     scrollStates[-2] = scrollState
                 }
 
-                val firstItemId = remember(state.selectedFolderId, state.isSearchActive) {
-                    derivedStateOf {
-                        if (state.selectedFolderId == -2 && !state.isSearchActive) {
-                            state.chatsByFolder[-2]?.firstOrNull()?.id
-                        } else {
-                            null
-                        }
-                    }
+                val firstItemId = if (state.selectedFolderId == -2 && !state.isSearchActive) {
+                    state.chatsByFolder[-2]?.firstOrNull()?.id
+                } else {
+                    null
                 }
 
-                LaunchedEffect(firstItemId.value) {
+                LaunchedEffect(firstItemId) {
                     if (state.selectedFolderId == -2 && !state.isSearchActive && !scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
                         scrollState.scrollToItem(0, 0)
                     }
@@ -651,11 +740,32 @@ fun ChatListContent(component: ChatListComponent) {
                     }
                 }
 
+                val isArchivedView = state.selectedFolderId == -2 && !state.isSearchActive
+                val archivedChats = if (isArchivedView) state.chatsByFolder[-2] ?: emptyList() else emptyList()
+                val isArchivedLoading = if (isArchivedView) state.isLoadingByFolder[-2] ?: false else false
+
+                LaunchedEffect(isArchivedView, archivedChats.size, isArchivedLoading, scrollState) {
+                    if (!isArchivedView || isArchivedLoading || archivedChats.isEmpty()) {
+                        return@LaunchedEffect
+                    }
+
+                    snapshotFlow {
+                        val lastVisible = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                        lastVisible >= archivedChats.lastIndex - 5
+                    }
+                        .distinctUntilChanged()
+                        .collect { shouldLoad ->
+                            if (shouldLoad) {
+                                component.loadMore(-2)
+                            }
+                        }
+                }
+
                 LazyColumn(
                     state = scrollState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .semantics { contentDescription = "ChatList" },
+                        .semantics { contentDescription = context.getString(R.string.cd_chat_list) },
                     contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
                 ) {
                     if (state.isSearchActive) {
@@ -675,12 +785,12 @@ fun ChatListContent(component: ChatListComponent) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "Recent",
+                                        text = stringResource(R.string.search_recent),
                                         style = MaterialTheme.typography.titleSmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     TextButton(onClick = { component.onClearSearchHistory() }) {
-                                        Text("Clear All")
+                                        Text(stringResource(R.string.action_clear_all))
                                     }
                                 }
                             }
@@ -706,7 +816,8 @@ fun ChatListContent(component: ChatListComponent) {
                                             ) {
                                                 Box(contentAlignment = Alignment.TopEnd) {
                                                     Avatar(
-                                                        path = chat.personalAvatarPath ?: chat.avatarPath,
+                                                        path = chat.avatarPath,
+                                                        fallbackPath = chat.personalAvatarPath,
                                                         name = chat.title,
                                                         size = 64.dp,
                                                         isOnline = chat.isOnline,
@@ -767,7 +878,7 @@ fun ChatListContent(component: ChatListComponent) {
                         if (state.searchResults.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Chats and contacts",
+                                    text = stringResource(R.string.search_section_chats),
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary
@@ -792,7 +903,7 @@ fun ChatListContent(component: ChatListComponent) {
                         if (state.globalSearchResults.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Global search",
+                                    text = stringResource(R.string.search_section_global),
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary
@@ -827,7 +938,7 @@ fun ChatListContent(component: ChatListComponent) {
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "Show more",
+                                            text = stringResource(R.string.action_show_more),
                                             color = MaterialTheme.colorScheme.primary,
                                             style = MaterialTheme.typography.labelLarge
                                         )
@@ -839,7 +950,7 @@ fun ChatListContent(component: ChatListComponent) {
                         if (state.messageSearchResults.isNotEmpty()) {
                             item {
                                 Text(
-                                    text = "Messages",
+                                    text = stringResource(R.string.search_section_messages),
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.primary
@@ -874,7 +985,7 @@ fun ChatListContent(component: ChatListComponent) {
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "Show more",
+                                            text = stringResource(R.string.action_show_more),
                                             color = MaterialTheme.colorScheme.primary,
                                             style = MaterialTheme.typography.labelLarge
                                         )
@@ -883,20 +994,13 @@ fun ChatListContent(component: ChatListComponent) {
                             }
                         }
                     } else {
-                        val archivedChats = state.chatsByFolder[-2] ?: emptyList()
-                        val isArchivedLoading = state.isLoadingByFolder[-2] ?: false
-
                         if (archivedChats.isEmpty() && !isArchivedLoading) {
                             item {
                                 EmptyStateView(modifier = Modifier.fillParentMaxSize())
                             }
                         }
 
-                        itemsIndexed(items = archivedChats, key = { _, chat -> chat.id }) { index, chat ->
-                            if (index >= archivedChats.lastIndex - 5 && !isArchivedLoading) {
-                                LaunchedEffect(Unit) { component.loadMore(-2) }
-                            }
-
+                        itemsIndexed(items = archivedChats, key = { _, chat -> chat.id }) { _, chat ->
                             ChatListItem(
                                 modifier = Modifier.animateItem(),
                                 chat = chat,
@@ -939,13 +1043,28 @@ fun ChatListContent(component: ChatListComponent) {
 
                     scrollStates[folderId] = scrollState
 
-                    val firstItemId = remember(folderId) {
-                        derivedStateOf { folderChats.firstOrNull()?.id }
-                    }
+                    val firstItemId = folderChats.firstOrNull()?.id
 
-                    LaunchedEffect(firstItemId.value) {
+                    LaunchedEffect(firstItemId) {
                         if (!scrollState.isScrollInProgress && scrollState.firstVisibleItemIndex <= 1) {
                             scrollState.scrollToItem(0, 0)
+                        }
+                    }
+
+                    val shouldLoadMoreFolder by remember(folderChats, isFolderLoading, scrollState) {
+                        derivedStateOf {
+                            if (isFolderLoading || folderChats.isEmpty()) {
+                                false
+                            } else {
+                                val lastVisible = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                                lastVisible >= folderChats.lastIndex - 5
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(shouldLoadMoreFolder, folderId) {
+                        if (shouldLoadMoreFolder) {
+                            component.loadMore(folderId)
                         }
                     }
 
@@ -970,7 +1089,7 @@ fun ChatListContent(component: ChatListComponent) {
                             state = scrollState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .semantics { contentDescription = "ChatList" },
+                                .semantics { contentDescription = context.getString(R.string.cd_chat_list) },
                             contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp)
                         ) {
                             if (folderChats.isEmpty() && !isFolderLoading) {
@@ -982,11 +1101,7 @@ fun ChatListContent(component: ChatListComponent) {
                             itemsIndexed(
                                 items = folderChats,
                                 key = { _, chat -> chat.id }
-                            ) { index, chat ->
-                                if (index >= folderChats.lastIndex - 5 && !isFolderLoading) {
-                                    LaunchedEffect(Unit) { component.loadMore(folderId) }
-                                }
-
+                            ) { _, chat ->
                                 ChatListItem(
                                     modifier = Modifier.animateItem(),
                                     chat = chat,
@@ -1044,7 +1159,7 @@ fun ChatListContent(component: ChatListComponent) {
                 chatId = botUserId,
                 botUserId = botUserId,
                 baseUrl = webAppUrl ?: "",
-                botName = botName ?: "Mini App",
+                botName = botName ?: stringResource(R.string.mini_app_default_name),
                 messageRepository = koinInject(),
                 onDismiss = { component.onDismissWebApp() }
             )

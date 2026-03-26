@@ -1,6 +1,5 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import android.graphics.RuntimeShader
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
@@ -149,7 +148,7 @@ private fun DefaultTextRender(
 
     val shader = remember {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            RuntimeShader(SpoilerShader.SHADER_CODE)
+            SpoilerShaderApi33.createShader(SpoilerShader.SHADER_CODE)
         } else null
     }
 
@@ -168,7 +167,7 @@ private fun DefaultTextRender(
 
                             if (spoilerAnnotation != null) {
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
-                                    drawSpoilerEffect(
+                                    drawSpoilerEffectApi33(
                                         layoutResult = result,
                                         start = spoilerAnnotation.start,
                                         end = spoilerAnnotation.end,
@@ -177,8 +176,13 @@ private fun DefaultTextRender(
                                         color = spoilerColor.copy(alpha = 0.5f)
                                     )
                                 } else {
-                                    val path = result.getPathForRange(spoilerAnnotation.start, spoilerAnnotation.end)
-                                    drawPath(path, color = spoilerColor.copy(alpha = 0.5f))
+                                    drawSpoilerEffectFallback(
+                                        layoutResult = result,
+                                        start = spoilerAnnotation.start,
+                                        end = spoilerAnnotation.end,
+                                        time = time,
+                                        color = spoilerColor
+                                    )
                                 }
                             }
                         }

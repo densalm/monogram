@@ -106,13 +106,19 @@ fun VideoStickerPlayer(
     var shouldLoadPlayer by remember { mutableStateOf(false) }
     var isVideoFrameReady by remember { mutableStateOf(false) }
 
-    LaunchedEffect(animate, currentPath) {
+    LaunchedEffect(currentPath) {
+        shouldLoadPlayer = false
+        isVideoFrameReady = false
         if (animate) {
-            delay(150)
+            delay(120)
             if (isActive) shouldLoadPlayer = true
-        } else {
-            shouldLoadPlayer = false
-            isVideoFrameReady = false
+        }
+    }
+
+    LaunchedEffect(animate, currentPath) {
+        if (animate && !shouldLoadPlayer) {
+            delay(120)
+            if (isActive) shouldLoadPlayer = true
         }
     }
 
@@ -126,6 +132,10 @@ fun VideoStickerPlayer(
                 if (exoPlayer.volume != volume) exoPlayer.volume = volume
             }
 
+            LaunchedEffect(animate, exoPlayer) {
+                if (animate) exoPlayer.play() else exoPlayer.pause()
+            }
+
             LaunchedEffect(exoPlayer) {
                 while (isActive && !isDisposed.get()) {
                     if (exoPlayer.isPlaying) {
@@ -135,7 +145,7 @@ fun VideoStickerPlayer(
                 }
             }
 
-            DisposableEffect(currentPath, exoPlayer) {
+            DisposableEffect(currentPath, exoPlayer, animate) {
                 isDisposed.set(false)
 
                 val isNetworkPath = currentPath.startsWith("http") || currentPath.startsWith("content")
@@ -161,7 +171,7 @@ fun VideoStickerPlayer(
                 exoPlayer.apply {
                     setMediaSource(mediaSource)
                     prepare()
-                    playWhenReady = true
+                    playWhenReady = animate
                     repeatMode = if (shouldLoop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
                     this.volume = volume
                 }
@@ -194,7 +204,7 @@ fun VideoStickerPlayer(
                 val lifecycleObserver = LifecycleEventObserver { _, event ->
                     if (isDisposed.get()) return@LifecycleEventObserver
                     when (event) {
-                        Lifecycle.Event.ON_RESUME -> exoPlayer.play()
+                        Lifecycle.Event.ON_RESUME -> if (animate) exoPlayer.play()
                         Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
                         else -> Unit
                     }

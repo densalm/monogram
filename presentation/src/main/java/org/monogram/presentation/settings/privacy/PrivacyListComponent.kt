@@ -32,6 +32,8 @@ interface PrivacyListComponent {
     fun onAccountTtlChanged(days: Int)
     fun onSensitiveContentChanged(enabled: Boolean)
     fun onPasscodeClicked()
+    fun onPasscodeVerificationSubmitted(passcode: String)
+    fun onPasscodeVerificationDismissed()
     fun onBiometricChanged(enabled: Boolean)
 
     data class State(
@@ -49,6 +51,8 @@ interface PrivacyListComponent {
         val canShowSensitiveContent: Boolean = false,
         val isSensitiveContentEnabled: Boolean = false,
         val isPasscodeEnabled: Boolean = false,
+        val isPasscodeVerificationVisible: Boolean = false,
+        val isPasscodeVerificationInvalid: Boolean = false,
         val isBiometricEnabled: Boolean = false,
         val error: String? = null,
         val isInstalledFromGooglePlay: Boolean = true
@@ -146,15 +150,6 @@ class DefaultPrivacyListComponent(
             .launchIn(scope)
     }
 
-    private fun List<PrivacyRule>.toPrivacyValue(): PrivacyValue {
-        return when {
-            any { it is PrivacyRule.AllowAll } -> PrivacyValue.EVERYBODY
-            any { it is PrivacyRule.AllowContacts } -> PrivacyValue.MY_CONTACTS
-            any { it is PrivacyRule.AllowNone } -> PrivacyValue.NOBODY
-            else -> PrivacyValue.EVERYBODY
-        }
-    }
-
     override fun onBackClicked() {
         onBack()
     }
@@ -235,7 +230,41 @@ class DefaultPrivacyListComponent(
     }
 
     override fun onPasscodeClicked() {
+        if (_state.value.isPasscodeEnabled) {
+            _state.update {
+                it.copy(
+                    isPasscodeVerificationVisible = true,
+                    isPasscodeVerificationInvalid = false
+                )
+            }
+            return
+        }
+
         onPasscodeClick()
+    }
+
+    override fun onPasscodeVerificationSubmitted(passcode: String) {
+        val savedPasscode = appPreferences.passcode.value
+        if (savedPasscode == passcode) {
+            _state.update {
+                it.copy(
+                    isPasscodeVerificationVisible = false,
+                    isPasscodeVerificationInvalid = false
+                )
+            }
+            onPasscodeClick()
+        } else {
+            _state.update { it.copy(isPasscodeVerificationInvalid = true) }
+        }
+    }
+
+    override fun onPasscodeVerificationDismissed() {
+        _state.update {
+            it.copy(
+                isPasscodeVerificationVisible = false,
+                isPasscodeVerificationInvalid = false
+            )
+        }
     }
 
     override fun onBiometricChanged(enabled: Boolean) {

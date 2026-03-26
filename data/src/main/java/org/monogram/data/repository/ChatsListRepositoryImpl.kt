@@ -22,6 +22,7 @@ import org.monogram.data.db.model.TopicEntity
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.infra.ConnectionManager
+import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.mapper.ChatMapper
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.user.toEntity
@@ -29,10 +30,7 @@ import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.FolderModel
 import org.monogram.domain.models.TopicModel
-import org.monogram.domain.repository.AppPreferencesProvider
-import org.monogram.domain.repository.CacheProvider
-import org.monogram.domain.repository.ChatsListRepository
-import org.monogram.domain.repository.SearchMessagesResult
+import org.monogram.domain.repository.*
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
@@ -54,7 +52,9 @@ class ChatsListRepositoryImpl(
     private val connectionManager: ConnectionManager,
     private val databaseFile: File,
     private val searchHistoryDao: SearchHistoryDao,
-    private val chatFolderDao: ChatFolderDao
+    private val chatFolderDao: ChatFolderDao,
+    private val fileQueue: FileDownloadQueue,
+    private val stringProvider: StringProvider
 ) : ChatsListRepository {
 
     private val TAG = "ChatsListRepo"
@@ -64,12 +64,14 @@ class ChatsListRepositoryImpl(
         gateway = gateway,
         dispatchers = dispatchers,
         scopeProvider = scopeProvider,
+        fileQueue = fileQueue,
         onUpdate = { triggerUpdate(); refreshActiveForumTopics() }
     )
     private val typingManager = ChatTypingManager(
         scope = scope,
         usersCache = cache.usersCache,
         allChats = cache.allChats,
+        stringProvider = stringProvider,
         onUpdate = { triggerUpdate() },
         onUserNeeded = { userId -> fetchUser(userId) }
     )
@@ -136,6 +138,8 @@ class ChatsListRepositoryImpl(
     private val invalidatedModels = ConcurrentHashMap.newKeySet<Long>()
     private var lastList: List<ChatModel>? = null
 
+    private val mainChatList = TdApi.ChatListMain()
+
     init {
         scope.launch(dispatchers.io) {
             myUserId = chatRemoteSource.getMyUserId()
@@ -181,13 +185,7 @@ class ChatsListRepositoryImpl(
 
     private suspend fun rebuildAndEmit() {
         runCatching {
-            val excludedChatIds = if (activeChatList is TdApi.ChatListMain) {
-                _foldersFlow.value.flatMap { it.pinnedChatIds }.distinct()
-            } else {
-                emptyList()
-            }
-
-            val newList = listManager.rebuildChatList(currentLimit, excludedChatIds) { chat, order, isPinned ->
+            val newList = listManager.rebuildChatList(currentLimit, emptyList()) { chat, order, isPinned ->
                 val cached = modelCache[chat.id]
                 if (cached != null && cached.order == order && cached.isPinned == isPinned && !invalidatedModels.contains(
                         chat.id
@@ -205,7 +203,21 @@ class ChatsListRepositoryImpl(
                 _chatListFlow.value = newList
                 lastList = newList
 
-                val toSave = newList.map { chatMapper.mapToEntity(it) }
+                val toSave = newList.map { model ->
+                    val chat = cache.getChat(model.id)
+                    if (chat != null) {
+                        val persistPosition = resolvePersistPosition(chat)
+                        val mapped = chatMapper.mapToEntity(chat, model)
+                        if (persistPosition != null &&
+                            (persistPosition.order != mapped.order || persistPosition.isPinned != mapped.isPinned)
+                        ) {
+                            mapped.copy(order = persistPosition.order, isPinned = persistPosition.isPinned)
+                        } else {
+                            mapped
+                        }
+                    }
+                    else chatMapper.mapToEntity(model)
+                }
                     .filter { entity ->
                         val last = lastSavedEntities[entity.id]
                         if (last == null || isEntityChanged(last, entity)) {
@@ -336,10 +348,14 @@ class ChatsListRepositoryImpl(
                 triggerUpdate()
             }
             is TdApi.UpdateSupergroup -> {
-                cache.putSupergroup(update.supergroup); triggerUpdate()
+                cache.putSupergroup(update.supergroup)
+                saveChatsBySupergroupId(update.supergroup.id)
+                triggerUpdate()
             }
             is TdApi.UpdateBasicGroup -> {
-                cache.putBasicGroup(update.basicGroup); triggerUpdate()
+                cache.putBasicGroup(update.basicGroup)
+                saveChatsByBasicGroupId(update.basicGroup.id)
+                triggerUpdate()
             }
             is TdApi.UpdateSupergroupFullInfo -> {
                 cache.putSupergroupFullInfo(update.supergroupId, update.supergroupFullInfo)
@@ -397,6 +413,7 @@ class ChatsListRepositoryImpl(
             }
             is TdApi.UpdateChatOnlineMemberCount -> {
                 cache.putOnlineMemberCount(update.chatId, update.onlineMemberCount)
+                saveChatToDb(update.chatId)
                 triggerUpdate(update.chatId)
             }
             is TdApi.UpdateAuthorizationState -> {
@@ -408,7 +425,7 @@ class ChatsListRepositoryImpl(
                     modelCache.clear()
                     invalidatedModels.clear()
                     lastSavedEntities.clear()
-                    scope.launch { chatLocalDataSource.clearAllChats() }
+                    scope.launch { chatLocalDataSource.clearAll() }
                 }
             }
             else -> {}
@@ -421,11 +438,10 @@ class ChatsListRepositoryImpl(
         pendingSaveJobs[chatId]?.cancel()
         pendingSaveJobs[chatId] = scope.launch(dispatchers.io) {
             delay(2000)
-            val position = chat.positions.find { listManager.isSameChatList(it.list, activeChatList) }
-                ?: chat.positions.firstOrNull()
-            
+            val position = resolvePersistPosition(chat)
+
             val model = modelFactory.mapChatToModel(chat, position?.order ?: 0L, position?.isPinned ?: false)
-            val entity = chatMapper.mapToEntity(model)
+            val entity = chatMapper.mapToEntity(chat, model)
 
             val last = lastSavedEntities[chatId]
             if (last == null || isEntityChanged(last, entity)) {
@@ -439,18 +455,91 @@ class ChatsListRepositoryImpl(
     private fun isEntityChanged(old: ChatEntity, new: ChatEntity): Boolean {
         return old.title != new.title ||
                 old.unreadCount != new.unreadCount ||
+                old.unreadMentionCount != new.unreadMentionCount ||
+                old.unreadReactionCount != new.unreadReactionCount ||
                 old.avatarPath != new.avatarPath ||
                 old.lastMessageText != new.lastMessageText ||
                 old.lastMessageTime != new.lastMessageTime ||
                 old.order != new.order ||
                 old.isPinned != new.isPinned ||
+                old.isMuted != new.isMuted ||
+                old.isChannel != new.isChannel ||
+                old.isGroup != new.isGroup ||
+                old.type != new.type ||
+                old.privateUserId != new.privateUserId ||
+                old.basicGroupId != new.basicGroupId ||
+                old.supergroupId != new.supergroupId ||
+                old.secretChatId != new.secretChatId ||
+                old.positionsCache != new.positionsCache ||
                 old.isArchived != new.isArchived ||
                 old.memberCount != new.memberCount ||
-                old.onlineCount != new.onlineCount
+                old.onlineCount != new.onlineCount ||
+                old.isMarkedAsUnread != new.isMarkedAsUnread ||
+                old.hasProtectedContent != new.hasProtectedContent ||
+                old.isTranslatable != new.isTranslatable ||
+                old.hasAutomaticTranslation != new.hasAutomaticTranslation ||
+                old.messageAutoDeleteTime != new.messageAutoDeleteTime ||
+                old.canBeDeletedOnlyForSelf != new.canBeDeletedOnlyForSelf ||
+                old.canBeDeletedForAllUsers != new.canBeDeletedForAllUsers ||
+                old.canBeReported != new.canBeReported ||
+                old.lastReadInboxMessageId != new.lastReadInboxMessageId ||
+                old.lastReadOutboxMessageId != new.lastReadOutboxMessageId ||
+                old.lastMessageId != new.lastMessageId ||
+                old.isLastMessageOutgoing != new.isLastMessageOutgoing ||
+                old.replyMarkupMessageId != new.replyMarkupMessageId ||
+                old.messageSenderId != new.messageSenderId ||
+                old.blockList != new.blockList ||
+                old.emojiStatusId != new.emojiStatusId ||
+                old.accentColorId != new.accentColorId ||
+                old.profileAccentColorId != new.profileAccentColorId ||
+                old.backgroundCustomEmojiId != new.backgroundCustomEmojiId ||
+                old.photoId != new.photoId ||
+                old.isSupergroup != new.isSupergroup ||
+                old.isAdmin != new.isAdmin ||
+                old.isOnline != new.isOnline ||
+                old.typingAction != new.typingAction ||
+                old.draftMessage != new.draftMessage ||
+                old.isVerified != new.isVerified ||
+                old.viewAsTopics != new.viewAsTopics ||
+                old.isForum != new.isForum ||
+                old.isBot != new.isBot ||
+                old.isMember != new.isMember ||
+                old.username != new.username ||
+                old.description != new.description ||
+                old.inviteLink != new.inviteLink ||
+                old.permissionCanSendBasicMessages != new.permissionCanSendBasicMessages ||
+                old.permissionCanSendAudios != new.permissionCanSendAudios ||
+                old.permissionCanSendDocuments != new.permissionCanSendDocuments ||
+                old.permissionCanSendPhotos != new.permissionCanSendPhotos ||
+                old.permissionCanSendVideos != new.permissionCanSendVideos ||
+                old.permissionCanSendVideoNotes != new.permissionCanSendVideoNotes ||
+                old.permissionCanSendVoiceNotes != new.permissionCanSendVoiceNotes ||
+                old.permissionCanSendPolls != new.permissionCanSendPolls ||
+                old.permissionCanSendOtherMessages != new.permissionCanSendOtherMessages ||
+                old.permissionCanAddLinkPreviews != new.permissionCanAddLinkPreviews ||
+                old.permissionCanEditTag != new.permissionCanEditTag ||
+                old.permissionCanChangeInfo != new.permissionCanChangeInfo ||
+                old.permissionCanInviteUsers != new.permissionCanInviteUsers ||
+                old.permissionCanPinMessages != new.permissionCanPinMessages ||
+                old.permissionCanCreateTopics != new.permissionCanCreateTopics
+    }
+
+    private fun resolvePersistPosition(chat: TdApi.Chat): TdApi.ChatPosition? {
+        return chat.positions.find { pos ->
+            pos.order != 0L && listManager.isSameChatList(pos.list, mainChatList)
+        }
+            ?: chat.positions.find { pos ->
+                pos.order != 0L && listManager.isSameChatList(pos.list, activeChatList)
+            }
+            ?: chat.positions.firstOrNull { it.order != 0L }
     }
 
     private fun triggerUpdate(chatId: Long? = null) {
-        chatId?.let { invalidatedModels.add(it) }
+        if (chatId == null) {
+            invalidatedModels.addAll(cache.activeListPositions.keys)
+        } else {
+            invalidatedModels.add(chatId)
+        }
         updateChannel.trySend(Unit)
     }
 
@@ -624,14 +713,14 @@ class ChatsListRepositoryImpl(
                     senderName = user.firstName
                     user.profilePhoto?.small?.let { small ->
                         senderAvatar = small.local.path.ifEmpty { fileManager.getFilePath(small.id) }
-                        if (senderAvatar.isNullOrEmpty()) fileManager.downloadFile(small.id, 1, synchronous = true)
+                        if (senderAvatar.isNullOrEmpty()) fileManager.downloadFile(small.id, 1, synchronous = false)
                     }
                 }
                 is TdApi.MessageSenderChat -> cache.getChat(senderId.chatId)?.let { chat ->
                     senderName = chat.title
                     chat.photo?.small?.let { small ->
                         senderAvatar = small.local.path.ifEmpty { fileManager.getFilePath(small.id) }
-                        if (senderAvatar.isNullOrEmpty()) fileManager.downloadFile(small.id, 1, synchronous = true)
+                        if (senderAvatar.isNullOrEmpty()) fileManager.downloadFile(small.id, 1, synchronous = false)
                     }
                 }
                 else -> {}
@@ -748,5 +837,21 @@ class ChatsListRepositoryImpl(
         listManager.updateActiveListPositions(chatObj.id, chatObj.positions, activeChatList)
         saveChatToDb(chatObj.id)
         triggerUpdate(chatObj.id)
+    }
+
+    private fun saveChatsBySupergroupId(supergroupId: Long) {
+        cache.allChats.values
+            .asSequence()
+            .filter { (it.type as? TdApi.ChatTypeSupergroup)?.supergroupId == supergroupId }
+            .map { it.id }
+            .forEach { saveChatToDb(it) }
+    }
+
+    private fun saveChatsByBasicGroupId(basicGroupId: Long) {
+        cache.allChats.values
+            .asSequence()
+            .filter { (it.type as? TdApi.ChatTypeBasicGroup)?.basicGroupId == basicGroupId }
+            .map { it.id }
+            .forEach { saveChatToDb(it) }
     }
 }

@@ -60,7 +60,8 @@ interface ChatComponent {
     fun onHighlightConsumed()
     fun onTyping()
     fun onSendReaction(messageId: Long, reaction: String)
-    suspend fun getMessageReadDate(chatId: Long, messageId: Long): Int
+    suspend fun getMessageReadDate(chatId: Long, messageId: Long, messageDate: Int): Int
+    suspend fun getMessageViewers(chatId: Long, messageId: Long): List<MessageViewerModel>
     fun toProfile(id: Long)
     fun onToggleMessageSelection(messageId: Long)
     fun onClearSelection()
@@ -142,6 +143,7 @@ interface ChatComponent {
     fun onInlineQueryChange(botUsername: String, query: String)
     fun onLoadMoreInlineResults(offset: String)
     fun onSendInlineResult(resultId: String)
+    fun onOpenAttachBot(botUserId: Long, fallbackName: String)
 
     @Stable
     data class State(
@@ -241,6 +243,7 @@ interface ChatComponent {
         val botMenuButton: BotMenuButtonModel = BotMenuButtonModel.Default,
         val showBotCommands: Boolean = false,
         val currentUser: UserModel? = null,
+        val otherUser: UserModel? = null,
         val invoiceSlug: String? = null,
         val invoiceMessageId: Long? = null,
         val mentionSuggestions: List<UserModel> = emptyList(),
@@ -248,8 +251,10 @@ interface ChatComponent {
         val restrictUserId: Long? = null,
         val inlineBotResults: InlineBotResultsModel? = null,
         val currentInlineBotId: Long? = null,
+        val currentInlineBotUsername: String? = null,
         val currentInlineQuery: String? = null,
         val isInlineBotLoading: Boolean = false,
-        val isInstalledFromGooglePlay: Boolean = true
+        val isInstalledFromGooglePlay: Boolean = true,
+        val attachMenuBots: List<AttachMenuBotModel> = emptyList()
     )
 }

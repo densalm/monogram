@@ -16,14 +16,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -32,9 +35,7 @@ import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
-import org.monogram.presentation.features.chats.currentChat.components.chats.ForwardContent
-import org.monogram.presentation.features.chats.currentChat.components.chats.MessageReactionsView
-import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.*
 
 @Composable
 fun ChannelGifMessageBubble(
@@ -63,6 +64,7 @@ fun ChannelGifMessageBubble(
     videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
+    val context = LocalContext.current
     val cornerRadius = bubbleRadius.dp
     val smallCorner = (bubbleRadius / 4f).coerceAtLeast(4f).dp
     val tailCorner = 2.dp
@@ -75,8 +77,16 @@ fun ChannelGifMessageBubble(
     )
 
     var gifPosition by remember { mutableStateOf(Offset.Zero) }
+    val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading) {
@@ -101,14 +111,26 @@ fun ChannelGifMessageBubble(
             tonalElevation = 1.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column {
+            Column(modifier = Modifier.animateContentSize()) {
                 msg.forwardInfo?.let { forward ->
-                    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                            .zIndex(1f)
+                    ) {
                         ForwardContent(forward, false, onForwardClick = toProfile)
                     }
                 }
                 msg.replyToMsg?.let { reply ->
-                    Box(modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                            .zIndex(1f)
+                    ) {
                         ReplyContent(
                             replyToMsg = reply,
                             isOutgoing = false,
@@ -117,52 +139,50 @@ fun ChannelGifMessageBubble(
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 600.dp)
-                        .aspectRatio(
-                            if (content.width > 0 && content.height > 0)
-                                content.width.toFloat() / content.height.toFloat()
-                            else 1f
-                        )
-                        .onGloballyPositioned { gifPosition = it.positionInWindow() }
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = {
-                                    if (content.isDownloading) {
-                                        onCancelDownload(content.fileId)
-                                    } else {
-                                        onGifClick(msg)
-                                    }
-                                },
-                                onLongPress = { offset -> onLongClick(gifPosition + offset) }
-                            )
-                        }
-                ) {
-                    Crossfade(
-                        targetState = hasPath,
-                        animationSpec = tween(300),
-                        label = "GifLoading"
-                    ) { targetHasPath ->
-                        if (targetHasPath) {
+                val mediaRatio = if (content.width > 0 && content.height > 0)
+                    (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
+                else 1f
+
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val mediaHeight = (maxWidth / mediaRatio).coerceIn(160.dp, 320.dp)
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(mediaHeight)
+                            .clipToBounds()
+                            .onGloballyPositioned { gifPosition = it.positionInWindow() }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onTap = {
+                                        if (content.isDownloading) {
+                                            onCancelDownload(content.fileId)
+                                        } else {
+                                            onGifClick(msg)
+                                        }
+                                    },
+                                    onLongPress = { offset -> onLongClick(gifPosition + offset) }
+                                )
+                            }
+                    ) {
+                        if (hasPath) {
                             if (autoplayGifs) {
-                                content.path?.let { path ->
+                                stablePath?.let { path ->
                                     VideoStickerPlayer(
                                         path = path,
                                         type = VideoType.Gif,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop,
+                                        contentScale = ContentScale.Fit,
                                         animate = !isAnyViewerOpen,
                                         videoPlayerPool = videoPlayerPool
                                     )
                                 }
                             } else {
                                 Image(
-                                    painter = rememberAsyncImagePainter(content.path),
+                                    painter = rememberAsyncImagePainter(stablePath),
                                     contentDescription = content.caption,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Fit
                                 )
 
                                 Box(
@@ -208,7 +228,7 @@ fun ChannelGifMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(10.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
 
@@ -241,64 +261,64 @@ fun ChannelGifMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
-                    if (content.caption.isEmpty() && (hasPath || msg.isOutgoing || content.minithumbnail != null) && showMetadata) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                msg.views?.let { viewsCount ->
-                                    if (viewsCount > 0) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Visibility,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = Color.White
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = formatViews(viewsCount),
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                            color = Color.White
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                    }
-                                }
-                                Text(
-                                    text = formatTime(msg.date),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                    color = Color.White
-                                )
-                                if (msg.isOutgoing) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    AnimatedContent(
-                                        targetState = msg.sendingState to msg.isRead,
-                                        transitionSpec = {
-                                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
-                                                animationSpec = tween(
-                                                    300
-                                                )
+                        if (content.caption.isEmpty() && (hasPath || msg.isOutgoing || content.minithumbnail != null) && showMetadata) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(6.dp)
+                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    msg.views?.let { viewsCount ->
+                                        if (viewsCount > 0) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Visibility,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp),
+                                                tint = Color.White
                                             )
-                                        },
-                                        label = "SendingState"
-                                    ) { (sendingState, isRead) ->
-                                        val statusIcon = when (sendingState) {
-                                            is MessageSendingState.Pending -> Icons.Default.Schedule
-                                            is MessageSendingState.Failed -> Icons.Default.Error
-                                            null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = formatViews(context, viewsCount),
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                color = Color.White
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
                                         }
-                                        Icon(
-                                            imageVector = statusIcon,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(12.dp),
-                                            tint = if (sendingState is MessageSendingState.Failed) Color.Red else Color.White
-                                        )
+                                    }
+                                    Text(
+                                        text = formatTime(context, msg.date),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = Color.White
+                                    )
+                                    if (msg.isOutgoing) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        AnimatedContent(
+                                            targetState = msg.sendingState to msg.isRead,
+                                            transitionSpec = {
+                                                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(
+                                                    animationSpec = tween(
+                                                        300
+                                                    )
+                                                )
+                                            },
+                                            label = "SendingState"
+                                        ) { (sendingState, isRead) ->
+                                            val statusIcon = when (sendingState) {
+                                                is MessageSendingState.Pending -> Icons.Default.Schedule
+                                                is MessageSendingState.Failed -> Icons.Default.Error
+                                                null -> if (isRead) Icons.Default.DoneAll else Icons.Default.Check
+                                            }
+                                            Icon(
+                                                imageVector = statusIcon,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp),
+                                                tint = if (sendingState is MessageSendingState.Failed) Color.Red else Color.White
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -310,15 +330,33 @@ fun ChannelGifMessageBubble(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)
+                            .zIndex(1f)
                     ) {
-                        Text(
+                        val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
+                        val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(
                             text = content.caption,
+                            entities = content.entities,
+                            isOutgoing = false,
+                            revealedSpoilers = revealedSpoilers
+                        )
+
+                        MessageText(
+                            text = finalAnnotatedString,
+                            inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
                                 lineHeight = (fontSize * 1.375f).sp
                             ),
-                            modifier = Modifier.padding(bottom = 2.dp)
+                            modifier = Modifier.padding(bottom = 2.dp),
+                            onSpoilerClick = { index ->
+                                if (!revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.add(index)
+                                }
+                            },
+                            onClick = { offset -> onLongClick(gifPosition + offset) },
+                            onLongClick = { offset -> onLongClick(gifPosition + offset) }
                         )
                         if (showMetadata) {
                             Row(
@@ -335,7 +373,7 @@ fun ChannelGifMessageBubble(
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = formatViews(viewsCount),
+                                            text = formatViews(context, viewsCount),
                                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
                                         )
@@ -343,7 +381,7 @@ fun ChannelGifMessageBubble(
                                     }
                                 }
                                 Text(
-                                    text = formatTime(msg.date),
+                                    text = formatTime(context, msg.date),
                                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.6f)
                                 )
@@ -383,7 +421,6 @@ fun ChannelGifMessageBubble(
         }
 
         if (showComments && msg.canGetMessageThread) {
-            Spacer(modifier = Modifier.height(4.dp))
             ChannelCommentsButton(
                 replyCount = msg.replyCount,
                 bubbleRadius = bubbleRadius,
@@ -399,7 +436,7 @@ fun ChannelGifMessageBubble(
                 reactions = msg.reactions,
                 onReactionClick = onReactionClick,
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
+                    .padding(top = 2.dp)
                     .align(Alignment.Start)
             )
         }

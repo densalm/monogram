@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -15,12 +16,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.ConnectionStatus
+import org.monogram.presentation.R
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 
@@ -38,6 +41,7 @@ fun ChatListTopBar(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchToggle: () -> Unit,
+    onStatusClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
     AnimatedContent(
@@ -66,16 +70,16 @@ fun ChatListTopBar(
                             onSearch = {},
                             expanded = false,
                             onExpandedChange = {},
-                            placeholder = { Text("Search conversations...") },
+                            placeholder = { Text(stringResource(R.string.search_conversations_placeholder)) },
                             leadingIcon = {
                                 IconButton(onClick = onSearchToggle) {
-                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.cd_back))
                                 }
                             },
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { onSearchQueryChange("") }) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "Clear")
+                                        Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.action_clear))
                                     }
                                 }
                             }
@@ -103,27 +107,39 @@ fun ChatListTopBar(
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "MonoGram",
+                            text = stringResource(R.string.app_name_monogram),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
 
-                        if (user?.statusEmojiPath != null) {
+                        if (!user?.statusEmojiPath.isNullOrBlank()) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            StickerImage(
-                                path = user.statusEmojiPath,
-                                modifier = Modifier.size(28.dp),
+                            Box(modifier = Modifier.clickable(onClick = onStatusClick)) {
+                                StickerImage(
+                                    path = user.statusEmojiPath,
+                                    modifier = Modifier.size(28.dp),
+                                )
+                            }
+                        } else if (user?.isPremium == true) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Star,
+                                contentDescription = stringResource(R.string.telegram_premium_title),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable(onClick = onStatusClick),
+                                tint = Color(0xFF31A6FD)
                             )
                         }
                     }
 
                     if (connectionStatus != null && connectionStatus !is ConnectionStatus.Connected) {
                         val (text, color) = when (connectionStatus) {
-                            ConnectionStatus.WaitingForNetwork -> "Waiting for network..." to MaterialTheme.colorScheme.error
-                            ConnectionStatus.Connecting -> "Connecting..." to MaterialTheme.colorScheme.onSurfaceVariant
-                            ConnectionStatus.Updating -> "Updating..." to MaterialTheme.colorScheme.primary
-                            ConnectionStatus.ConnectingToProxy -> "Connecting to proxy..." to MaterialTheme.colorScheme.primary
+                            ConnectionStatus.WaitingForNetwork -> stringResource(R.string.waiting_for_network) to MaterialTheme.colorScheme.error
+                            ConnectionStatus.Connecting -> stringResource(R.string.connecting) to MaterialTheme.colorScheme.onSurfaceVariant
+                            ConnectionStatus.Updating -> stringResource(R.string.updating) to MaterialTheme.colorScheme.primary
+                            ConnectionStatus.ConnectingToProxy -> stringResource(R.string.connecting_to_proxy) to MaterialTheme.colorScheme.primary
                         }
                         Text(
                             text = text,
@@ -139,7 +155,7 @@ fun ChatListTopBar(
                         )
                     } else if (isProxyEnabled) {
                         Text(
-                            text = "Proxy enabled",
+                            text = stringResource(R.string.proxy_enabled),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onProxySettingsClick() }
@@ -154,7 +170,7 @@ fun ChatListTopBar(
                         IconButton(onClick = onProxySettingsClick) {
                             Icon(
                                 imageVector = if (isConnected) Icons.Rounded.Shield else Icons.Rounded.ShieldMoon,
-                                contentDescription = "Proxy",
+                                contentDescription = stringResource(R.string.cd_proxy),
                                 modifier = Modifier.size(24.dp),
                                 tint = if (isConnected) Color(0xFF34A853) else MaterialTheme.colorScheme.error
                             )
@@ -164,7 +180,7 @@ fun ChatListTopBar(
                     IconButton(onClick = onSearchToggle) {
                         Icon(
                             imageVector = Icons.Rounded.Search,
-                            contentDescription = "Search",
+                            contentDescription = stringResource(R.string.action_search),
                             modifier = Modifier.size(26.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -174,10 +190,13 @@ fun ChatListTopBar(
 
                     IconButton(
                         onClick = onMenuClick,
-                        modifier = Modifier.size(40.dp).semantics { contentDescription = "Settings" }
+                        modifier = Modifier
+                            .size(40.dp)
+                            .semantics { contentDescription = "Settings" }
                     ) {
                         AvatarTopAppBar(
-                            path = user?.personalAvatarPath ?: user?.avatarPath,
+                            path = user?.avatarPath,
+                            fallbackPath = user?.personalAvatarPath,
                             name = user?.firstName ?: "",
                             size = 36.dp,
                             videoPlayerPool = videoPlayerPool

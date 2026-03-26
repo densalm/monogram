@@ -9,6 +9,7 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
+import org.monogram.data.di.TdLibException
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.mapper.MessageMapper
@@ -149,14 +150,16 @@ class TdMessageRemoteDataSource(
         safeExecute(TdApi.GetChatPinnedMessage(chatId))
 
     override suspend fun getPinnedMessageModel(chatId: Long, threadId: Long?): MessageModel? {
+        val chat = getChat(chatId) ?: return null
+
         if (threadId != null) {
-            val chat = getChat(chatId)
-            if (chat != null && chat.viewAsTopics) {
+            if (chat.viewAsTopics) {
                 val topic = safeExecute(TdApi.GetForumTopic(chatId, threadId.toInt()))
                 if (topic != null) return searchPinnedMessage(chatId, threadId.toInt())
                 return null
             }
         }
+
         val result = getChatPinnedMessage(chatId)
         return if (result != null) {
             cache.putMessage(result)
@@ -268,6 +271,9 @@ class TdMessageRemoteDataSource(
     override suspend fun getPollVoters(chatId: Long, messageId: Long, optionId: Int, offset: Int, limit: Int): TdApi.PollVoters? =
         safeExecute(TdApi.GetPollVoters(chatId, messageId, optionId, offset, limit))
 
+    override suspend fun getMessageViewers(chatId: Long, messageId: Long): TdApi.MessageViewers? =
+        safeExecute(TdApi.GetMessageViewers(chatId, messageId))
+
     override suspend fun getPollVotersModels(chatId: Long, messageId: Long, optionId: Int, offset: Int, limit: Int): List<UserModel> {
         val result = getPollVoters(chatId, messageId, optionId, offset, limit) ?: return emptyList()
         return result.voters.mapNotNull { pollVoter ->
@@ -285,6 +291,17 @@ class TdMessageRemoteDataSource(
                 }
                 else -> null
             }
+        }
+    }
+
+    override suspend fun getMessageViewersModels(chatId: Long, messageId: Long): List<MessageViewerModel> {
+        val result = getMessageViewers(chatId, messageId) ?: return emptyList()
+        return result.viewers.mapNotNull { viewer ->
+            val user = userRepository.getUser(viewer.userId) ?: return@mapNotNull null
+            MessageViewerModel(
+                user = user,
+                viewedDate = viewer.viewDate
+            )
         }
     }
 
@@ -804,13 +821,50 @@ class TdMessageRemoteDataSource(
             this.mode = TdApi.WebAppOpenModeFullSize()
             this.theme = theme?.toApi()
         }
-        val request = TdApi.OpenWebApp(chatId, botUserId, url, null, null, parameters)
-        val result = safeExecute(request)
-        return if (result is TdApi.WebAppInfo) {
-            WebAppInfoModel(result.launchId, result.url)
+
+        val isMenuUrl = url.startsWith("menu://")
+        val normalizedUrl = if (isMenuUrl) url.removePrefix("menu://") else url
+        val botPrivateChatId = if (isMenuUrl) {
+            try {
+                gateway.execute(TdApi.CreatePrivateChat(botUserId, false))?.id
+            } catch (_: Exception) {
+                null
+            }
         } else {
             null
         }
+
+        val attempts = linkedSetOf<Pair<Long, String>>().apply {
+            add(chatId to url)
+            if (normalizedUrl != url) add(chatId to normalizedUrl)
+            if (botPrivateChatId != null && botPrivateChatId != chatId) {
+                add(botPrivateChatId to url)
+                if (normalizedUrl != url) add(botPrivateChatId to normalizedUrl)
+            }
+        }
+
+        var lastError: Throwable? = null
+
+        for ((targetChatId, targetUrl) in attempts) {
+            try {
+                val result = gateway.execute(
+                    TdApi.OpenWebApp(targetChatId, botUserId, targetUrl, null, null, parameters)
+                )
+                if (result is TdApi.WebAppInfo) {
+                    return WebAppInfoModel(result.launchId, result.url)
+                }
+            } catch (e: TdLibException) {
+                lastError = e
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+
+        if (lastError != null) {
+            Log.e("TdMessageRemote", "Error executing OpenWebApp", lastError)
+        }
+
+        return null
     }
 
     override suspend fun onCallbackQueryBuy(chatId: Long, messageId: Long) {
@@ -1100,7 +1154,7 @@ class TdMessageRemoteDataSource(
         } else {
             messageMapper.mapMessageToModel(message, isChatOpen = true)
         }
-        val readDate = if (message.isOutgoing && model.isRead) messageMapper.getMessageReadDate(message.chatId, message.id) else 0
+        val readDate = if (message.isOutgoing && model.isRead) messageMapper.getMessageReadDate(message.chatId, message.id, message.date) else 0
         return model.copy(readDate = readDate)
     }
 

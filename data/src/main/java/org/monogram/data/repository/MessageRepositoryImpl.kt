@@ -32,7 +32,7 @@ class MessageRepositoryImpl(
     private val messageMapper: MessageMapper,
     private val messageRemoteDataSource: MessageRemoteDataSource,
     private val cache: ChatCache,
-    private val fileQueue: FileDataSource,
+    private val fileDataSource: FileDataSource,
     private val dispatcherProvider: DispatcherProvider,
     scopeProvider: ScopeProvider,
     private val chatLocalDataSource: ChatLocalDataSource
@@ -298,11 +298,13 @@ class MessageRepositoryImpl(
         }
 
     override fun downloadFile(fileId: Int, priority: Int, offset: Long, limit: Long, synchronous: Boolean) {
-        messageRemoteDataSource.enqueueDownload(fileId, priority, offset = offset, limit = limit, synchronous = synchronous)
+        scope.launch {
+            fileDataSource.downloadFile(fileId, priority, offset, limit, synchronous)
+        }
     }
 
     override suspend fun cancelDownloadFile(fileId: Int) {
-        fileQueue.cancelDownload(fileId)
+        fileDataSource.cancelDownload(fileId)
     }
 
     override suspend fun sendChatAction(chatId: Long, action: MessageRepository.ChatAction, threadId: Long?) {
@@ -319,9 +321,14 @@ class MessageRepositoryImpl(
         messageRemoteDataSource.sendChatAction(chatId, threadId?: 0L, tdAction)
     }
 
-    override suspend fun getMessageReadDate(chatId: Long, messageId: Long): Int = withContext(dispatcherProvider.io) {
-        messageMapper.getMessageReadDate(chatId, messageId)
+    override suspend fun getMessageReadDate(chatId: Long, messageId: Long, messageDate: Int): Int = withContext(dispatcherProvider.io) {
+        messageMapper.getMessageReadDate(chatId, messageId, messageDate)
     }
+
+    override suspend fun getMessageViewers(chatId: Long, messageId: Long): List<MessageViewerModel> =
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.getMessageViewersModels(chatId, messageId)
+        }
 
     override suspend fun addMessageReaction(chatId: Long, messageId: Long, reaction: String) {
         messageRemoteDataSource.addMessageReaction(chatId, messageId, reaction)
@@ -512,7 +519,7 @@ class MessageRepositoryImpl(
             else -> null
         }
         if (file != null && file.local.path.isEmpty()) {
-            gateway.execute(TdApi.DownloadFile(file.id, 32, 0, 0, true))
+            fileDataSource.downloadFile(file.id, 32, 0, 0, false)
         }
     }
 
@@ -575,7 +582,7 @@ class MessageRepositoryImpl(
                             val updated = cache.fileCache[file.id] ?: file
                             if (updated.local.path.isNotEmpty()) return updated.local.path
                             scope.launch {
-                                gateway.execute(TdApi.DownloadFile(updated.id, 32, 0, 0, false))
+                                fileDataSource.downloadFile(updated.id, 32, 0, 0, false)
                             }
                             return null
                         }
@@ -595,12 +602,20 @@ class MessageRepositoryImpl(
                             }
                         }
 
+                        val photoResult = res as? TdApi.InlineQueryResultPhoto
+                        val selectedPhotoSize = photoResult
+                            ?.photo
+                            ?.sizes
+                            ?.sortedBy { it.width * it.height }
+                            ?.lastOrNull { size -> maxOf(size.width, size.height) <= 1280 }
+                            ?: photoResult?.photo?.sizes?.lastOrNull()
+
                         InlineQueryResultModel(
                             id = when (res) {
                                 is TdApi.InlineQueryResultArticle -> res.id
                                 is TdApi.InlineQueryResultPhoto -> res.id
                                 is TdApi.InlineQueryResultVideo -> res.id
-                                is TdApi.InlineQueryResultAudio -> res.audio.title
+                                is TdApi.InlineQueryResultAudio -> res.id
                                 is TdApi.InlineQueryResultDocument -> res.id
                                 is TdApi.InlineQueryResultLocation -> res.id
                                 is TdApi.InlineQueryResultVenue -> res.id
@@ -611,7 +626,21 @@ class MessageRepositoryImpl(
                                 is TdApi.InlineQueryResultContact -> res.id
                                 else -> ""
                             },
-                            type = res.javaClass.simpleName,
+                            type = when (res) {
+                                is TdApi.InlineQueryResultArticle -> "article"
+                                is TdApi.InlineQueryResultPhoto -> "photo"
+                                is TdApi.InlineQueryResultVideo -> "video"
+                                is TdApi.InlineQueryResultAudio -> "audio"
+                                is TdApi.InlineQueryResultDocument -> "document"
+                                is TdApi.InlineQueryResultLocation -> "location"
+                                is TdApi.InlineQueryResultVenue -> "venue"
+                                is TdApi.InlineQueryResultGame -> "game"
+                                is TdApi.InlineQueryResultAnimation -> "gif"
+                                is TdApi.InlineQueryResultSticker -> "sticker"
+                                is TdApi.InlineQueryResultVoiceNote -> "voice"
+                                is TdApi.InlineQueryResultContact -> "contact"
+                                else -> res.javaClass.simpleName
+                            },
                             title = when (res) {
                                 is TdApi.InlineQueryResultArticle -> res.title
                                 is TdApi.InlineQueryResultPhoto -> res.title
@@ -632,7 +661,7 @@ class MessageRepositoryImpl(
                             },
                             thumbFileId = when (res) {
                                 is TdApi.InlineQueryResultArticle -> getThumbFileId(res.thumbnail)
-                                is TdApi.InlineQueryResultPhoto -> res.photo.sizes.lastOrNull()?.photo?.id ?: 0
+                                is TdApi.InlineQueryResultPhoto -> selectedPhotoSize?.photo?.id ?: 0
                                 is TdApi.InlineQueryResultVideo -> getThumbFileId(res.video.thumbnail)
                                 is TdApi.InlineQueryResultDocument -> getThumbFileId(res.document.thumbnail)
                                 is TdApi.InlineQueryResultAnimation -> getThumbFileId(res.animation.thumbnail)
@@ -643,32 +672,33 @@ class MessageRepositoryImpl(
                                 is TdApi.InlineQueryResultArticle -> getPath(res.thumbnail)
                                 is TdApi.InlineQueryResultPhoto -> {
                                     val photo = res.photo
-                                    val bestSize = photo.sizes.lastOrNull()
-                                    val path = bestSize?.photo?.let { file ->
+                                    val path = selectedPhotoSize?.photo?.let { file ->
                                         val updated = cache.fileCache[file.id] ?: file
-                                        updated.local.path.ifEmpty {
-                                            gateway.execute(
-                                                TdApi.DownloadFile(
-                                                    updated.id,
-                                                    32,
-                                                    0,
-                                                    0,
-                                                    false
-                                                )
-                                            )
+                                        if (updated.local.path.isNotEmpty()) {
+                                            updated.local.path
+                                        } else {
+                                            scope.launch {
+                                                fileDataSource.downloadFile(updated.id, 32, 0, 0, false)
+                                            }
                                             null
                                         }
                                     }
                                     path ?: makePath(photo.minithumbnail)
                                 }
-                                is TdApi.InlineQueryResultVideo -> getPath(res.video.thumbnail)
-                                is TdApi.InlineQueryResultDocument -> getPath(res.document.thumbnail)
-                                is TdApi.InlineQueryResultAnimation -> getPath(res.animation.thumbnail)
+
+                                is TdApi.InlineQueryResultVideo ->
+                                    getPath(res.video.thumbnail) ?: makePath(res.video.minithumbnail)
+
+                                is TdApi.InlineQueryResultDocument ->
+                                    getPath(res.document.thumbnail) ?: makePath(res.document.minithumbnail)
+
+                                is TdApi.InlineQueryResultAnimation ->
+                                    getPath(res.animation.thumbnail) ?: makePath(res.animation.minithumbnail)
                                 is TdApi.InlineQueryResultSticker -> getPath(res.sticker.thumbnail)
                                 else -> null
                             },
                             width = when (res) {
-                                is TdApi.InlineQueryResultPhoto -> res.photo.sizes.lastOrNull()?.width
+                                is TdApi.InlineQueryResultPhoto -> selectedPhotoSize?.width
                                     ?: res.photo.minithumbnail?.width ?: 0
                                 is TdApi.InlineQueryResultVideo -> res.video.width
                                 is TdApi.InlineQueryResultAnimation -> res.animation.width
@@ -676,7 +706,7 @@ class MessageRepositoryImpl(
                                 else -> 0
                             },
                             height = when (res) {
-                                is TdApi.InlineQueryResultPhoto -> res.photo.sizes.lastOrNull()?.height
+                                is TdApi.InlineQueryResultPhoto -> selectedPhotoSize?.height
                                     ?: res.photo.minithumbnail?.height ?: 0
                                 is TdApi.InlineQueryResultVideo -> res.video.height
                                 is TdApi.InlineQueryResultAnimation -> res.animation.height
@@ -704,19 +734,23 @@ class MessageRepositoryImpl(
             TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0)
         else null
 
-        threadId?.let {
-            gateway.execute(
-                TdApi.SendInlineQueryResultMessage(
-                    chatId,
-                    TdApi.MessageTopicForum(it.toInt()),
-                    replyTo,
-                    null,
-                    queryId,
-                    resultId,
-                    false
-                )
-            )
+        val topicId = if (threadId != null) {
+            TdApi.MessageTopicForum(threadId.toInt())
+        } else {
+            null
         }
+
+        gateway.execute(
+            TdApi.SendInlineQueryResultMessage(
+                chatId,
+                topicId,
+                replyTo,
+                null,
+                queryId,
+                resultId,
+                false
+            )
+        )
     }
 
     override suspend fun getChatEventLog(
@@ -945,7 +979,7 @@ class MessageRepositoryImpl(
     override fun clearAllCache() {
         cache.clearAll()
         scope.launch(dispatcherProvider.io) {
-            chatLocalDataSource.clearAllChats()
+            chatLocalDataSource.clearAll()
         }
     }
 }

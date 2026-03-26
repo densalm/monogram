@@ -24,6 +24,8 @@ import org.monogram.data.gateway.UpdateDispatcherImpl
 import org.monogram.data.infra.*
 import org.monogram.data.mapper.ChatMapper
 import org.monogram.data.mapper.MessageMapper
+import org.monogram.data.mapper.NetworkMapper
+import org.monogram.data.mapper.StorageMapper
 import org.monogram.data.repository.*
 import org.monogram.domain.repository.*
 
@@ -34,6 +36,7 @@ val dataModule = module {
 
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single<ScopeProvider> { DefaultScopeProvider(get()) }
+    single<StringProvider> { AndroidStringProvider(androidContext()) }
 
     single { ChatCache() }
     single<TelegramGateway> {
@@ -46,7 +49,8 @@ val dataModule = module {
     }
     single<FileDataSource> {
         TdFileDataSource(
-            gateway = get()
+            gateway = get(),
+            fileDownloadQueue = get()
         )
     }
 
@@ -58,7 +62,7 @@ val dataModule = module {
 
     factory<PlayerDataSourceFactory> {
         PlayerDataSourceFactoryImpl(
-            gateway = get()
+            fileDataSource = get()
         )
     }
 
@@ -83,7 +87,11 @@ val dataModule = module {
             androidContext(),
             MonogramDatabase::class.java,
             "monogram_db"
-        ).fallbackToDestructiveMigration(true).build()
+        ).addMigrations(
+            MonogramDatabase.MIGRATION_14_15,
+            MonogramDatabase.MIGRATION_15_16,
+            MonogramDatabase.MIGRATION_16_17
+        ).build()
     }
     single { get<MonogramDatabase>().chatDao() }
     single { get<MonogramDatabase>().messageDao() }
@@ -123,7 +131,9 @@ val dataModule = module {
             userLocal = get(),
             chatLocal = get(),
             updates = get(),
-            scopeProvider = get()
+            scopeProvider = get(),
+            gateway = get(),
+            fileQueue = get()
         )
     }
 
@@ -151,7 +161,15 @@ val dataModule = module {
     }
 
     single {
-        ChatMapper()
+        ChatMapper(get())
+    }
+
+    single {
+        StorageMapper(get())
+    }
+
+    single {
+        NetworkMapper(get(), get())
     }
 
     single<MessageFileApi> {
@@ -208,13 +226,16 @@ val dataModule = module {
             connectionManager = get(),
             databaseFile = androidContext().getDatabasePath("monogram_db"),
             searchHistoryDao = get(),
-            chatFolderDao = get()
+            chatFolderDao = get(),
+            fileQueue = get(),
+            stringProvider = get()
         )
     }
 
     factory<SettingsRemoteDataSource> {
         TdSettingsRemoteDataSource(
-            gateway = get()
+            gateway = get(),
+            fileQueue = get()
         )
     }
 
@@ -234,7 +255,10 @@ val dataModule = module {
             dispatchers = get(),
             attachBotDao = get(),
             keyValueDao = get(),
-            wallpaperDao = get()
+            wallpaperDao = get(),
+            storageMapper = get(),
+            stringProvider = get(),
+            networkMapper = get()
         )
     }
     single<PollRepository> {
@@ -264,7 +288,7 @@ val dataModule = module {
             cache = get(),
             dispatcherProvider = get(),
             scopeProvider = get(),
-            fileQueue = get(),
+            fileDataSource = get(),
             chatLocalDataSource = get()
         )
     }
@@ -329,12 +353,12 @@ val dataModule = module {
     }
 
     single<LinkHandlerRepository> {
-        LinkHandlerRepositoryImpl(get(), get(), get())
+        LinkHandlerRepositoryImpl(get(), get(), get(), get())
     }
 
     single<StreamingRepository> {
         StreamingRepositoryImpl(
-            gateway = get(),
+            fileDataSource = get(),
             updates = get(),
             scopeProvider = get()
         )
@@ -376,5 +400,5 @@ val dataModule = module {
         )
     }
 
-    single { TdNotificationManager(androidContext(), get(), get(), get()) }
+    single { TdNotificationManager(androidContext(), get(), get(), get(), get()) }
 }

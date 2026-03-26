@@ -11,10 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.monogram.domain.models.ChatModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 
@@ -42,6 +44,7 @@ fun LinkedChatItem(
         ) {
             Avatar(
                 path = chat.avatarPath,
+                fallbackPath = chat.personalAvatarPath,
                 name = chat.title,
                 size = 64.dp,
                 modifier = Modifier.clip(CircleShape),
@@ -60,7 +63,7 @@ fun LinkedChatItem(
                 )
                 val subtitle = buildString {
                     if (chat.memberCount > 0) {
-                        append("${chat.memberCount} subscribers")
+                        append(stringResource(R.string.subscribers_count_format, chat.memberCount))
                     }
                     if (!chat.description.isNullOrEmpty()) {
                         if (isNotEmpty()) append(" • ")
@@ -90,7 +93,7 @@ fun LinkedChatItem(
 
              ) {
                  Text(
-                     text = if (isDiscussion) "Discussion" else "Channel",
+                     text = if (isDiscussion) stringResource(R.string.label_discussion) else stringResource(R.string.label_channel),
                      modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                      style = MaterialTheme.typography.labelSmall,
                      color = MaterialTheme.colorScheme.onPrimaryContainer,

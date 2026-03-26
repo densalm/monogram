@@ -1,8 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -32,6 +31,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -72,7 +72,14 @@ fun VideoMessageBubble(
     val tailCorner = 2.dp
 
     val context = LocalContext.current
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+        }
+    }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
         if (!hasPath && !content.isDownloading && !content.supportsStreaming) {
@@ -128,12 +135,24 @@ fun VideoMessageBubble(
                 .widthIn(max = 280.dp)
                 .animateContentSize()) {
                 msg.forwardInfo?.let { forward ->
-                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .zIndex(1f)
+                    ) {
                         ForwardContent(forward, isOutgoing, onForwardClick = toProfile)
                     }
                 }
                 msg.replyToMsg?.let { reply ->
-                    Box(modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                            .zIndex(1f)
+                    ) {
                         ReplyContent(
                             replyToMsg = reply,
                             isOutgoing = isOutgoing,
@@ -149,8 +168,9 @@ fun VideoMessageBubble(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 500.dp)
+                        .heightIn(min = 160.dp, max = 360.dp)
                         .aspectRatio(ratio)
+                        .clipToBounds()
                         .onGloballyPositioned { videoPosition = it.positionInWindow() }
                         .pointerInput(Unit) {
                             detectTapGestures(
@@ -167,24 +187,19 @@ fun VideoMessageBubble(
                             )
                         }
                 ) {
-                    Crossfade(
-                        targetState = hasPath || content.supportsStreaming,
-                        animationSpec = tween(400),
-                        label = "VideoLoadingState"
-                    ) { targetHasPathOrStreaming ->
-                        if (targetHasPathOrStreaming) {
+                    if (hasPath || content.supportsStreaming) {
                             if (autoplayVideos) {
-                                val videoPath = content.path ?: "http://streaming/${content.fileId}"
+                                val videoPath = stablePath ?: "http://streaming/${content.fileId}"
                                 VideoStickerPlayer(
                                     path = videoPath,
                                     type = VideoType.Gif,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
+                                    contentScale = ContentScale.Fit,
                                     animate = isVisible && !isAnyViewerOpen,
                                     volume = if (isMuted) 0f else 1f,
                                     onProgressUpdate = { pos -> currentPosition = pos },
                                     videoPlayerPool = videoPlayerPool,
-                                    fileId = if (content.path == null) content.fileId else 0
+                                    fileId = if (!hasPath && content.supportsStreaming) content.fileId else 0
                                 )
 
                                 Box(
@@ -208,13 +223,13 @@ fun VideoMessageBubble(
                                     Image(
                                         painter = rememberAsyncImagePainter(
                                             model = ImageRequest.Builder(context)
-                                                .data(content.path)
+                                                .data(stablePath)
                                                 .crossfade(true)
                                                 .build()
                                         ),
                                         contentDescription = content.caption,
                                         modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 } else {
                                     if (content.minithumbnail != null) {
@@ -224,7 +239,7 @@ fun VideoMessageBubble(
                                             modifier = Modifier
                                                 .fillMaxSize()
                                                 .blur(10.dp),
-                                            contentScale = ContentScale.Crop
+                                            contentScale = ContentScale.Fit
                                         )
                                     }
                                 }
@@ -244,7 +259,7 @@ fun VideoMessageBubble(
                                     )
                                 }
                             }
-                        } else {
+                    } else {
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -263,7 +278,7 @@ fun VideoMessageBubble(
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .blur(14.dp),
-                                        contentScale = ContentScale.Crop
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
 
@@ -309,7 +324,6 @@ fun VideoMessageBubble(
                                     }
                                 }
                             }
-                        }
                     }
 
                     Box(
@@ -377,7 +391,9 @@ fun VideoMessageBubble(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .background(if (isOutgoing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
                             .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)
+                            .zIndex(1f)
                     ) {
                         val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
                         val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(

@@ -1,14 +1,9 @@
 package org.monogram.presentation.features.profile.components
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,7 +12,6 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.rounded.*
@@ -30,25 +24,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.monogram.domain.models.ChatType
 import org.monogram.domain.models.UserTypeEnum
-import org.monogram.presentation.core.ui.StyledQRCode
-import org.monogram.presentation.core.ui.generatePureBitmap
-import org.monogram.presentation.core.ui.saveBitmapToGallery
-import org.monogram.presentation.core.ui.shareBitmap
+import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.*
 import org.monogram.presentation.core.util.CountryManager
 import org.monogram.presentation.core.util.OperatorManager
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.profile.ProfileComponent
-import org.monogram.presentation.core.ui.ItemPosition
-import org.monogram.presentation.core.ui.SettingsSwitchTile
-import org.monogram.presentation.core.ui.SettingsTile
 import java.util.*
 
 @Composable
@@ -77,70 +66,27 @@ fun ProfileInfoSection(
     val fullInfo = state.fullInfo
     val context = LocalContext.current
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            QuickActionItem(
-                Icons.AutoMirrored.Filled.Chat, "Message",
-                onClick = onSendMessage,
-                modifier = Modifier.weight(1f),
-            )
+    val isGroupOrChannel = chat?.isGroup == true || chat?.isChannel == true
+    val isCurrentUser = user != null && state.currentUser?.id == user.id
+    val canEdit = when {
+        isCurrentUser -> true
+        isGroupOrChannel -> chat?.isAdmin == true || chat?.permissions?.canChangeInfo == true
+        else -> false
+    }
 
-            val isMuted = chat?.isMuted == true
-            QuickActionItem(
-                if (isMuted) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
-                if (isMuted) "Unmute" else "Mute",
-                onClick = onToggleMute,
-                modifier = Modifier.weight(1f)
-            )
-
-            chat?.let {
-                if (it.isGroup || it.isChannel) {
-                    if (it.isMember) {
-                        QuickActionItem(
-                            Icons.AutoMirrored.Rounded.Logout, "Leave",
-                            onClick = onLeave,
-                            modifier = Modifier.weight(1f)
-                        )
-                    } else {
-                        QuickActionItem(
-                            Icons.AutoMirrored.Rounded.Login, "Join",
-                            onClick = onJoin,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    QuickActionItem(
-                        Icons.Rounded.Report, "Report",
-                        onClick = onReport,
-                        modifier = Modifier.weight(1f)
-                    )
-                } else {
-                    QuickActionItem(
-                        Icons.Default.QrCode, "QR Code",
-                        onClick = onShowQRCode,
-                        modifier = Modifier.weight(1f)
-                    )
-                    val isContact = user?.isContact ?: false
-                    QuickActionItem(
-                        if (isContact) Icons.Default.Edit else Icons.Default.Add,
-                        if (isContact) "Edit" else "Add",
-                        onClick = onEdit,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        }
+    if (!isCurrentUser) {
+        ProfileQuickActions(
+            state = state,
+            isGroupOrChannel = isGroupOrChannel,
+            isCurrentUser = isCurrentUser,
+            onSendMessage = onSendMessage,
+            onToggleMute = onToggleMute,
+            onLeave = onLeave,
+            onJoin = onJoin,
+            onReport = onReport,
+            onShowQRCode = onShowQRCode,
+            onEdit = onEdit
+        )
     }
 
     state.linkedChat?.let { linkedChat ->
@@ -153,13 +99,13 @@ fun ProfileInfoSection(
     }
 
     val items = mutableListOf<@Composable (ItemPosition) -> Unit>()
-    val isGroupOrChannel = chat?.let { it.isGroup || it.isChannel } ?: false
-    if (!isGroupOrChannel && (state.personalAvatarPath != null || chat?.personalAvatarPath != null)) {
+
+    if (!isCurrentUser && !isGroupOrChannel && (state.personalAvatarPath != null || chat?.personalAvatarPath != null)) {
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.Portrait,
-                title = "Personal Photo",
-                subtitle = "This photo is only visible to you",
+                title = stringResource(R.string.personal_photo_title),
+                subtitle = stringResource(R.string.personal_photo_subtitle),
                 iconColor = MaterialTheme.colorScheme.primary,
                 position = pos,
                 onClick = { }
@@ -168,12 +114,12 @@ fun ProfileInfoSection(
     }
 
     if (user?.type == UserTypeEnum.BOT && !state.botWebAppUrl.isNullOrEmpty()) {
-        val botName = listOfNotNull(user.firstName, user.lastName).joinToString(" ")
+        val botName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").trim()
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.RocketLaunch,
-                title = state.botWebAppName ?: "Open Mini App",
-                subtitle = "Launch bot's web application",
+                title = state.botWebAppName ?: stringResource(R.string.open_mini_app),
+                subtitle = stringResource(R.string.open_mini_app_subtitle),
                 iconColor = MaterialTheme.colorScheme.primary,
                 position = pos,
                 onClick = { onOpenMiniApp(state.botWebAppUrl, state.botWebAppName ?: botName, state.chatId) }
@@ -186,8 +132,8 @@ fun ProfileInfoSection(
             items.add { pos ->
                 SettingsTile(
                     icon = Icons.Rounded.AssignmentTurnedIn,
-                    title = "Accept TOS",
-                    subtitle = "Review and accept bot's terms of service",
+                    title = stringResource(R.string.accept_tos),
+                    subtitle = stringResource(R.string.accept_tos_subtitle),
                     iconColor = MaterialTheme.colorScheme.primary,
                     position = pos,
                     onClick = onAcceptTOS
@@ -198,8 +144,8 @@ fun ProfileInfoSection(
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.Security,
-                title = "Bot Permissions",
-                subtitle = "Manage permissions for this bot",
+                title = stringResource(R.string.bot_permissions),
+                subtitle = stringResource(R.string.bot_permissions_subtitle),
                 iconColor = MaterialTheme.colorScheme.secondary,
                 position = pos,
                 onClick = { onShowPermissions() }
@@ -223,7 +169,7 @@ fun ProfileInfoSection(
             )
         }
     } else {
-        val displayLink = state.user?.username ?: state.publicLink
+        val displayLink = user?.username ?: chat?.username ?: state.publicLink
         if (!displayLink.isNullOrEmpty()) {
             items.add { pos ->
                 val isLink = displayLink.startsWith("http", ignoreCase = true) ||
@@ -231,7 +177,8 @@ fun ProfileInfoSection(
                 val finalTitle = if (isLink) displayLink else "@$displayLink"
                 val icon = if (isLink) Icons.Rounded.Link else Icons.Rounded.AlternateEmail
                 val subtitleText =
-                    if (isLink || chat?.isChannel == true || chat?.isGroup == true) "Link" else "Username"
+                    if (isLink || isGroupOrChannel) stringResource(R.string.link_label)
+                    else stringResource(R.string.username_label)
 
                 SettingsTile(
                     icon = icon,
@@ -247,28 +194,25 @@ fun ProfileInfoSection(
         }
     }
 
-
-    val aboutText = fullInfo?.botInfo ?: state.about
+    val aboutText = fullInfo?.botInfo ?: fullInfo?.description ?: state.about
     if (!aboutText.isNullOrEmpty()) {
         items.add { pos ->
             RichSettingsTile(
                 icon = Icons.Rounded.Info,
                 title = when {
-                    user?.type.toString().contains("BOT", true) -> "Bot Info"
-                    chat?.isChannel == true || chat?.isGroup == true -> "Description"
-                    else -> "Bio"
+                    user?.type == UserTypeEnum.BOT -> stringResource(R.string.bot_info_label)
+                    isGroupOrChannel -> stringResource(R.string.description_label)
+                    else -> stringResource(R.string.bio_label)
                 },
                 content = aboutText,
                 iconColor = MaterialTheme.colorScheme.primary,
                 position = pos,
                 onCopyClick = { text ->
                     clipboardManager.setText(AnnotatedString(text))
-
                 }
             )
         }
     }
-
 
     user?.phoneNumber?.takeIf { it.isNotEmpty() }?.let { phone ->
         val formattedPhone = CountryManager.formatPhone(context, phone)
@@ -312,7 +256,7 @@ fun ProfileInfoSection(
             SettingsTile(
                 icon = Icons.Rounded.Cake,
                 title = birthdateText,
-                subtitle = "Birthdate",
+                subtitle = stringResource(R.string.birthdate_label),
                 iconColor = Color(0xFFE91E63),
                 position = pos,
                 onClick = { }
@@ -320,14 +264,13 @@ fun ProfileInfoSection(
         }
     }
 
-    // Business Info
     fullInfo?.businessInfo?.let { business ->
         business.location?.let { loc ->
             items.add { pos ->
                 SettingsTile(
                     icon = Icons.Rounded.LocationOn,
                     title = loc.address,
-                    subtitle = "Location",
+                    subtitle = stringResource(R.string.location_label),
                     iconColor = Color(0xFFEA4335),
                     position = pos,
                     onClick = { onLocationClick(loc.latitude, loc.longitude, loc.address) }
@@ -337,12 +280,20 @@ fun ProfileInfoSection(
 
         business.openingHours?.let { hours ->
             items.add { pos ->
-                val days = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+                val days = listOf(
+                    stringResource(R.string.monday_short),
+                    stringResource(R.string.tuesday_short),
+                    stringResource(R.string.wednesday_short),
+                    stringResource(R.string.thursday_short),
+                    stringResource(R.string.friday_short),
+                    stringResource(R.string.saturday_short),
+                    stringResource(R.string.sunday_short)
+                )
                 val intervalsByDay = hours.intervals.groupBy { it.startMinute / (24 * 60) }
                 val formattedHours = days.mapIndexed { index, day ->
                     val dayIntervals = intervalsByDay[index]
                     if (dayIntervals.isNullOrEmpty()) {
-                        "$day: Closed"
+                        "$day: ${stringResource(R.string.opening_hours_closed)}"
                     } else {
                         val times = dayIntervals.joinToString(", ") { interval ->
                             val startHour = (interval.startMinute % (24 * 60)) / 60
@@ -357,7 +308,7 @@ fun ProfileInfoSection(
 
                 SettingsTile(
                     icon = Icons.Rounded.Schedule,
-                    title = "Opening Hours",
+                    title = stringResource(R.string.opening_hours_label),
                     subtitle = formattedHours,
                     iconColor = Color(0xFFFBBC04),
                     position = pos,
@@ -367,12 +318,12 @@ fun ProfileInfoSection(
         }
     }
 
-    if (chat?.isAdmin == true && (chat.type == ChatType.SUPERGROUP || chat.type == ChatType.BASIC_GROUP)) {
+    if (chat?.isAdmin == true && isGroupOrChannel) {
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.History,
-                title = "Recent Actions",
-                subtitle = "View chat event log",
+                title = stringResource(R.string.recent_actions_title),
+                subtitle = stringResource(R.string.recent_actions_subtitle),
                 iconColor = MaterialTheme.colorScheme.secondary,
                 position = pos,
                 onClick = onShowLogs
@@ -380,12 +331,13 @@ fun ProfileInfoSection(
         }
     }
 
-    if (fullInfo?.canGetStatistics == true) {
+    val hasStatisticsAccess = isGroupOrChannel && fullInfo?.canGetStatistics == true
+    if (hasStatisticsAccess) {
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.BarChart,
-                title = "Statistics",
-                subtitle = "View detailed chat statistics",
+                title = stringResource(R.string.statistics_title),
+                subtitle = stringResource(R.string.statistics_subtitle),
                 iconColor = Color(0xFF00BCD4),
                 position = pos,
                 onClick = { onShowStatistics() }
@@ -393,38 +345,119 @@ fun ProfileInfoSection(
         }
     }
 
-    if (fullInfo?.canGetRevenueStatistics == true) {
+    if (!isGroupOrChannel && !isCurrentUser && user != null && user.type != UserTypeEnum.BOT && user.isMutualContact) {
+        val savedByYou = user.isContact
         items.add { pos ->
             SettingsTile(
-                icon = Icons.Rounded.Payments,
-                title = "Revenue",
-                subtitle = "View chat revenue statistics",
-                iconColor = Color(0xFFFF9800),
+                icon = Icons.Rounded.PersonAdd,
+                title = stringResource(R.string.contact_added_you_yes),
+                subtitle = if (savedByYou) {
+                    stringResource(R.string.contact_saved_by_you)
+                } else {
+                    stringResource(R.string.contact_not_saved_by_you)
+                },
+                iconColor = Color(0xFF5C6BC0),
                 position = pos,
-                onClick = { onShowRevenueStatistics() }
+                onClick = { }
             )
         }
     }
 
-    if (fullInfo != null && (chat?.isGroup == true || chat?.isChannel == true)) {
-        val stats = listOfNotNull(
-            if (fullInfo.memberCount > 0) "${fullInfo.memberCount} members" else null,
-            if (fullInfo.administratorCount > 0) "${fullInfo.administratorCount} admins" else null,
-            if (fullInfo.restrictedCount > 0) "${fullInfo.restrictedCount} restricted" else null,
-            if (fullInfo.bannedCount > 0) "${fullInfo.bannedCount} banned" else null
-        ).joinToString(", ")
-
-        if (stats.isNotEmpty()) {
+    if (!isGroupOrChannel && isCurrentUser && fullInfo != null) {
+        if (fullInfo.hasPostedToProfileStories) {
             items.add { pos ->
                 SettingsTile(
-                    icon = Icons.Rounded.Groups,
-                    title = stats,
-                    subtitle = "Chat Stats",
-                    iconColor = MaterialTheme.colorScheme.primary,
+                    icon = Icons.Rounded.Collections,
+                    title = stringResource(R.string.profile_feature_stories_title),
+                    subtitle = stringResource(R.string.profile_feature_stories_subtitle),
+                    iconColor = Color(0xFFAB47BC),
                     position = pos,
                     onClick = { }
                 )
             }
+        }
+
+        if (fullInfo.setChatBackground) {
+            items.add { pos ->
+                SettingsTile(
+                    icon = Icons.Rounded.Palette,
+                    title = stringResource(R.string.profile_feature_background_title),
+                    subtitle = stringResource(R.string.profile_feature_background_subtitle),
+                    iconColor = Color(0xFF26A69A),
+                    position = pos,
+                    onClick = { }
+                )
+            }
+        }
+
+        if (fullInfo.hasRestrictedVoiceAndVideoNoteMessages) {
+            items.add { pos ->
+                SettingsTile(
+                    icon = Icons.Rounded.MicOff,
+                    title = stringResource(R.string.profile_feature_voice_restricted_title),
+                    subtitle = stringResource(R.string.profile_feature_voice_restricted_subtitle),
+                    iconColor = Color(0xFFFF7043),
+                    position = pos,
+                    onClick = { }
+                )
+            }
+        }
+    }
+
+    if (isGroupOrChannel && (fullInfo?.slowModeDelay ?: 0) > 0) {
+        items.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.Timer,
+                title = stringResource(R.string.slow_mode_title),
+                subtitle = stringResource(
+                    R.string.slow_mode_subtitle_format,
+                    formatInterval(fullInfo?.slowModeDelay ?: 0)
+                ),
+                iconColor = Color(0xFF009688),
+                position = pos,
+                onClick = { }
+            )
+        }
+    }
+
+    if (isGroupOrChannel && chat?.hasProtectedContent == true) {
+        items.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.Shield,
+                title = stringResource(R.string.protected_content_title),
+                subtitle = stringResource(R.string.protected_content_subtitle),
+                iconColor = Color(0xFF7E57C2),
+                position = pos,
+                onClick = { }
+            )
+        }
+    }
+
+    if (!isGroupOrChannel && fullInfo?.hasPrivateForwards == true) {
+        items.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.ForwardToInbox,
+                title = stringResource(R.string.private_forwards_title),
+                subtitle = stringResource(R.string.private_forwards_subtitle),
+                iconColor = Color(0xFF5E35B1),
+                position = pos,
+                onClick = { }
+            )
+        }
+    }
+
+    val hasRevenueAccess = chat?.isChannel == true && fullInfo?.canGetRevenueStatistics == true
+
+    if (hasRevenueAccess) {
+        items.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.Payments,
+                title = stringResource(R.string.revenue_title),
+                subtitle = stringResource(R.string.revenue_subtitle),
+                iconColor = Color(0xFFFF9800),
+                position = pos,
+                onClick = { onShowRevenueStatistics() }
+            )
         }
     }
 
@@ -434,7 +467,7 @@ fun ProfileInfoSection(
             SettingsTile(
                 icon = Icons.Rounded.Numbers,
                 title = id.toString(),
-                subtitle = "ID",
+                subtitle = stringResource(R.string.label_id),
                 iconColor = MaterialTheme.colorScheme.outline,
                 position = pos,
                 onClick = { clipboardManager.setText(AnnotatedString(id.toString())) }
@@ -442,22 +475,196 @@ fun ProfileInfoSection(
         }
     }
 
-    // Render Info Items
-    if (items.isNotEmpty()) {
-        SectionHeader(text = "Info", onEditClick = if (chat?.isAdmin == true) onEdit else null)
-        items.forEachIndexed { index, item ->
-            val position = when {
-                items.size == 1 -> ItemPosition.STANDALONE
-                index == 0 -> ItemPosition.TOP
-                index == items.size - 1 -> ItemPosition.BOTTOM
-                else -> ItemPosition.MIDDLE
+    AnimatedVisibility(
+        visible = items.isNotEmpty(),
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Column {
+            SectionHeader(
+                text = stringResource(R.string.info_section_header),
+                onEditClick = if (canEdit) onEdit else null
+            )
+            items.forEachIndexed { index, item ->
+                val position = when {
+                    items.size == 1 -> ItemPosition.STANDALONE
+                    index == 0 -> ItemPosition.TOP
+                    index == items.size - 1 -> ItemPosition.BOTTOM
+                    else -> ItemPosition.MIDDLE
+                }
+                item(position)
             }
-            item(position)
+        }
+    }
+
+    val settingsItems = mutableListOf<@Composable (ItemPosition) -> Unit>()
+
+    if (!isCurrentUser) {
+        settingsItems.add { pos ->
+            SettingsSwitchTile(
+                icon = Icons.Rounded.Notifications,
+                title = stringResource(R.string.notifications_title),
+                checked = chat?.isMuted == false,
+                iconColor = Color(0xFFFF6D66),
+                position = pos,
+                onCheckedChange = { onToggleMute() }
+            )
+        }
+    }
+
+    if (chat != null && chat.messageAutoDeleteTime > 0) {
+        settingsItems.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.Timer,
+                title = "${chat.messageAutoDeleteTime}s",
+                subtitle = stringResource(R.string.auto_delete_subtitle),
+                iconColor = Color(0xFF009688),
+                position = pos,
+                onClick = { /* */ }
+            )
+        }
+    }
+
+    AnimatedVisibility(
+        visible = settingsItems.isNotEmpty(),
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Column {
+            SectionHeader(
+                text = stringResource(R.string.settings_section_header),
+                onEditClick = null
+            )
+            settingsItems.forEachIndexed { index, item ->
+                val position = when {
+                    settingsItems.size == 1 -> ItemPosition.STANDALONE
+                    index == 0 -> ItemPosition.TOP
+                    index == settingsItems.size - 1 -> ItemPosition.BOTTOM
+                    else -> ItemPosition.MIDDLE
+                }
+                item(position)
+            }
         }
     }
 }
 
+@Composable
+private fun ProfileQuickActions(
+    state: ProfileComponent.State,
+    isGroupOrChannel: Boolean,
+    isCurrentUser: Boolean,
+    onSendMessage: () -> Unit,
+    onToggleMute: () -> Unit,
+    onLeave: () -> Unit,
+    onJoin: () -> Unit,
+    onReport: () -> Unit,
+    onShowQRCode: () -> Unit,
+    onEdit: () -> Unit
+) {
+    val chat = state.chat
+    val user = state.user
+    
+    val items = mutableListOf<@Composable (Modifier) -> Unit>()
 
+    if (!isCurrentUser) {
+        items.add { mod ->
+            QuickActionItem(
+                Icons.AutoMirrored.Filled.Chat, stringResource(R.string.action_message),
+                onClick = onSendMessage,
+                modifier = mod
+            )
+        }
+
+        val isMuted = chat?.isMuted == true
+        items.add { mod ->
+            QuickActionItem(
+                if (isMuted) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
+                if (isMuted) stringResource(R.string.menu_unmute) else stringResource(R.string.menu_mute),
+                onClick = onToggleMute,
+                modifier = mod
+            )
+        }
+    }
+
+    if (isGroupOrChannel) {
+        if (chat?.isMember == true) {
+            items.add { mod ->
+                QuickActionItem(
+                    Icons.AutoMirrored.Rounded.Logout, stringResource(R.string.menu_leave),
+                    onClick = onLeave,
+                    modifier = mod
+                )
+            }
+        } else {
+            items.add { mod ->
+                QuickActionItem(
+                    Icons.AutoMirrored.Rounded.Login, stringResource(R.string.action_join_chat),
+                    onClick = onJoin,
+                    modifier = mod
+                )
+            }
+        }
+        items.add { mod ->
+            QuickActionItem(
+                Icons.Rounded.Report, stringResource(R.string.action_report),
+                onClick = onReport,
+                modifier = mod
+            )
+        }
+    } else {
+        val username = user?.username ?: chat?.username
+        if (!username.isNullOrEmpty()) {
+            items.add { mod ->
+                QuickActionItem(
+                    Icons.Default.QrCode, stringResource(R.string.action_qr_code),
+                    onClick = onShowQRCode,
+                    modifier = mod
+                )
+            }
+        }
+        
+        if (!isCurrentUser) {
+            val isContact = user?.isContact == true
+            if (isContact) {
+                items.add { mod ->
+                    QuickActionItem(
+                        Icons.Default.Edit,
+                        stringResource(R.string.menu_edit),
+                        onClick = onEdit,
+                        modifier = mod
+                    )
+                }
+            }
+        }
+    }
+
+    AnimatedVisibility(
+        visible = items.isNotEmpty(),
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 2.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+            ) {
+                items.forEach { item ->
+                    item(Modifier
+                        .weight(1f, fill = true)
+                        .widthIn(max = 100.dp))
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun QuickActionItem(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
@@ -471,7 +678,7 @@ fun QuickActionItem(icon: ImageVector, label: String, modifier: Modifier = Modif
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.5f)
+                .height(48.dp)
                 .background(
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     RoundedCornerShape(12.dp)
@@ -494,54 +701,6 @@ fun QuickActionItem(icon: ImageVector, label: String, modifier: Modifier = Modif
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-@Composable
-fun ProfileSettingsSection(
-    state: ProfileComponent.State,
-    onToggleMute: () -> Unit = {},
-    onEdit: () -> Unit = {}
-) {
-    val chat = state.chat
-
-    val items = mutableListOf<@Composable (ItemPosition) -> Unit>()
-
-    items.add { pos ->
-        SettingsSwitchTile(
-            icon = Icons.Rounded.Notifications,
-            title = "Notifications",
-            checked = chat?.isMuted == true,
-            iconColor = Color(0xFFFF6D66),
-            position = pos,
-            onCheckedChange = { onToggleMute() }
-        )
-    }
-
-    if (chat != null && chat.messageAutoDeleteTime > 0) {
-        items.add { pos ->
-            SettingsTile(
-                icon = Icons.Rounded.Timer,
-                title = "${chat.messageAutoDeleteTime}s",
-                subtitle = "Auto-delete messages",
-                iconColor = Color(0xFF009688),
-                position = pos,
-                onClick = { /* */ }
-            )
-        }
-    }
-
-    if (items.isNotEmpty()) {
-        SectionHeader(text = "Settings", onEditClick = if (chat?.isAdmin == true) onEdit else null)
-        items.forEachIndexed { index, item ->
-            val position = when {
-                items.size == 1 -> ItemPosition.STANDALONE
-                index == 0 -> ItemPosition.TOP
-                index == items.size - 1 -> ItemPosition.BOTTOM
-                else -> ItemPosition.MIDDLE
-            }
-            item(position)
-        }
     }
 }
 
@@ -570,7 +729,7 @@ private fun SectionHeader(
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Edit,
-                    contentDescription = "Edit",
+                    contentDescription = stringResource(R.string.menu_edit),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
@@ -602,12 +761,12 @@ fun ProfileQRDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val qrContent = state.qrContent
-                val username = state.user?.username ?: state.chat?.title ?: "user"
+                val username = state.user?.username ?: state.chat?.username ?: state.chat?.title ?: "user"
                 val qrDarkGreen = Color(0xFF3E4D36)
                 val qrSurfaceShapeColor = Color(0xFFE3E6D8)
 
                 Text(
-                    text = "QR Code",
+                    text = stringResource(R.string.action_qr_code),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -629,7 +788,7 @@ fun ProfileQRDialog(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = if (state.user?.username != null) "@$username" else username,
+                            text = if (state.user?.username != null || state.chat?.username != null) "@$username" else username,
                             color = qrDarkGreen,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
@@ -658,7 +817,7 @@ fun ProfileQRDialog(
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         ),
                         shape = RoundedCornerShape(16.dp)
-                    ) { Text("Save", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                    ) { Text(stringResource(R.string.action_save), fontSize = 16.sp, fontWeight = FontWeight.Bold) }
 
                     Button(
                         onClick = {
@@ -670,7 +829,7 @@ fun ProfileQRDialog(
                             .height(56.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         shape = RoundedCornerShape(16.dp)
-                    ) { Text("Share", fontSize = 16.sp, fontWeight = FontWeight.Bold) }
+                    ) { Text(stringResource(R.string.menu_share), fontSize = 16.sp, fontWeight = FontWeight.Bold) }
                 }
             }
         }
@@ -686,12 +845,12 @@ fun ProfileReportDialog(
 ) {
     if (state.isReportVisible) {
         val reasons = listOf(
-            "Spam" to "spam",
-            "Violence" to "violence",
-            "Pornography" to "pornography",
-            "Child Abuse" to "child_abuse",
-            "Copyright" to "copyright",
-            "Other" to "other"
+            stringResource(R.string.report_spam) to "spam",
+            stringResource(R.string.report_violence) to "violence",
+            stringResource(R.string.report_pornography) to "pornography",
+            stringResource(R.string.report_child_abuse) to "child_abuse",
+            stringResource(R.string.report_copyright) to "copyright",
+            stringResource(R.string.report_other) to "other"
         )
         ModalBottomSheet(
             onDismissRequest = onDismiss,
@@ -706,7 +865,7 @@ fun ProfileReportDialog(
                     .padding(bottom = 40.dp)
             ) {
                 Text(
-                    text = "Report",
+                    text = stringResource(R.string.action_report),
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
@@ -747,7 +906,7 @@ fun ProfileReportDialog(
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Cancel", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.cancel_button), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -775,7 +934,7 @@ fun ProfilePermissionsDialog(
                     .padding(bottom = 40.dp)
             ) {
                 Text(
-                    text = "Bot Permissions",
+                    text = stringResource(R.string.bot_permissions),
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
@@ -821,7 +980,7 @@ fun ProfilePermissionsDialog(
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Close", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.close_button), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -851,13 +1010,13 @@ fun ProfileTOSDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Terms of Service",
+                    text = stringResource(R.string.terms_of_service_title),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "By launching this Mini App, you agree to the Terms of Service and Privacy Policy. The bot will be able to access your basic profile information.",
+                    text = stringResource(R.string.tos_dialog_description),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -886,7 +1045,11 @@ fun ProfileTOSDialog(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Text("Accept and Launch", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                stringResource(R.string.accept_and_launch),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -896,11 +1059,12 @@ fun ProfileTOSDialog(
                     onClick = onDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
                     enabled = !state.isAcceptingTOS
                 ) {
-                    Text("Cancel", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.cancel_button), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -983,7 +1147,7 @@ private fun UsernamesTile(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = "Username",
+                    text = stringResource(R.string.username_label),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
@@ -1037,5 +1201,15 @@ private fun UsernameChip(
             color = color,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+private fun formatInterval(value: Int): String {
+    val seconds = value.coerceAtLeast(0)
+    return when {
+        seconds >= 86400 -> "${seconds / 86400}d"
+        seconds >= 3600 -> "${seconds / 3600}h"
+        seconds >= 60 -> "${seconds / 60}m"
+        else -> "${seconds}s"
     }
 }

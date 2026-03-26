@@ -77,7 +77,10 @@ class ChatStoreFactory(
                 is Intent.UnpinMessage -> component.handleUnpinMessage(intent.message)
 
                 is Intent.PinnedMessageClick -> component.handlePinnedMessageClick(intent.message)
-                is Intent.ShowAllPinnedMessages -> component._state.update { it.copy(showPinnedMessagesList = true) }
+                is Intent.ShowAllPinnedMessages -> {
+                    component._state.update { it.copy(showPinnedMessagesList = true) }
+                    component.loadAllPinnedMessages()
+                }
                 is Intent.DismissPinnedMessages -> component._state.update { it.copy(showPinnedMessagesList = false) }
                 is Intent.ScrollToMessageConsumed -> component._state.update { it.copy(scrollToMessageId = null) }
                 is Intent.ScrollToBottom -> component.scrollToBottomInternal()
@@ -156,8 +159,8 @@ class ChatStoreFactory(
                     )
                 }
 
-                is Intent.AddToAdBlockWhitelist -> component.onAddToAdBlockWhitelist()
-                is Intent.RemoveFromAdBlockWhitelist -> component.onRemoveFromAdBlockWhitelist()
+                is Intent.AddToAdBlockWhitelist -> component.handleAddToAdBlockWhitelist()
+                is Intent.RemoveFromAdBlockWhitelist -> component.handleRemoveFromAdBlockWhitelist()
                 is Intent.ToggleMute -> component.handleToggleMute()
 
                 is Intent.SearchToggle -> component._state.update {

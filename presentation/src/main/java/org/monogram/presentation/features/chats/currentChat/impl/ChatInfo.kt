@@ -7,7 +7,6 @@ import org.monogram.domain.models.ChatType
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.domain.repository.ChatMemberStatus
-import org.monogram.presentation.core.util.getUserStatusText
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
 
 internal fun DefaultChatComponent.loadChatInfo() {
@@ -96,8 +95,9 @@ internal fun DefaultChatComponent.observeUserUpdates() {
                     it.copy(
                     isOnline = !isBot && user.userStatus == UserStatusType.ONLINE,
                     isVerified = user.isVerified,
-                    userStatus = getUserStatusText(user),
-                    chatPersonalAvatar = user.personalAvatarPath
+                    userStatus = user.userStatus.toString(), 
+                    chatPersonalAvatar = user.personalAvatarPath,
+                    otherUser = user
                     )
                 }
             }
@@ -139,6 +139,22 @@ internal fun DefaultChatComponent.handleToggleMute() {
     chatsListRepository.toggleMuteChats(setOf(chatId), !_state.value.isMuted)
 }
 
+internal fun DefaultChatComponent.handleAddToAdBlockWhitelist() {
+    val current = appPreferences.adBlockWhitelistedChannels.value
+    if (chatId in current) return
+
+    appPreferences.setAdBlockWhitelistedChannels(current + chatId)
+    loadMessages(force = true)
+}
+
+internal fun DefaultChatComponent.handleRemoveFromAdBlockWhitelist() {
+    val current = appPreferences.adBlockWhitelistedChannels.value
+    if (chatId !in current) return
+
+    appPreferences.setAdBlockWhitelistedChannels(current - chatId)
+    loadMessages(force = true)
+}
+
 internal fun DefaultChatComponent.handleClearHistory() {
     chatsListRepository.clearChatHistory(chatId, true)
 }
@@ -156,7 +172,11 @@ internal fun DefaultChatComponent.handleJoinChat() {
 
 internal fun DefaultChatComponent.handleBlockUser(userId: Long) {
     scope.launch {
-        privacyRepository.blockUser(userId)
+        if (_state.value.isGroup || _state.value.isChannel) {
+            userRepository.setChatMemberStatus(chatId, userId, ChatMemberStatus.Banned())
+        } else {
+            privacyRepository.blockUser(userId)
+        }
     }
 }
 

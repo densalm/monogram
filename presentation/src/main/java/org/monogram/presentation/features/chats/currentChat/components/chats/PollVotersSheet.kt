@@ -4,16 +4,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.monogram.domain.models.UserModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 
@@ -24,6 +27,7 @@ fun PollVotersSheet(
     voters: List<UserModel>,
     isLoading: Boolean,
     videoPlayerPool: VideoPlayerPool,
+    onUserClick: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -38,7 +42,7 @@ fun PollVotersSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Poll Voters",
+                text = stringResource(R.string.poll_voters_title),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
@@ -61,7 +65,7 @@ fun PollVotersSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "No voters yet",
+                        text = stringResource(R.string.poll_no_voters),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -78,7 +82,11 @@ fun PollVotersSheet(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         itemsIndexed(voters) { index, user ->
-                            VoterItem(user, videoPlayerPool)
+                            VoterItem(
+                                user = user,
+                                videoPlayerPool = videoPlayerPool,
+                                onClick = { onUserClick(user.id) }
+                            )
                             if (index < voters.size - 1) {
                                 HorizontalDivider(
                                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -101,7 +109,11 @@ fun PollVotersSheet(
                         .height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Close", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = stringResource(R.string.action_close),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -109,15 +121,21 @@ fun PollVotersSheet(
 }
 
 @Composable
-private fun VoterItem(user: UserModel, videoPlayerPool: VideoPlayerPool) {
+private fun VoterItem(
+    user: UserModel,
+    videoPlayerPool: VideoPlayerPool,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Avatar(
-            path = user.personalAvatarPath ?: user.avatarPath,
+            path = user.avatarPath,
+            fallbackPath = user.personalAvatarPath,
             name = user.firstName,
             size = 40.dp,
             videoPlayerPool = videoPlayerPool
@@ -135,7 +153,7 @@ private fun VoterItem(user: UserModel, videoPlayerPool: VideoPlayerPool) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Rounded.Verified,
-                        contentDescription = "Verified",
+                        contentDescription = stringResource(R.string.cd_verified),
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )

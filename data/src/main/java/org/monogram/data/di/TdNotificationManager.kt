@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.db.dao.NotificationSettingDao
 import org.monogram.data.db.model.NotificationSettingEntity
+import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.service.NotificationDismissReceiver
 import org.monogram.data.service.NotificationReadReceiver
 import org.monogram.data.service.NotificationReplyReceiver
@@ -39,7 +40,8 @@ class TdNotificationManager(
     private val context: Context,
     private val tdLibClient: TdLibClient,
     private val appPreferences: AppPreferencesProvider,
-    private val notificationSettingDao: NotificationSettingDao
+    private val notificationSettingDao: NotificationSettingDao,
+    private val fileQueue: FileDownloadQueue
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val notificationManager = NotificationManagerCompat.from(context)
@@ -335,6 +337,10 @@ class TdNotificationManager(
         when (val type = chat.type) {
             is TdApi.ChatTypePrivate -> callback(true)
             is TdApi.ChatTypeBasicGroup -> {
+                if (type.basicGroupId == 0L) {
+                    callback(true)
+                    return
+                }
                 tdLibClient.send(TdApi.GetBasicGroup(type.basicGroupId)) { result ->
                     if (result is TdApi.BasicGroup) {
                         callback(result.status is TdApi.ChatMemberStatusMember || result.status is TdApi.ChatMemberStatusCreator || result.status is TdApi.ChatMemberStatusAdministrator)
@@ -344,6 +350,10 @@ class TdNotificationManager(
                 }
             }
             is TdApi.ChatTypeSupergroup -> {
+                if (type.supergroupId == 0L) {
+                    callback(true)
+                    return
+                }
                 tdLibClient.send(TdApi.GetSupergroup(type.supergroupId)) { result ->
                     if (result is TdApi.Supergroup) {
                         callback(result.status is TdApi.ChatMemberStatusMember || result.status is TdApi.ChatMemberStatusCreator || result.status is TdApi.ChatMemberStatusAdministrator)
@@ -794,21 +804,6 @@ class TdNotificationManager(
             activeDownloads[file.id] = mutableListOf(callback)
         }
 
-        tdLibClient.send(TdApi.DownloadFile(file.id, 32, 0, 0, true)) { result ->
-            if (result is TdApi.File && result.local.isDownloadingCompleted && result.local.path.isNotEmpty()) {
-                val bitmap = try {
-                    BitmapFactory.decodeFile(result.local.path)
-                } catch (e: Exception) {
-                    null
-                }
-                if (bitmap != null) {
-                    bitmapCache.put(file.id, bitmap)
-                    val callbacks = synchronized(activeDownloads) {
-                        activeDownloads.remove(file.id)
-                    }
-                    callbacks?.forEach { it(bitmap) }
-                }
-            }
-        }
+        fileQueue.enqueue(file.id, 32, FileDownloadQueue.DownloadType.DEFAULT, synchronous = true)
     }
 }

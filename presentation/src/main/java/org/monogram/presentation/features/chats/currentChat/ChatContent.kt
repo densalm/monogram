@@ -8,9 +8,12 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +34,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +45,7 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.zIndex
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
@@ -48,6 +53,7 @@ import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.ReplyMarkupModel
+import org.monogram.presentation.R
 import org.monogram.presentation.features.chats.currentChat.chatContent.*
 import org.monogram.presentation.features.chats.currentChat.components.*
 import org.monogram.presentation.features.chats.currentChat.components.chats.BotCommandsSheet
@@ -59,6 +65,9 @@ import org.monogram.presentation.features.chats.currentChat.editor.video.VideoEd
 import org.monogram.presentation.root.RootComponent
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import kotlin.math.abs
 
 @Composable
 fun ChatContent(
@@ -101,6 +110,7 @@ fun ChatContent(
     }
     val isComments = state.rootMessage != null
     val isForumList = state.viewAsTopics && state.currentTopicId == null
+    var showScrollToBottomButton by remember { mutableStateOf(false) }
 
     val isAnyViewerOpen = state.fullScreenImages != null ||
             state.fullScreenVideoPath != null ||
@@ -126,11 +136,10 @@ fun ChatContent(
                     if (state.rootMessage != null) index + 1 else index
                 } else index
 
-                if (state.isChatAnimationsEnabled) {
-                    scrollState.animateScrollToItem(targetIndex)
-                } else {
-                    scrollState.scrollToItem(targetIndex)
-                }
+                scrollState.scrollMessageToCenter(
+                    index = targetIndex,
+                    animated = state.isChatAnimationsEnabled
+                )
             }
         } else {
             component.onClearMessages()
@@ -178,33 +187,58 @@ fun ChatContent(
                 }
             }
             if (index != -1) {
+                component.onScrollToMessageConsumed()
+
                 val targetIndex = if (isComments) {
                     if (state.rootMessage != null) index + 1 else index
                 } else index
 
-                if (state.isChatAnimationsEnabled) {
-                    scrollState.animateScrollToItem(targetIndex)
-                } else {
-                    scrollState.scrollToItem(targetIndex)
-                }
-                component.onScrollToMessageConsumed()
+                scrollState.scrollMessageToCenter(
+                    index = targetIndex,
+                    animated = state.isChatAnimationsEnabled
+                )
             }
         }
     }
 
-    // Update bottom status
-    LaunchedEffect(scrollState, state.isLatestLoaded, isComments) {
+    // Unified bottom-status + bottom-button controller with hysteresis/debounce for smoothness.
+    LaunchedEffect(
+        scrollState,
+        isComments,
+        isForumList,
+        showInitialLoading,
+        state.unreadCount,
+        state.isLatestLoaded
+    ) {
         snapshotFlow {
-            if (isComments) {
-                val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
-                lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
-            } else {
-                scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
-            }
+            BottomVisibilitySnapshot(
+                isAtBottom = scrollState.isAtBottom(
+                    isComments = isComments,
+                    isLatestLoaded = state.isLatestLoaded
+                ),
+                isNearBottom = scrollState.isNearBottom(
+                    isComments = isComments
+                ),
+                unreadCount = state.unreadCount
+            )
         }
             .distinctUntilChanged()
-            .collect { isAtBottom ->
-                component.onBottomReached(isAtBottom)
+            .collectLatest { snapshot ->
+                component.onBottomReached(snapshot.isAtBottom)
+
+                val shouldShow = !isForumList &&
+                        !showInitialLoading &&
+                        (snapshot.unreadCount > 0 || !snapshot.isNearBottom)
+
+                if (shouldShow) {
+                    showScrollToBottomButton = true
+                } else {
+                    delay(120)
+                    val keepVisible = state.unreadCount > 0 || !snapshot.isNearBottom
+                    if (!keepVisible) {
+                        showScrollToBottomButton = false
+                    }
+                }
             }
     }
 
@@ -213,12 +247,10 @@ fun ChatContent(
         snapshotFlow { scrollState.isScrollInProgress to scrollState.firstVisibleItemIndex }
             .filter { !it.first }
             .map {
-                val isAtBottom = if (isComments) {
-                    val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
-                    lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
-                } else {
-                    scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
-                }
+                val isAtBottom = scrollState.isAtBottom(
+                    isComments = isComments,
+                    isLatestLoaded = state.isLatestLoaded
+                )
 
                 if (isAtBottom && !isComments) {
                     0L
@@ -278,17 +310,15 @@ fun ChatContent(
     // Auto-scroll to bottom when new messages arrive and we are already at the bottom
     val messageCount = groupedMessages.size
     LaunchedEffect(messageCount, state.isLatestLoaded) {
-        if (state.isAtBottom && !state.isLoading && !scrollState.isScrollInProgress) {
-            val targetIndex = if (isComments) {
-                val total = scrollState.layoutInfo.totalItemsCount
-                if (total > 0) total - 1 else 0
-            } else 0
-
-            if (state.isChatAnimationsEnabled) {
-                scrollState.animateScrollToItem(targetIndex)
-            } else {
-                scrollState.scrollToItem(targetIndex)
-            }
+        val isAtBottomNow = scrollState.isAtBottom(
+            isComments = isComments,
+            isLatestLoaded = state.isLatestLoaded
+        )
+        if ((state.isAtBottom || isAtBottomNow) && !state.isLoading && !scrollState.isScrollInProgress) {
+            scrollState.scrollToChatBottom(
+                isComments = isComments,
+                animated = state.isChatAnimationsEnabled
+            )
         }
     }
 
@@ -468,7 +498,10 @@ fun ChatContent(
                                     replyMarkup = state.messages.firstOrNull { it.replyMarkup is ReplyMarkupModel.ShowKeyboard }?.replyMarkup,
                                     mentionSuggestions = state.mentionSuggestions,
                                     inlineBotResults = state.inlineBotResults,
-                                    isInlineBotLoading = state.isInlineBotLoading
+                                    currentInlineBotUsername = state.currentInlineBotUsername,
+                                    currentInlineQuery = state.currentInlineQuery,
+                                    isInlineBotLoading = state.isInlineBotLoading,
+                                    attachBots = state.attachMenuBots
                                 )
                             }
 
@@ -532,7 +565,17 @@ fun ChatContent(
                                     onLoadMoreInlineResults = { offset ->
                                         component.onLoadMoreInlineResults(offset)
                                     },
-                                    onSendInlineResult = { resultId -> component.onSendInlineResult(resultId) }
+                                    onSendInlineResult = { resultId -> component.onSendInlineResult(resultId) },
+                                    onInlineSwitchPm = { botUsername, parameter ->
+                                        val encodedParameter = URLEncoder.encode(
+                                            parameter,
+                                            StandardCharsets.UTF_8.name()
+                                        )
+                                        component.onLinkClick("https://t.me/$botUsername?start=$encodedParameter")
+                                    },
+                                    onAttachBotClick = { bot ->
+                                        component.onOpenAttachBot(bot.botUserId, bot.name)
+                                    }
                                 )
                             }
 
@@ -559,7 +602,7 @@ fun ChatContent(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "JOIN",
+                                        text = stringResource(R.string.action_join),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Bold
@@ -589,20 +632,6 @@ fun ChatContent(
                                     translationY = contentOffset.toPx()
                                 }
                         ) {
-                            val showScrollToBottom by remember {
-                                derivedStateOf {
-                                    if (isForumList) return@derivedStateOf false
-
-                                    val isAtBottom = if (isComments) {
-                                        val lastVisibleItem = scrollState.layoutInfo.visibleItemsInfo.lastOrNull()
-                                        lastVisibleItem != null && lastVisibleItem.index >= scrollState.layoutInfo.totalItemsCount - 1 && state.isLatestLoaded
-                                    } else {
-                                        scrollState.firstVisibleItemIndex <= 2 && state.isLatestLoaded
-                                    }
-                                    (!isAtBottom || state.unreadCount > 0) && !showInitialLoading
-                                }
-                            }
-
                             if (!showInitialLoading || state.currentTopicId != null) {
                                 ChatContentList(
                                     showNavPadding = false,
@@ -681,6 +710,11 @@ fun ChatContent(
                                         menuOffset = pos
                                         menuMessageSize = size
                                     },
+                                    onViaBotClick = { botUsername ->
+                                        val prefill = "@$botUsername "
+                                        component.onDraftChange(prefill)
+                                        component.onInlineQueryChange("", "")
+                                    },
                                     toProfile = {
                                         it.let { component.toProfile(it) }
                                     },
@@ -691,9 +725,9 @@ fun ChatContent(
                             }
 
                             AnimatedVisibility(
-                                visible = showScrollToBottom,
-                                enter = scaleIn() + fadeIn(),
-                                exit = scaleOut() + fadeOut(),
+                                visible = showScrollToBottomButton,
+                                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                                 modifier = Modifier
                                     .align(Alignment.BottomEnd)
                                     .padding(16.dp)
@@ -701,20 +735,14 @@ fun ChatContent(
                                 Box {
                                     FloatingActionButton(
                                         onClick = {
-                                            if (state.unreadCount > 0 || !state.isLatestLoaded) {
+                                            if (!state.isLatestLoaded) {
                                                 component.onScrollToBottom()
                                             } else {
                                                 coroutineScope.launch {
-                                                    val targetIndex = if (isComments) {
-                                                        val total = scrollState.layoutInfo.totalItemsCount
-                                                        if (total > 0) total - 1 else 0
-                                                    } else 0
-
-                                                    if (state.isChatAnimationsEnabled) {
-                                                        scrollState.animateScrollToItem(targetIndex)
-                                                    } else {
-                                                        scrollState.scrollToItem(targetIndex)
-                                                    }
+                                                    scrollState.scrollToChatBottom(
+                                                        isComments = isComments,
+                                                        animated = state.isChatAnimationsEnabled
+                                                    )
                                                 }
                                             }
                                         },
@@ -724,7 +752,7 @@ fun ChatContent(
                                     ) {
                                         Icon(
                                             Icons.Default.KeyboardArrowDown,
-                                            contentDescription = "Scroll to bottom",
+                                            contentDescription = stringResource(R.string.cd_scroll_to_bottom),
                                             modifier = Modifier.size(24.dp)
                                         )
                                     }
@@ -835,6 +863,10 @@ fun ChatContent(
                 PollVotersSheet(
                     voters = state.pollVoters,
                     isLoading = state.isPollVotersLoading,
+                    onUserClick = {
+                        component.onDismissVoters()
+                        component.toProfile(it)
+                    },
                     onDismiss = { component.onDismissVoters() },
                     videoPlayerPool = component.videoPlayerPool
                 )
@@ -944,5 +976,86 @@ fun ChatContent(
                 else if (state.currentTopicId != null) component.onBackClicked()
             }
         }
+    }
+}
+
+private suspend fun LazyListState.scrollMessageToCenter(
+    index: Int,
+    animated: Boolean
+) {
+    if (animated) animateScrollToItem(index) else scrollToItem(index)
+
+    val itemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return
+    val viewportCenter = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+    val itemCenter = itemInfo.offset + (itemInfo.size / 2)
+    val delta = (itemCenter - viewportCenter).toFloat()
+
+    if (abs(delta) > 1f) {
+        if (animated) {
+            animateScrollBy(delta)
+        } else {
+            scrollBy(delta)
+        }
+    }
+}
+
+private data class BottomVisibilitySnapshot(
+    val isAtBottom: Boolean,
+    val isNearBottom: Boolean,
+    val unreadCount: Int
+)
+
+private fun LazyListState.isAtBottom(
+    isComments: Boolean,
+    isLatestLoaded: Boolean
+): Boolean {
+    if (!isLatestLoaded) return false
+
+    val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    if (visible.isEmpty()) return true
+
+    return if (isComments) {
+        val lastVisible = visible.last()
+        lastVisible.index >= info.totalItemsCount - 1 &&
+                abs((info.viewportEndOffset - (lastVisible.offset + lastVisible.size)).toFloat()) <= 40f
+    } else {
+        val firstVisible = visible.first()
+        firstVisible.index == 0 &&
+                abs((firstVisible.offset - info.viewportStartOffset).toFloat()) <= 40f
+    }
+}
+
+private fun LazyListState.isNearBottom(isComments: Boolean): Boolean {
+    val info = layoutInfo
+    val visible = info.visibleItemsInfo
+    if (visible.isEmpty()) return true
+
+    return if (isComments) {
+        val lastVisible = visible.last()
+        val distance = abs((info.viewportEndOffset - (lastVisible.offset + lastVisible.size)).toFloat())
+        lastVisible.index >= info.totalItemsCount - 2 && distance <= 240f
+    } else {
+        val firstVisible = visible.first()
+        val distance = abs((firstVisible.offset - info.viewportStartOffset).toFloat())
+        firstVisible.index <= 1 && distance <= 240f
+    }
+}
+
+private suspend fun LazyListState.scrollToChatBottom(
+    isComments: Boolean,
+    animated: Boolean
+) {
+    val targetIndex = if (isComments) {
+        val total = layoutInfo.totalItemsCount
+        if (total > 0) total - 1 else 0
+    } else {
+        0
+    }
+
+    if (animated) {
+        animateScrollToItem(targetIndex)
+    } else {
+        scrollToItem(targetIndex)
     }
 }

@@ -21,12 +21,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.rememberAsyncImagePainter
@@ -34,6 +36,7 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.features.chats.currentChat.components.channels.formatDuration
 import org.monogram.presentation.features.chats.currentChat.components.channels.formatViews
 import org.monogram.presentation.features.chats.currentChat.components.chats.ChatTimestampInfo
 import org.monogram.presentation.features.chats.currentChat.components.chats.SpoilerWrapper
@@ -75,7 +78,7 @@ fun CompactMediaMosaic(
         val msg = messages[index]
         val isLastItem = index == messages.lastIndex
 
-        Box(modifier = modifier) {
+        Box(modifier = modifier.clipToBounds()) {
             when (val content = msg.content) {
                 is MessageContent.Photo -> {
                     PhotoItem(
@@ -304,7 +307,7 @@ fun PhotoItem(
     var itemPosition by remember { mutableStateOf(Offset.Zero) }
     var isRevealed by remember { mutableStateOf(!photo.hasSpoiler) }
 
-    Box(modifier = modifier) {
+    Box(modifier = modifier.clipToBounds()) {
         Crossfade(
             targetState = photo.path,
             animationSpec = tween(300),
@@ -424,7 +427,7 @@ fun VideoItem(
     var itemPosition by remember { mutableStateOf(Offset.Zero) }
     var isRevealed by remember { mutableStateOf(!video.hasSpoiler) }
 
-    Box(modifier = modifier) {
+    Box(modifier = modifier.clipToBounds()) {
         Crossfade(
             targetState = hasPath || video.supportsStreaming,
             animationSpec = tween(300),
@@ -508,8 +511,9 @@ fun VideoItem(
                         .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
+                    val context = LocalContext.current
                     Text(
-                        text = formatDuration(video.duration),
+                        text = formatDuration(context, video.duration),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color = Color.White
                     )
@@ -608,7 +612,7 @@ fun VideoNoteItem(
     }
 
     var itemPosition by remember { mutableStateOf(Offset.Zero) }
-    Box(modifier = modifier) {
+    Box(modifier = modifier.clipToBounds()) {
         Crossfade(
             targetState = videoNote.path,
             animationSpec = tween(300),
@@ -672,8 +676,9 @@ fun VideoNoteItem(
                         .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
+                    val context = LocalContext.current
                     Text(
-                        text = formatDuration(videoNote.duration),
+                        text = formatDuration(context, videoNote.duration),
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color = Color.White
                     )
@@ -768,7 +773,7 @@ fun GifItem(
     var itemPosition by remember { mutableStateOf(Offset.Zero) }
     var isRevealed by remember { mutableStateOf(!gif.hasSpoiler) }
 
-    Box(modifier = modifier) {
+    Box(modifier = modifier.clipToBounds()) {
         Crossfade(
             targetState = gif.path,
             animationSpec = tween(300),
@@ -898,6 +903,7 @@ fun TimestampPill(
     sendingState: MessageSendingState? = null,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Box(
         modifier = modifier
             .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
@@ -915,7 +921,7 @@ fun TimestampPill(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = formatViews(viewsCount),
+                            text = formatViews(context, viewsCount),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                             color = Color.White
                         )

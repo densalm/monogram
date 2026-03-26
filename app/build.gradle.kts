@@ -19,11 +19,16 @@ android {
     buildFeatures {
         compose = true
     }
+
+    androidResources {
+        generateLocaleConfig = true
+    }
+
     defaultConfig {
         applicationId = "org.monogram"
         minSdk = 25
         targetSdk = 36
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
     }
 

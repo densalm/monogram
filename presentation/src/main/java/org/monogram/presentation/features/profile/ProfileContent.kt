@@ -18,11 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.CollapsingToolbarScaffold
 import org.monogram.presentation.core.ui.rememberCollapsingToolbarScaffoldState
 import org.monogram.presentation.core.util.ScrollStrategy
@@ -42,6 +44,7 @@ fun ProfileContent(component: ProfileComponent) {
 
     val chat = state.chat
     val user = state.user
+    val isCurrentUserProfile = user != null && state.currentUser?.id == user.id
 
     val avatarPath = remember(state.profilePhotos, state.chat, state.user, state.personalAvatarPath) {
         state.personalAvatarPath
@@ -52,18 +55,42 @@ fun ProfileContent(component: ProfileComponent) {
     }
 
 
-    val title = remember(user, chat) {
+    val unknownTitle = stringResource(R.string.unknown_title)
+    val title = remember(user, chat, unknownTitle) {
         chat?.title ?: listOfNotNull(user?.firstName, user?.lastName)
             .joinToString(" ")
-            .ifBlank { "Unknown" }
+            .ifBlank { unknownTitle }
     }
 
-    val subtitle = remember(user, chat) {
-        if (chat?.isGroup == true || chat?.isChannel == true) {
-            val members = "${chat.memberCount} members"
-            if (chat.onlineCount > 0) "$members, ${chat.onlineCount} online" else members
-        } else {
-            getUserStatusText(user)
+    val membersCountFormat = stringResource(R.string.members_count_format)
+    val membersOnlineCountFormat = stringResource(R.string.members_online_count_format)
+    val ownProfileSubtitle = stringResource(R.string.menu_my_profile_subtitle)
+    val subtitle = remember(
+        user,
+        chat,
+        isCurrentUserProfile,
+        membersCountFormat,
+        membersOnlineCountFormat,
+        ownProfileSubtitle
+    ) {
+        when {
+            chat?.isGroup == true || chat?.isChannel == true -> {
+                val members = String.format(membersCountFormat, chat.memberCount)
+                if (chat.onlineCount > 0) String.format(
+                    membersOnlineCountFormat,
+                    members,
+                    chat.onlineCount
+                ) else members
+            }
+
+            isCurrentUserProfile -> {
+                user.username
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "$ownProfileSubtitle • @$it" }
+                    ?: ownProfileSubtitle
+            }
+
+            else -> getUserStatusText(user, context)
         }
     }
 
@@ -86,6 +113,28 @@ fun ProfileContent(component: ProfileComponent) {
         else if (state.selectedLocation != null) component.onDismissLocation()
     }
 
+    val searchNotImplemented = stringResource(R.string.search_not_implemented)
+    val blockNotImplemented = stringResource(R.string.block_not_implemented)
+    val deleteNotImplemented = stringResource(R.string.delete_not_implemented)
+    val linkCopied = stringResource(R.string.link_copied)
+    val userIdCopied = stringResource(R.string.logs_user_id_copied)
+
+    val isGroupOrChannel = chat?.isGroup == true || chat?.isChannel == true
+    val canEditTopBar = when {
+        isCurrentUserProfile -> true
+        isGroupOrChannel -> chat.isAdmin || chat.permissions.canChangeInfo
+        else -> user?.isContact == true
+    }
+    val shareLink = remember(user, chat, state.publicLink) {
+        user?.username?.takeIf { it.isNotBlank() }?.let { "https://t.me/$it" }
+            ?: chat?.username?.takeIf { it.isNotBlank() }?.let { "https://t.me/$it" }
+            ?: state.publicLink?.takeIf { it.isNotBlank() }
+    }
+    val fallbackShareText = remember(isCurrentUserProfile, user) {
+        if (isCurrentUserProfile) user.id.toString() else null
+    }
+    val canShareTopBar = !shareLink.isNullOrEmpty() || !fallbackShareText.isNullOrEmpty()
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             topBar = {
@@ -96,11 +145,23 @@ fun ProfileContent(component: ProfileComponent) {
                     userModel = user,
                     chatModel = chat,
                     isVerified = user?.isVerified == true || chat?.isVerified == true,
-                    onSearch = { Toast.makeText(context, "Search not implemented", Toast.LENGTH_SHORT).show() },
-                    onShare = { Toast.makeText(context, "Share not implemented", Toast.LENGTH_SHORT).show() },
+                    canSearch = false,
+                    canShare = canShareTopBar,
+                    canEdit = canEditTopBar,
+                    canBlock = false,
+                    canDelete = false,
+                    onSearch = { Toast.makeText(context, searchNotImplemented, Toast.LENGTH_SHORT).show() },
+                    onShare = {
+                        val valueToCopy = shareLink ?: fallbackShareText
+                        if (valueToCopy != null) {
+                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(valueToCopy))
+                            val copiedMessage = if (shareLink != null) linkCopied else userIdCopied
+                            Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
+                        }
+                    },
                     onEdit = component::onEdit,
-                    onBlock = { Toast.makeText(context, "Block not implemented", Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, "Delete not implemented", Toast.LENGTH_SHORT).show() }
+                    onBlock = { Toast.makeText(context, blockNotImplemented, Toast.LENGTH_SHORT).show() },
+                    onDelete = { Toast.makeText(context, deleteNotImplemented, Toast.LENGTH_SHORT).show() }
                 )
             },
             containerColor = dynamicContainerColor
@@ -213,6 +274,7 @@ fun ProfileContent(component: ProfileComponent) {
             }
         }
 
+        val notImplemented = stringResource(R.string.not_implemented)
         AnimatedVisibility(
             visible = state.fullScreenImages != null,
             enter = fadeIn() + scaleIn(initialScale = 0.9f),
@@ -246,10 +308,10 @@ fun ProfileContent(component: ProfileComponent) {
                             }
                         }
                     },
-                    onForward = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyLink = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyText = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
+                    onForward = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onDelete = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onCopyLink = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onCopyText = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
                     captions = state.fullScreenCaptions.filterNotNull(),
                     showImageNumber = false
                 )
@@ -283,10 +345,10 @@ fun ProfileContent(component: ProfileComponent) {
                     seekDuration = 10,
                     isZoomEnabled = true,
                     downloadUtils = component.downloadUtils,
-                    onForward = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyLink = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
-                    onCopyText = { Toast.makeText(context, "Not implemented", Toast.LENGTH_SHORT).show() },
+                    onForward = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onDelete = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onCopyLink = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
+                    onCopyText = { Toast.makeText(context, notImplemented, Toast.LENGTH_SHORT).show() },
                     caption = state.fullScreenVideoCaption,
                     fileId = fileId,
                     supportsStreaming = supportsStreaming
@@ -316,12 +378,14 @@ fun ProfileContent(component: ProfileComponent) {
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {
-            StatisticsViewer(
-                title = "Statistics",
-                data = state.statistics,
-                onDismiss = component::onDismissStatistics,
-                onLoadGraph = component::onLoadStatisticsGraph
-            )
+            if (state.statistics != null) {
+                StatisticsViewer(
+                    title = stringResource(R.string.statistics_title),
+                    data = state.statistics!!,
+                    onDismiss = component::onDismissStatistics,
+                    onLoadGraph = component::onLoadStatisticsGraph
+                )
+            }
         }
 
         AnimatedVisibility(
@@ -329,12 +393,14 @@ fun ProfileContent(component: ProfileComponent) {
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
         ) {
-            StatisticsViewer(
-                title = "Revenue",
-                data = state.revenueStatistics,
-                onDismiss = component::onDismissStatistics,
-                onLoadGraph = component::onLoadStatisticsGraph
-            )
+            if (state.revenueStatistics != null) {
+                StatisticsViewer(
+                    title = stringResource(R.string.revenue_title),
+                    data = state.revenueStatistics!!,
+                    onDismiss = component::onDismissStatistics,
+                    onLoadGraph = component::onLoadStatisticsGraph
+                )
+            }
         }
 
         ProfileQRDialog(

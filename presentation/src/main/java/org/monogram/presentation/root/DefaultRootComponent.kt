@@ -1,3 +1,4 @@
+// DefaultRootComponent.kt
 package org.monogram.presentation.root
 
 import android.os.Parcelable
@@ -26,7 +27,7 @@ import org.monogram.presentation.features.chats.chatList.DefaultChatListComponen
 import org.monogram.presentation.features.chats.chatList.DefaultNewChatComponent
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
-import org.monogram.presentation.features.folders.DefaultFoldersComponent
+import org.monogram.presentation.settings.folders.DefaultFoldersComponent
 import org.monogram.presentation.features.profile.DefaultProfileComponent
 import org.monogram.presentation.features.profile.admin.*
 import org.monogram.presentation.features.profile.logs.DefaultProfileLogsComponent
@@ -396,7 +397,7 @@ class DefaultRootComponent(
         navigation.push(Config.WebView(url))
     }
 
-    private fun navigateToChat(chatId: Long, messageId: Long? = null) {
+    override fun navigateToChat(chatId: Long, messageId: Long?) {
         navigation.navigate { stack ->
             val newStack = stack.filterNot { it is Config.ChatDetail && it.chatId == chatId }
             newStack + Config.ChatDetail(chatId, messageId)
@@ -416,8 +417,8 @@ class DefaultRootComponent(
             is Config.Chats -> RootComponent.Child.ChatsChild(
                 DefaultChatListComponent(
                     context = context,
-                    onSelect = { chatId, messageId ->
-                        if (chatId == 0L) navigation.pop() else navigateToChat(chatId, messageId)
+                    onSelect = { chatId, msgId ->
+                        if (chatId == 0L) navigation.pop() else navigateToChat(chatId, msgId)
                     },
                     onProfileSelect = { chatId ->
                         navigation.bringToFront(Config.Profile(chatId))

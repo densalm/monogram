@@ -14,7 +14,7 @@ import org.monogram.presentation.features.chats.ChatListComponent
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.newChat.NewChatComponent
-import org.monogram.presentation.features.folders.FoldersComponent
+import org.monogram.presentation.settings.folders.FoldersComponent
 import org.monogram.presentation.features.profile.ProfileComponent
 import org.monogram.presentation.features.profile.admin.AdminManageComponent
 import org.monogram.presentation.features.profile.admin.ChatEditComponent
@@ -66,6 +66,7 @@ interface RootComponent {
     fun unlock(passcode: String): Boolean
     fun unlockWithBiometrics()
     fun logout()
+    fun navigateToChat(chatId: Long, messageId: Long? = null)
 
     sealed class Child {
         class StartupChild(val component: StartupComponent) : Child()

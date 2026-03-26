@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +40,7 @@ import org.monogram.domain.models.GroupMemberModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.UserStatusType
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.getUserStatusText
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
@@ -63,9 +65,15 @@ fun LazyGridScope.profileMediaSection(
     onLoadMedia: (MessageModel) -> Unit = {}
 ) {
     val isGroup = state.chat?.isGroup == true || state.chat?.isChannel == true
-    val tabs = mutableListOf("Media")
-    if (isGroup) tabs.add("Members")
-    tabs.addAll(listOf("Files", "Audio", "Voice", "Links", "GIFs"))
+    val tabs = mutableListOf<@Composable () -> String>({ stringResource(R.string.tab_media) })
+    if (isGroup) tabs.add { stringResource(R.string.tab_members) }
+    tabs.addAll(listOf(
+        { stringResource(R.string.tab_files) },
+        { stringResource(R.string.tab_audio) },
+        { stringResource(R.string.tab_voice) },
+        { stringResource(R.string.tab_links) },
+        { stringResource(R.string.tab_gifs) }
+    ))
 
     stickyHeader {
         Surface(
@@ -94,7 +102,7 @@ fun LazyGridScope.profileMediaSection(
                             .padding(4.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        tabs.forEachIndexed { index, title ->
+                        tabs.forEachIndexed { index, titleFunc ->
                             val selected = state.selectedTabIndex == index
                             Box(
                                 Modifier
@@ -110,7 +118,7 @@ fun LazyGridScope.profileMediaSection(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = title,
+                                    text = titleFunc(),
                                     modifier = Modifier.padding(horizontal = 16.dp),
                                     style = MaterialTheme.typography.labelLarge,
                                     color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -241,7 +249,7 @@ private fun LazyGridScope.membersList(
     if (uniqueMembers.isEmpty()) {
         if (!isLoading) {
             item(span = { GridItemSpan(3) }) {
-                EmptyState("No members found")
+                EmptyState(stringResource(R.string.empty_members))
             }
         }
     } else {
@@ -275,7 +283,7 @@ private fun LazyGridScope.membersList(
                             Spacer(modifier = Modifier.width(4.dp))
                             Icon(
                                 imageVector = Icons.Rounded.Verified,
-                                contentDescription = "Verified",
+                                contentDescription = stringResource(R.string.cd_verified),
                                 modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.primary
                             )
@@ -316,7 +324,8 @@ private fun LazyGridScope.membersList(
                     }
                 },
                 supportingContent = {
-                    val statusText = getUserStatusText(user)
+                    val context = LocalContext.current
+                    val statusText = getUserStatusText(user, context)
 
                     Text(
                         text = statusText,
@@ -332,6 +341,7 @@ private fun LazyGridScope.membersList(
                 leadingContent = {
                     Avatar(
                         path = user.avatarPath,
+                        fallbackPath = user.personalAvatarPath,
                         name = user.firstName,
                         isOnline = user.userStatus == UserStatusType.ONLINE,
                         size = 40.dp,
@@ -363,7 +373,7 @@ private fun LazyGridScope.mediaGrid(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No media found")
+            EmptyState(stringResource(R.string.empty_media))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "media_${msg.id}" }) { index, msg ->
@@ -381,20 +391,27 @@ private fun LazyGridScope.mediaGrid(
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .clickable { onMessageClick(msg) }
             ) {
-                val path = when (val content = msg.content) {
-                    is MessageContent.Photo -> content.path
-                    is MessageContent.Video -> content.path
+                val (path, isVideo) = when (val content = msg.content) {
+                    is MessageContent.Photo -> content.path to false
+                    is MessageContent.Video -> content.path to true
+                    else -> null to false
+                }
+
+                val minithumbnail = when (val content = msg.content) {
+                    is MessageContent.Photo -> content.minithumbnail
+                    is MessageContent.Video -> content.minithumbnail
                     else -> null
                 }
 
                 val context = LocalContext.current
                 val isValidFile = path != null && File(path).exists()
 
-                if (isValidFile) {
+                if (isValidFile || minithumbnail != null) {
                     AsyncImage(
-                        model = remember(path) {
+                        model = remember(path, minithumbnail) {
+                            val data = if (isValidFile) path else minithumbnail
                             ImageRequest.Builder(context)
-                                .data(path)
+                                .data(data)
                                 .size(300, 300)
                                 .crossfade(true)
                                 .build()
@@ -405,10 +422,6 @@ private fun LazyGridScope.mediaGrid(
                         error = rememberVectorPainter(Icons.Rounded.BrokenImage)
                     )
                 } else {
-
-                    LaunchedEffect(msg.id) {
-                        onLoadMedia(msg)
-                    }
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -420,12 +433,18 @@ private fun LazyGridScope.mediaGrid(
                         )
                     }
                 }
+                
+                if (!isValidFile) {
+                    LaunchedEffect(msg.id) {
+                        onLoadMedia(msg)
+                    }
+                }
 
-                if (msg.content is MessageContent.Video) {
+                if (isVideo) {
                     val content = msg.content as MessageContent.Video
                     Icon(
                         Icons.Rounded.PlayArrow,
-                        contentDescription = "Video",
+                        contentDescription = stringResource(R.string.media_type_video),
                         tint = Color.White,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
@@ -469,7 +488,7 @@ private fun LazyGridScope.audioList(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No audio found")
+            EmptyState(stringResource(R.string.empty_audio))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "audio_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -525,7 +544,7 @@ private fun LazyGridScope.voiceList(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No voice messages found")
+            EmptyState(stringResource(R.string.empty_voice))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "voice_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -537,15 +556,15 @@ private fun LazyGridScope.voiceList(
                 }
             }
 
-            val (icon, label, duration) = when (val content = msg.content) {
-                is MessageContent.Voice -> Triple(Icons.Rounded.Mic, "Voice Message", content.duration)
-                is MessageContent.VideoNote -> Triple(Icons.Rounded.Videocam, "Video Message", content.duration)
+            val (icon, labelRes, duration) = when (val content = msg.content) {
+                is MessageContent.Voice -> Triple(Icons.Rounded.Mic, R.string.media_type_voice, content.duration)
+                is MessageContent.VideoNote -> Triple(Icons.Rounded.Videocam, R.string.media_type_video_note, content.duration)
                 else -> return@itemsIndexed
             }
 
             Column {
                 ListItem(
-                    headlineContent = { Text(label, fontWeight = FontWeight.SemiBold) },
+                    headlineContent = { Text(stringResource(labelRes), fontWeight = FontWeight.SemiBold) },
                     supportingContent = { Text(formatDuration(duration), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                     leadingContent = {
                         Surface(
@@ -582,7 +601,7 @@ private fun LazyGridScope.filesList(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No files found")
+            EmptyState(stringResource(R.string.empty_files))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "file_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -637,7 +656,7 @@ private fun LazyGridScope.linksList(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No links found")
+            EmptyState(stringResource(R.string.empty_links))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "link_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -703,7 +722,7 @@ private fun LazyGridScope.gifsGrid(
 
     if (uniqueMessages.isEmpty()) {
         item(span = { GridItemSpan(3) }) {
-            EmptyState("No GIFs found")
+            EmptyState(stringResource(R.string.empty_gifs))
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "gif_${msg.id}" }) { index, msg ->
@@ -740,7 +759,7 @@ private fun LazyGridScope.gifsGrid(
                             .padding(horizontal = 4.dp, vertical = 1.dp)
                     ) {
                         Text(
-                            text = "GIF",
+                            text = stringResource(R.string.media_type_gif),
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
                             color = Color.White
                         )

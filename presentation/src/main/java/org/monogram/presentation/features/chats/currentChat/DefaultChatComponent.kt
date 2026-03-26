@@ -148,6 +148,15 @@ class DefaultChatComponent(
         observeUserUpdates()
         observeCurrentUser()
         observeFileDownloads()
+        cacheProvider.attachBots
+            .onEach { bots ->
+                _state.update {
+                    it.copy(
+                        attachMenuBots = bots
+                    )
+                }
+            }
+            .launchIn(scope)
 
         appPreferences.adBlockWhitelistedChannels
             .onEach { channels ->
@@ -364,8 +373,12 @@ class DefaultChatComponent(
     override fun onSendReaction(messageId: Long, reaction: String) =
         store.accept(ChatStore.Intent.SendReaction(messageId, reaction))
 
-    override suspend fun getMessageReadDate(chatId: Long, messageId: Long): Int {
-        return repositoryMessage.getMessageReadDate(chatId, messageId)
+    override suspend fun getMessageReadDate(chatId: Long, messageId: Long, messageDate: Int): Int {
+        return repositoryMessage.getMessageReadDate(chatId, messageId, messageDate)
+    }
+
+    override suspend fun getMessageViewers(chatId: Long, messageId: Long): List<MessageViewerModel> {
+        return repositoryMessage.getMessageViewers(chatId, messageId)
     }
 
     override fun toProfile(id: Long) = toProfiles(id)
@@ -487,6 +500,19 @@ class DefaultChatComponent(
 
     override fun onLoadMoreInlineResults(offset: String) = store.accept(ChatStore.Intent.LoadMoreInlineResults(offset))
     override fun onSendInlineResult(resultId: String) = store.accept(ChatStore.Intent.SendInlineResult(resultId))
+    override fun onOpenAttachBot(botUserId: Long, fallbackName: String) {
+        scope.launch {
+            val botInfo = userRepository.getBotInfo(botUserId)
+            val menuButton = botInfo?.menuButton
+            if (menuButton is BotMenuButtonModel.WebApp) {
+                onOpenMiniApp(
+                    menuButton.url,
+                    menuButton.text.ifBlank { fallbackName },
+                    botUserId
+                )
+            }
+        }
+    }
 
     override fun onClosePoll(messageId: Long) = store.accept(ChatStore.Intent.ClosePoll(messageId))
 }

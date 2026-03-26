@@ -12,7 +12,9 @@ import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.RoomUserLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.UserRemoteDataSource
+import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.UpdateDispatcher
+import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.mapper.user.*
 import org.monogram.domain.models.*
 import org.monogram.domain.repository.ChatMemberStatus
@@ -24,7 +26,9 @@ class UserRepositoryImpl(
     private val remote: UserRemoteDataSource,
     private val userLocal: UserLocalDataSource,
     private val chatLocal: ChatLocalDataSource,
+    private val gateway: TelegramGateway,
     private val updates: UpdateDispatcher,
+    private val fileQueue: FileDownloadQueue,
     scopeProvider: ScopeProvider
 ) : UserRepository {
 
@@ -32,6 +36,9 @@ class UserRepositoryImpl(
     private var currentUserId: Long = 0L
     private val userRequests = ConcurrentHashMap<Long, Deferred<TdApi.User?>>()
     private val fullInfoRequests = ConcurrentHashMap<Long, Deferred<TdApi.UserFullInfo?>>()
+
+    private val emojiPathCache = ConcurrentHashMap<Long, String>()
+    private val fileIdToUserIdMap = ConcurrentHashMap<Int, Long>()
 
     private val _currentUserFlow = MutableStateFlow<UserModel?>(null)
     override val currentUserFlow = _currentUserFlow.asStateFlow()
@@ -68,7 +75,6 @@ class UserRepositoryImpl(
             updates.file.collect { update ->
                 val file = update.file
                 if (file.local.isDownloadingCompleted) {
-                    // Check if this file is a user profile photo
                     userLocal.getAllUsers().forEach { user ->
                         val small = user.profilePhoto?.small
                         val big = user.profilePhoto?.big
@@ -77,14 +83,71 @@ class UserRepositoryImpl(
                             if (user.id == currentUserId) refreshCurrentUser()
                         }
                     }
+                    if (file.local.path.isNotEmpty()) {
+                        val userId = fileIdToUserIdMap.remove(file.id)
+                        if (userId != null) {
+                            userLocal.getUser(userId)?.let { user ->
+                                val emojiId = user.extractEmojiStatusId()
+                                if (emojiId != 0L) {
+                                    emojiPathCache[emojiId] = file.local.path
+                                }
+                            }
+                            _userUpdateFlow.emit(userId)
+                            if (userId == currentUserId) refreshCurrentUser()
+                        }
+                    }
                 }
             }
         }
     }
 
+    private fun TdApi.User.extractEmojiStatusId(): Long {
+        return when (val type = this.emojiStatus?.type) {
+            is TdApi.EmojiStatusTypeCustomEmoji -> type.customEmojiId
+            is TdApi.EmojiStatusTypeUpgradedGift -> type.modelCustomEmojiId
+            else -> 0L
+        }
+    }
+
+    private suspend fun resolveEmojiPath(user: TdApi.User): String? {
+        val emojiId = user.extractEmojiStatusId()
+        if (emojiId == 0L) return null
+
+        emojiPathCache[emojiId]?.let { return it }
+
+        return try {
+            val result = gateway.execute(TdApi.GetCustomEmojiStickers(longArrayOf(emojiId)))
+            if (result is TdApi.Stickers && result.stickers.isNotEmpty()) {
+                val file = result.stickers.first().sticker
+                if (file.local.isDownloadingCompleted && file.local.path.isNotEmpty()) {
+                    emojiPathCache[emojiId] = file.local.path
+                    file.local.path
+                } else {
+                    fileIdToUserIdMap[file.id] = user.id
+                    fileQueue.enqueue(file.id, 1, FileDownloadQueue.DownloadType.DEFAULT, synchronous = false)
+                    runCatching { fileQueue.waitForDownload(file.id).await() }
+
+                    val refreshedPath = runCatching {
+                        (gateway.execute(TdApi.GetFile(file.id)) as? TdApi.File)
+                            ?.local
+                            ?.path
+                            ?.takeIf { it.isNotEmpty() }
+                    }.getOrNull()
+                    if (refreshedPath != null) {
+                        emojiPathCache[emojiId] = refreshedPath
+                    }
+                    refreshedPath
+                }
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private suspend fun refreshCurrentUser() {
         val user = userLocal.getUser(currentUserId) ?: return
-        _currentUserFlow.update { user.toDomain(userLocal.getUserFullInfo(currentUserId)) }
+        val path = resolveEmojiPath(user)
+        _currentUserFlow.update { user.toDomain(userLocal.getUserFullInfo(currentUserId), path) }
     }
 
     override suspend fun getMe(): UserModel {
@@ -94,7 +157,8 @@ class UserRepositoryImpl(
         if (userLocal is RoomUserLocalDataSource) {
             userLocal.saveUser(user.toEntity())
         }
-        val model = user.toDomain(userLocal.getUserFullInfo(user.id))
+        val path = resolveEmojiPath(user)
+        val model = user.toDomain(userLocal.getUserFullInfo(user.id), path)
         _currentUserFlow.update { model }
         return model
     }
@@ -102,14 +166,14 @@ class UserRepositoryImpl(
     override suspend fun getUser(userId: Long): UserModel? {
         if (userId <= 0) return null
         userLocal.getUser(userId)?.let {
-            return it.toDomain(userLocal.getUserFullInfo(userId))
+            return it.toDomain(userLocal.getUserFullInfo(userId), resolveEmojiPath(it))
         }
 
         if (userLocal is RoomUserLocalDataSource) {
             userLocal.loadUser(userId)?.let { entity ->
                 val user = entity.toTdApi()
                 userLocal.putUser(user)
-                return user.toDomain(userLocal.getUserFullInfo(userId))
+                return user.toDomain(userLocal.getUserFullInfo(userId), resolveEmojiPath(user))
             }
         }
 
@@ -124,7 +188,9 @@ class UserRepositoryImpl(
             }
         }
         return try {
-            deferred.await()?.toDomain(userLocal.getUserFullInfo(userId))
+            deferred.await()?.let { user ->
+                user.toDomain(userLocal.getUserFullInfo(userId), resolveEmojiPath(user))
+            }
         } finally {
             userRequests.remove(userId)
         }
@@ -140,13 +206,13 @@ class UserRepositoryImpl(
         } ?: return null
 
         val cachedFullInfo = userLocal.getUserFullInfo(userId)
-        if (cachedFullInfo != null) return user.toDomain(cachedFullInfo)
+        if (cachedFullInfo != null) return user.toDomain(cachedFullInfo, resolveEmojiPath(user))
 
         val dbFullInfo = userLocal.getFullInfoEntity(userId)
         if (dbFullInfo != null) {
             val fullInfo = dbFullInfo.toTdApi()
             userLocal.putUserFullInfo(userId, fullInfo)
-            return user.toDomain(fullInfo)
+            return user.toDomain(fullInfo, resolveEmojiPath(user))
         }
 
         val deferred = fullInfoRequests.getOrPut(userId) {
@@ -159,7 +225,7 @@ class UserRepositoryImpl(
         }
         return try {
             val fullInfo = deferred.await()
-            user.toDomain(fullInfo)
+            user.toDomain(fullInfo, resolveEmojiPath(user))
         } finally {
             fullInfoRequests.remove(userId)
         }
@@ -212,15 +278,11 @@ class UserRepositoryImpl(
             return fullInfo?.mapUserFullInfoToChat()
         }
 
-        // It's a group or channel (chatId < 0)
         val chat = remote.getChat(chatId)?.also { chatLocal.insertChat(it.toEntity()) }
             ?: chatLocal.getChat(chatId)?.let { it.toTdApiChat() }
             ?: return null
 
         val dbFullInfo = chatLocal.getChatFullInfo(chatId)
-        if (dbFullInfo != null) {
-            return dbFullInfo.toDomain()
-        }
 
         return when (val type = chat.type) {
             is TdApi.ChatTypeSupergroup -> {
@@ -229,16 +291,17 @@ class UserRepositoryImpl(
                 fullInfo?.let {
                     chatLocal.insertChatFullInfo(it.toEntity(chatId))
                 }
-                fullInfo?.mapSupergroupFullInfoToChat(supergroup)
+                fullInfo?.mapSupergroupFullInfoToChat(supergroup) ?: dbFullInfo?.toDomain()
             }
             is TdApi.ChatTypeBasicGroup -> {
                 val fullInfo = remote.getBasicGroupFullInfo(type.basicGroupId)
                 fullInfo?.let {
                     chatLocal.insertChatFullInfo(it.toEntity(chatId))
                 }
-                fullInfo?.mapBasicGroupFullInfoToChat()
+                fullInfo?.mapBasicGroupFullInfoToChat() ?: dbFullInfo?.toDomain()
             }
-            else -> null
+
+            else -> dbFullInfo?.toDomain()
         }
     }
 
@@ -373,7 +436,7 @@ class UserRepositoryImpl(
         if (userLocal is RoomUserLocalDataSource) {
             scope.launch { userLocal.clearDatabase() }
         }
-        scope.launch { chatLocal.clearAllChats() }
+        scope.launch { chatLocal.clearAll() }
     }
 
     override suspend fun setName(firstName: String, lastName: String) =
@@ -384,6 +447,9 @@ class UserRepositoryImpl(
 
     override suspend fun setUsername(username: String) =
         remote.setUsername(username)
+
+    override suspend fun setEmojiStatus(customEmojiId: Long?) =
+        remote.setEmojiStatus(customEmojiId)
 
     override suspend fun setProfilePhoto(path: String) =
         remote.setProfilePhoto(path)
@@ -425,6 +491,17 @@ class UserRepositoryImpl(
     private fun TdApi.Chat.toEntity(): org.monogram.data.db.model.ChatEntity {
         val isChannel = (type as? TdApi.ChatTypeSupergroup)?.isChannel ?: false
         val isArchived = positions.any { it.list is TdApi.ChatListArchive }
+        val permissions = permissions ?: TdApi.ChatPermissions()
+        val cachedCounts = parseCachedCounts(clientData)
+        val senderId = when (val sender = messageSenderId) {
+            is TdApi.MessageSenderUser -> sender.userId
+            is TdApi.MessageSenderChat -> sender.chatId
+            else -> null
+        }
+        val privateUserId = (type as? TdApi.ChatTypePrivate)?.userId ?: 0L
+        val basicGroupId = (type as? TdApi.ChatTypeBasicGroup)?.basicGroupId ?: 0L
+        val supergroupId = (type as? TdApi.ChatTypeSupergroup)?.supergroupId ?: 0L
+        val secretChatId = (type as? TdApi.ChatTypeSecret)?.secretChatId ?: 0
         return org.monogram.data.db.model.ChatEntity(
             id = id,
             title = title,
@@ -432,8 +509,8 @@ class UserRepositoryImpl(
             avatarPath = photo?.small?.local?.path,
             lastMessageText = (lastMessage?.content as? TdApi.MessageText)?.text?.text ?: "",
             lastMessageTime = (lastMessage?.date?.toLong() ?: 0L).toString(),
-            order = 0L,
-            isPinned = false,
+            order = positions.firstOrNull()?.order ?: 0L,
+            isPinned = positions.firstOrNull()?.isPinned ?: false,
             isMuted = notificationSettings.muteFor > 0,
             isChannel = isChannel,
             isGroup = type is TdApi.ChatTypeBasicGroup || (type is TdApi.ChatTypeSupergroup && !isChannel),
@@ -444,11 +521,81 @@ class UserRepositoryImpl(
                 is TdApi.ChatTypeSecret -> "SECRET"
                 else -> "PRIVATE"
             },
+            privateUserId = privateUserId,
+            basicGroupId = basicGroupId,
+            supergroupId = supergroupId,
+            secretChatId = secretChatId,
+            positionsCache = encodePositions(positions),
             isArchived = isArchived,
-            memberCount = 0,
-            onlineCount = 0,
+            memberCount = cachedCounts.first,
+            onlineCount = cachedCounts.second,
+            unreadMentionCount = unreadMentionCount,
+            unreadReactionCount = unreadReactionCount,
+            isMarkedAsUnread = isMarkedAsUnread,
+            hasProtectedContent = hasProtectedContent,
+            isTranslatable = isTranslatable,
+            hasAutomaticTranslation = false,
+            messageAutoDeleteTime = messageAutoDeleteTime,
+            canBeDeletedOnlyForSelf = canBeDeletedOnlyForSelf,
+            canBeDeletedForAllUsers = canBeDeletedForAllUsers,
+            canBeReported = canBeReported,
+            lastReadInboxMessageId = lastReadInboxMessageId,
+            lastReadOutboxMessageId = lastReadOutboxMessageId,
+            lastMessageId = lastMessage?.id ?: 0L,
+            isLastMessageOutgoing = lastMessage?.isOutgoing ?: false,
+            replyMarkupMessageId = replyMarkupMessageId,
+            messageSenderId = senderId,
+            blockList = blockList != null,
+            emojiStatusId = (emojiStatus?.type as? TdApi.EmojiStatusTypeCustomEmoji)?.customEmojiId,
+            accentColorId = accentColorId,
+            profileAccentColorId = profileAccentColorId,
+            backgroundCustomEmojiId = backgroundCustomEmojiId,
+            photoId = photo?.small?.id ?: 0,
+            isSupergroup = type is TdApi.ChatTypeSupergroup,
+            isAdmin = false,
+            isOnline = false,
+            typingAction = null,
+            draftMessage = (draftMessage?.inputMessageText as? TdApi.InputMessageText)?.text?.text,
+            isVerified = false,
+            viewAsTopics = viewAsTopics,
+            isForum = false,
+            isBot = false,
+            isMember = true,
+            username = null,
+            description = null,
+            inviteLink = null,
+            permissionCanSendBasicMessages = permissions.canSendBasicMessages,
+            permissionCanSendAudios = permissions.canSendAudios,
+            permissionCanSendDocuments = permissions.canSendDocuments,
+            permissionCanSendPhotos = permissions.canSendPhotos,
+            permissionCanSendVideos = permissions.canSendVideos,
+            permissionCanSendVideoNotes = permissions.canSendVideoNotes,
+            permissionCanSendVoiceNotes = permissions.canSendVoiceNotes,
+            permissionCanSendPolls = permissions.canSendPolls,
+            permissionCanSendOtherMessages = permissions.canSendOtherMessages,
+            permissionCanAddLinkPreviews = permissions.canAddLinkPreviews,
+            permissionCanEditTag = permissions.canEditTag,
+            permissionCanChangeInfo = permissions.canChangeInfo,
+            permissionCanInviteUsers = permissions.canInviteUsers,
+            permissionCanPinMessages = permissions.canPinMessages,
+            permissionCanCreateTopics = permissions.canCreateTopics,
             createdAt = System.currentTimeMillis()
         )
+    }
+
+    private fun encodePositions(positions: Array<TdApi.ChatPosition>): String? {
+        if (positions.isEmpty()) return null
+        val encoded = positions.mapNotNull { pos ->
+            if (pos.order == 0L) return@mapNotNull null
+            val pinned = if (pos.isPinned) 1 else 0
+            when (val list = pos.list) {
+                is TdApi.ChatListMain -> "m:${pos.order}:$pinned"
+                is TdApi.ChatListArchive -> "a:${pos.order}:$pinned"
+                is TdApi.ChatListFolder -> "f:${list.chatFolderId}:${pos.order}:$pinned"
+                else -> null
+            }
+        }
+        return if (encoded.isEmpty()) null else encoded.joinToString("|")
     }
 
     private fun TdApi.User.toEntity(): org.monogram.data.db.model.UserEntity {
@@ -464,5 +611,12 @@ class UserRepositoryImpl(
             lastSeen = (status as? TdApi.UserStatusOffline)?.wasOnline?.toLong() ?: 0L,
             createdAt = System.currentTimeMillis()
         )
+    }
+
+    private fun parseCachedCounts(clientData: String?): Pair<Int, Int> {
+        if (clientData.isNullOrBlank()) return 0 to 0
+        val memberCount = Regex("""mc:(\d+)""").find(clientData)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        val onlineCount = Regex("""oc:(\d+)""").find(clientData)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 0
+        return memberCount to onlineCount
     }
 }

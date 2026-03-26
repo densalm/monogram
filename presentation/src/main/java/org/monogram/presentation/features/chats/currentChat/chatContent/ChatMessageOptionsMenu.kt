@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageViewerModel
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.stickers.ui.menu.MessageOptionsMenu
@@ -30,6 +31,13 @@ fun ChatMessageOptionsMenu(
     clipboardManager: ClipboardManager,
     onDismiss: () -> Unit
 ) {
+    val canCheckViewersList = remember(state.isChannel, state.isGroup, state.memberCount) {
+        !state.isChannel && (!state.isGroup || state.memberCount in 1 until 100)
+    }
+    val shouldShowViewsInfo = remember(state.isChannel, selectedMessage.forwardInfo, selectedMessage.canGetViewers) {
+        state.isChannel && selectedMessage.forwardInfo == null && selectedMessage.canGetViewers
+    }
+
     val index = groupedMessages.indexOfFirst { item ->
         when (item) {
             is GroupedMessageItem.Single -> item.message.id == selectedMessage.id
@@ -52,16 +60,44 @@ fun ChatMessageOptionsMenu(
     } else null
 
     var messageWithReadDate by remember(selectedMessage) { mutableStateOf(selectedMessage) }
+    var messageViewers by remember(selectedMessage) { mutableStateOf<List<MessageViewerModel>>(emptyList()) }
+    var isLoadingViewers by remember(selectedMessage) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(selectedMessage) {
-        if (selectedMessage.isOutgoing && selectedMessage.readDate == 0) {
+    LaunchedEffect(selectedMessage, canCheckViewersList) {
+        if (canCheckViewersList &&
+            selectedMessage.isOutgoing &&
+            selectedMessage.canGetReadReceipts &&
+            selectedMessage.readDate == 0
+        ) {
             scope.launch {
-                val readDate = component.getMessageReadDate(selectedMessage.chatId, selectedMessage.id)
+                val readDate = component.getMessageReadDate(selectedMessage.chatId, selectedMessage.id, selectedMessage.date)
                 if (readDate > 0) {
                     messageWithReadDate = selectedMessage.copy(readDate = readDate)
                 }
             }
+        }
+    }
+
+    val canShowViewersList = remember(state.memberCount, selectedMessage) {
+        state.memberCount in 1 until 100 &&
+                selectedMessage.isOutgoing &&
+                selectedMessage.forwardInfo == null &&
+                (selectedMessage.canGetReadReceipts || selectedMessage.canGetViewers)
+    }
+
+    suspend fun reloadViewers() {
+        if (!canShowViewersList) return
+        isLoadingViewers = true
+        messageViewers = component
+            .getMessageViewers(selectedMessage.chatId, selectedMessage.id)
+            .sortedByDescending { it.viewedDate }
+        isLoadingViewers = false
+    }
+
+    LaunchedEffect(selectedMessage, canShowViewersList) {
+        if (canShowViewersList) {
+            reloadViewers()
         }
     }
 
@@ -142,9 +178,23 @@ fun ChatMessageOptionsMenu(
         }
     }
 
+    val senderIsUser = selectedMessage.senderId > 0L
+    val canModerateInChat = (state.isGroup || state.isChannel) && state.isAdmin
+    val canBlockUser = !selectedMessage.isOutgoing && senderIsUser &&
+            (canModerateInChat || (!state.isGroup && !state.isChannel))
+    val canRestrictUser = canBlockUser && (state.isGroup || state.isChannel) && state.isAdmin
+    val isOtherUserDialog = state.otherUser?.id?.let { it != state.currentUser?.id } == true
+    val canReportMessage = !selectedMessage.isOutgoing && (
+            state.isGroup || state.isChannel ||
+                    isOtherUserDialog
+            )
+    val canCopyLink = state.isGroup || state.isChannel
+    val canPinMessages = state.isAdmin || state.permissions.canPinMessages
+
     MessageOptionsMenu(
         message = messageWithReadDate,
         canWrite = state.canWrite,
+        canPinMessages = canPinMessages,
         isPinned = selectedMessage.id == state.pinnedMessage?.id,
         messageOffset = menuOffset,
         messageSize = menuMessageSize,
@@ -158,6 +208,20 @@ fun ChatMessageOptionsMenu(
             newerMsg,
             selectedMessage
         ),
+        showReadInfo = canCheckViewersList,
+        showViewsInfo = shouldShowViewsInfo,
+        showViewersList = canShowViewersList,
+        canReport = canReportMessage,
+        canBlock = canBlockUser,
+        canRestrict = canRestrictUser,
+        canCopyLink = canCopyLink,
+        viewers = messageViewers,
+        isLoadingViewers = isLoadingViewers,
+        onReloadViewers = {
+            scope.launch { reloadViewers() }
+        },
+        onViewerClick = { component.toProfile(it) },
+        videoPlayerPool = component.videoPlayerPool,
         bubbleRadius = state.bubbleRadius,
         splitOffset = splitOffset,
         onReply = {
@@ -236,11 +300,15 @@ fun ChatMessageOptionsMenu(
             onDismiss()
         },
         onBlock = {
-            component.onBlockUser(selectedMessage.senderId)
+            if (selectedMessage.senderId > 0L) {
+                component.onBlockUser(selectedMessage.senderId)
+            }
             onDismiss()
         },
         onRestrict = {
-            component.onRestrictUser(selectedMessage.senderId, ChatPermissionsModel())
+            if (selectedMessage.senderId > 0L) {
+                component.onRestrictUser(selectedMessage.senderId, ChatPermissionsModel())
+            }
             onDismiss()
         },
         onDismiss = onDismiss
