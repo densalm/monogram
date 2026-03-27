@@ -7,6 +7,7 @@
 ![TDLib](https://img.shields.io/badge/TDLib-1.8.62-blue)
 ![Status](https://img.shields.io/badge/Status-Active_Development-orange)
 ![Boosty](https://img.shields.io/badge/Boosty-Support_the_project-ff6f61?logo=boosty&logoColor=white)
+![License](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
 **Monogram** is a modern, lightning-fast, and elegant unofficial Telegram client for Android. Built with **Jetpack
 Compose** and **Material Design 3**, it aims to provide a native and fluid experience while leveraging the power of the
@@ -115,3 +116,9 @@ We welcome contributions! Whether it's fixing bugs, improving documentation, or 
 
 * Respect the [Telegram API Terms of Service](https://core.telegram.org/api/terms).
 * Ensure your code passes all checks and tests.
+
+---
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See `LICENSE` for the full text.
