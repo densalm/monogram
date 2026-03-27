@@ -89,7 +89,7 @@ fun ChannelGifMessageBubble(
     }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
-        if (!hasPath && !content.isDownloading) {
+        if (content.path.isNullOrBlank() && !content.isDownloading) {
             val shouldDownload = when {
                 downloadUtils.isWifiConnected() -> autoDownloadWifi
                 downloadUtils.isRoaming() -> autoDownloadRoaming

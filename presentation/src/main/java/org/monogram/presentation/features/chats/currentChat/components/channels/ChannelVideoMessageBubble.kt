@@ -105,7 +105,7 @@ fun ChannelVideoMessageBubble(
     }
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
-        if (!hasPath && !content.isDownloading && !content.supportsStreaming) {
+        if (content.path.isNullOrBlank() && !content.isDownloading && !content.supportsStreaming) {
             val shouldDownload = when {
                 downloadUtils.isWifiConnected() -> autoDownloadWifi
                 downloadUtils.isRoaming() -> autoDownloadRoaming
