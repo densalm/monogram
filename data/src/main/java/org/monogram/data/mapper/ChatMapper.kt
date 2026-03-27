@@ -379,10 +379,29 @@ class ChatMapper(private val stringProvider: StringProvider) {
             }
         }
 
+        if (entities.any { it.type is MessageEntityType.Spoiler }) {
+            txt = maskSpoilerText(txt, entities)
+        }
+
         val date = lastMsg.date
         val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
         val time = if (date > 0) timeFormat.format(Date(date.toLong() * 1000)) else ""
         return Triple(txt, entities, time)
+    }
+
+    private fun maskSpoilerText(text: String, entities: List<MessageEntity>): String {
+        if (text.isEmpty()) return text
+        val chars = text.toCharArray()
+        entities.forEach { entity ->
+            if (entity.type is MessageEntityType.Spoiler) {
+                val start = entity.offset.coerceIn(0, chars.size)
+                val end = (entity.offset + entity.length).coerceIn(start, chars.size)
+                for (i in start until end) {
+                    chars[i] = '•'
+                }
+            }
+        }
+        return String(chars)
     }
 
     private fun mapEntity(entity: TdApi.TextEntity): MessageEntity {

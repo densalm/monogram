@@ -531,13 +531,21 @@ fun ChatContent(
                                     currentInlineBotUsername = state.currentInlineBotUsername,
                                     currentInlineQuery = state.currentInlineQuery,
                                     isInlineBotLoading = state.isInlineBotLoading,
-                                    attachBots = state.attachMenuBots
+                                    attachBots = state.attachMenuBots,
+                                    scheduledMessages = state.scheduledMessages,
+                                    isPremiumUser = state.currentUser?.isPremium == true
                                 )
                             }
 
                             val inputBarActions = remember(component, pendingMediaPaths) {
                                 ChatInputBarActions(
-                                    onSend = { text, entities -> component.onSendMessage(text, entities) },
+                                    onSend = { text, entities, options ->
+                                        component.onSendMessage(
+                                            text,
+                                            entities,
+                                            options
+                                        )
+                                    },
                                     onStickerClick = { component.onSendSticker(it) },
                                     onGifClick = { component.onSendGif(it) },
                                     onAttachClick = {
@@ -557,11 +565,21 @@ fun ChatContent(
                                     onDraftChange = { component.onDraftChange(it) },
                                     onTyping = { component.onTyping() },
                                     onCancelMedia = { pendingMediaPaths = emptyList() },
-                                    onSendMedia = { paths, caption ->
-                                        if (paths.size > 1) component.onSendAlbum(paths, caption)
+                                    onSendMedia = { paths, caption, captionEntities, options ->
+                                        if (paths.size > 1) component.onSendAlbum(
+                                            paths,
+                                            caption,
+                                            captionEntities,
+                                            options
+                                        )
                                         else paths.firstOrNull()?.let {
-                                            if (it.endsWith(".mp4")) component.onSendVideo(it, caption)
-                                            else component.onSendPhoto(it, caption)
+                                            if (it.endsWith(".mp4")) component.onSendVideo(
+                                                it,
+                                                caption,
+                                                captionEntities,
+                                                options
+                                            )
+                                            else component.onSendPhoto(it, caption, captionEntities, options)
                                         }
                                         pendingMediaPaths = emptyList()
                                     },
@@ -605,7 +623,11 @@ fun ChatContent(
                                     },
                                     onAttachBotClick = { bot ->
                                         component.onOpenAttachBot(bot.botUserId, bot.name)
-                                    }
+                                    },
+                                    onRefreshScheduledMessages = { component.onRefreshScheduledMessages() },
+                                    onEditScheduledMessage = { message -> component.onEditMessage(message) },
+                                    onDeleteScheduledMessage = { message -> component.onDeleteMessage(message) },
+                                    onSendScheduledNow = { message -> component.onSendScheduledNow(message) }
                                 )
                             }
 

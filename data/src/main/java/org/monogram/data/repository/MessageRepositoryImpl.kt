@@ -101,43 +101,124 @@ class MessageRepositoryImpl(
         text: String,
         replyToMsgId: Long?,
         entities: List<MessageEntity>,
-        threadId: Long?
+        threadId: Long?,
+        sendOptions: MessageSendOptions
     ) {
-        messageRemoteDataSource.sendMessage(chatId, text, replyToMsgId, entities, threadId)
+        messageRemoteDataSource.sendMessage(chatId, text, replyToMsgId, entities, threadId, sendOptions)
     }
 
     override suspend fun sendSticker(chatId: Long, stickerPath: String, replyToMsgId: Long?, threadId: Long?) {
         messageRemoteDataSource.sendSticker(chatId, stickerPath, replyToMsgId, threadId)
     }
 
-    override suspend fun sendPhoto(chatId: Long, photoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendPhoto(chatId, photoPath, caption, replyToMsgId, threadId)
+    override suspend fun sendPhoto(
+        chatId: Long,
+        photoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendPhoto(
+            chatId = chatId,
+            photoPath = photoPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendVideo(chatId: Long, videoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendVideo(chatId, videoPath, caption, replyToMsgId, threadId)
+    override suspend fun sendVideo(
+        chatId: Long,
+        videoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendVideo(
+            chatId = chatId,
+            videoPath = videoPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
     override suspend fun sendDocument(
         chatId: Long,
         documentPath: String,
         caption: String,
+        captionEntities: List<MessageEntity>,
         replyToMsgId: Long?,
-        threadId: Long?
+        threadId: Long?,
+        sendOptions: MessageSendOptions
     ) {
-        messageRemoteDataSource.sendDocument(chatId, documentPath, caption, replyToMsgId, threadId)
+        messageRemoteDataSource.sendDocument(
+            chatId = chatId,
+            documentPath = documentPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendGif(chatId: Long, gifId: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendGif(chatId, gifId, replyToMsgId, threadId)
+    override suspend fun sendGif(
+        chatId: Long,
+        gifId: String,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendGif(chatId, gifId, replyToMsgId, threadId, sendOptions)
     }
 
-    override suspend fun sendGifFile(chatId: Long, gifPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendGifFile(chatId, gifPath, caption, replyToMsgId, threadId)
+    override suspend fun sendGifFile(
+        chatId: Long,
+        gifPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendGifFile(
+            chatId = chatId,
+            gifPath = gifPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendAlbum(chatId: Long, paths: List<String>, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendAlbum(chatId, paths, caption, replyToMsgId, threadId)
+    override suspend fun sendAlbum(
+        chatId: Long,
+        paths: List<String>,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendAlbum(
+            chatId = chatId,
+            paths = paths,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
     override suspend fun sendVideoNote(chatId: Long, videoPath: String, duration: Int, length: Int) {
@@ -296,6 +377,17 @@ class MessageRepositoryImpl(
         withContext(dispatcherProvider.io) {
             messageRemoteDataSource.getPinnedMessageCount(chatId, threadId)
         }
+
+    override suspend fun getScheduledMessages(chatId: Long): List<MessageModel> =
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.getScheduledMessages(chatId)
+        }
+
+    override suspend fun sendScheduledNow(chatId: Long, messageId: Long) {
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.sendScheduledNow(chatId, messageId)
+        }
+    }
 
     override fun downloadFile(fileId: Int, priority: Int, offset: Long, limit: Long, synchronous: Boolean) {
         scope.launch {

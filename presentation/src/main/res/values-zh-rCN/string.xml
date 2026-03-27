@@ -908,6 +908,48 @@
     <string name="action_send_items_count">发送 %1$d 个项目</string>
     <string name="action_send_media">发送媒体</string>
     <string name="action_cancel">取消</string>
+    <string name="action_copy">复制</string>
+    <string name="action_paste">粘贴</string>
+    <string name="action_cut">剪切</string>
+    <string name="action_select_all">全选</string>
+    <string name="action_apply">应用</string>
+    <string name="action_done">完成</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_open_fullscreen_editor">全屏编辑器</string>
+    <string name="action_send_silent">静默发送</string>
+    <string name="action_schedule_message">定时发送消息</string>
+    <string name="action_scheduled_messages">定时消息</string>
+    <string name="action_scheduled_messages_count">定时消息（%1$d）</string>
+    <string name="scheduled_messages_empty">暂无定时消息</string>
+    <string name="scheduled_messages_summary_count">定时总数：%1$d</string>
+    <string name="scheduled_messages_summary_next">下次发送：%1$s</string>
+    <string name="scheduled_messages_summary_editable">可编辑：%1$d</string>
+    <string name="scheduled_message_id">ID：%1$d</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_send_now">发送</string>
+    <string name="action_delete_message">删除</string>
+
+    <string name="rich_text_bold">加粗</string>
+    <string name="rich_text_italic">斜体</string>
+    <string name="rich_text_underline">下划线</string>
+    <string name="rich_text_strikethrough">删除线</string>
+    <string name="rich_text_spoiler">剧透</string>
+    <string name="rich_text_code">代码</string>
+    <string name="rich_text_pre">等宽</string>
+    <string name="rich_text_link">链接</string>
+    <string name="rich_text_mention">提及</string>
+    <string name="rich_text_clear">清除</string>
+    <string name="rich_text_link_title">添加链接</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">代码语言</string>
+    <string name="rich_text_code_language_hint">语言（例如 kotlin）</string>
+
+    <string name="fullscreen_editor_meta">%1$d 个字符 • %2$d 个格式块</string>
+    <string name="fullscreen_editor_hint">选中文本以应用类似 Telegram 的富文本格式</string>
+    <string name="rich_text_tools_title">格式</string>
+    <string name="rich_text_selection_meta">已选中：%1$d 个字符</string>
+    <string name="rich_text_selection_hint">选中文本以进行格式化</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
 
     <!-- Bot -->
     <string name="bot_commands">指令</string>

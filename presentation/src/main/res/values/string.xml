@@ -949,6 +949,47 @@
     <string name="action_send_items_count">Send %1$d items</string>
     <string name="action_send_media">Send media</string>
     <string name="action_cancel">Cancel</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_paste">Paste</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_apply">Apply</string>
+    <string name="action_done">Done</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_open_fullscreen_editor">Fullscreen editor</string>
+    <string name="action_send_silent">Send silently</string>
+    <string name="action_schedule_message">Schedule message</string>
+    <string name="action_scheduled_messages">Scheduled messages</string>
+    <string name="action_scheduled_messages_count">Scheduled messages (%1$d)</string>
+    <string name="scheduled_messages_empty">No scheduled messages yet</string>
+    <string name="scheduled_messages_summary_count">Total scheduled: %1$d</string>
+    <string name="scheduled_messages_summary_next">Next send: %1$s</string>
+    <string name="scheduled_messages_summary_editable">Editable now: %1$d</string>
+    <string name="scheduled_message_id">ID: %1$d</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_send_now">Send</string>
+    <string name="action_delete_message">Delete</string>
+    <string name="fullscreen_editor_meta">%1$d chars • %2$d format blocks</string>
+    <string name="fullscreen_editor_hint">Select text to apply rich formatting like in Telegram</string>
+    <string name="rich_text_tools_title">Formatting</string>
+    <string name="rich_text_selection_meta">Selected: %1$d chars</string>
+    <string name="rich_text_selection_hint">Select text to enable formatting</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
+
+    <string name="rich_text_bold">Bold</string>
+    <string name="rich_text_italic">Italic</string>
+    <string name="rich_text_underline">Underline</string>
+    <string name="rich_text_strikethrough">Strikethrough</string>
+    <string name="rich_text_spoiler">Spoiler</string>
+    <string name="rich_text_code">Code</string>
+    <string name="rich_text_pre">Monospace</string>
+    <string name="rich_text_link">Link</string>
+    <string name="rich_text_mention">Mention</string>
+    <string name="rich_text_clear">Clear</string>
+    <string name="rich_text_link_title">Add link</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">Code language</string>
+    <string name="rich_text_code_language_hint">Language (e.g. kotlin)</string>
 
     <!-- Bot -->
     <string name="bot_commands">Commands</string>

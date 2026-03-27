@@ -419,7 +419,9 @@ fun VideoMessageBubble(
                             ),
                             modifier = Modifier.padding(bottom = 4.dp),
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) {
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
                                     revealedSpoilers.add(index)
                                 }
                             },

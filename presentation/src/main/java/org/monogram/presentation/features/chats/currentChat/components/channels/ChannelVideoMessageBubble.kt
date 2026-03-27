@@ -358,9 +358,11 @@ fun ChannelVideoMessageBubble(
                                 lineHeight = (fontSize * 1.35f).sp
                             ),
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) revealedSpoilers.add(
-                                    index
-                                )
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
+                                    revealedSpoilers.add(index)
+                                }
                             },
                             onClick = { offset -> onLongClick(videoPosition + offset) },
                             onLongClick = { offset -> onLongClick(videoPosition + offset) }

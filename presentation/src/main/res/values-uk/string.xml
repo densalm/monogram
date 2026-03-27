@@ -915,6 +915,48 @@
     <string name="action_send_items_count">Надіслати %1$d об’єктів</string>
     <string name="action_send_media">Надіслати медіа</string>
     <string name="action_cancel">Скасувати</string>
+    <string name="action_copy">Копіювати</string>
+    <string name="action_paste">Вставити</string>
+    <string name="action_cut">Вирізати</string>
+    <string name="action_select_all">Виділити все</string>
+    <string name="action_apply">Застосувати</string>
+    <string name="action_done">Готово</string>
+    <string name="action_refresh">Оновити</string>
+    <string name="action_open_fullscreen_editor">Повноекранний редактор</string>
+    <string name="action_send_silent">Надіслати без звуку</string>
+    <string name="action_schedule_message">Відкласти повідомлення</string>
+    <string name="action_scheduled_messages">Відкладені повідомлення</string>
+    <string name="action_scheduled_messages_count">Відкладені повідомлення (%1$d)</string>
+    <string name="scheduled_messages_empty">Поки немає відкладених повідомлень</string>
+    <string name="scheduled_messages_summary_count">Усього відкладено: %1$d</string>
+    <string name="scheduled_messages_summary_next">Найближча відправка: %1$s</string>
+    <string name="scheduled_messages_summary_editable">Можна редагувати: %1$d</string>
+    <string name="scheduled_message_id">ID: %1$d</string>
+    <string name="action_edit">Змінити</string>
+    <string name="action_send_now">Надіслати</string>
+    <string name="action_delete_message">Видалити</string>
+
+    <string name="rich_text_bold">Жирний</string>
+    <string name="rich_text_italic">Курсив</string>
+    <string name="rich_text_underline">Підкреслений</string>
+    <string name="rich_text_strikethrough">Перекреслений</string>
+    <string name="rich_text_spoiler">Спойлер</string>
+    <string name="rich_text_code">Код</string>
+    <string name="rich_text_pre">Моноширинний</string>
+    <string name="rich_text_link">Посилання</string>
+    <string name="rich_text_mention">Згадати</string>
+    <string name="rich_text_clear">Очистити</string>
+    <string name="rich_text_link_title">Додати посилання</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">Мова коду</string>
+    <string name="rich_text_code_language_hint">Мова (наприклад, kotlin)</string>
+
+    <string name="fullscreen_editor_meta">%1$d символів • %2$d блоків форматування</string>
+    <string name="fullscreen_editor_hint">Виділіть текст, щоб застосувати форматування як у Telegram</string>
+    <string name="rich_text_tools_title">Форматування</string>
+    <string name="rich_text_selection_meta">Виділено: %1$d символів</string>
+    <string name="rich_text_selection_hint">Виділіть текст для форматування</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
 
     <!-- Bot -->
     <string name="bot_commands">Команди</string>

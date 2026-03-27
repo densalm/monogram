@@ -1220,7 +1220,7 @@ class MessageMapper(
 
         return MessageModel(
             id = msg.id,
-            date = msg.date,
+            date = resolveMessageDate(msg),
             isOutgoing = msg.isOutgoing,
             senderName = senderName,
             chatId = msg.chatId,
@@ -1271,11 +1271,18 @@ class MessageMapper(
                 else -> 0L
             },
             content = (msg.content as? TdApi.MessageText)?.text?.text ?: "",
-            date = msg.date,
+            date = resolveMessageDate(msg),
             isOutgoing = msg.isOutgoing,
             isRead = false,
             createdAt = System.currentTimeMillis()
         )
+    }
+
+    private fun resolveMessageDate(msg: TdApi.Message): Int {
+        return when (val schedulingState = msg.schedulingState) {
+            is TdApi.MessageSchedulingStateSendAtDate -> schedulingState.sendDate
+            else -> msg.date
+        }
     }
 
     private suspend fun loadCustomEmoji(emojiId: Long, chatId: Long, messageId: Long, autoDownload: Boolean) {

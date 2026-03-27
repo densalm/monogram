@@ -352,7 +352,9 @@ fun ChannelGifMessageBubble(
                             ),
                             modifier = Modifier.padding(bottom = 2.dp),
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) {
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
                                     revealedSpoilers.add(index)
                                 }
                             },

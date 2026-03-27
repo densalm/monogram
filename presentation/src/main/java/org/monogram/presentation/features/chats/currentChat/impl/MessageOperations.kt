@@ -119,3 +119,10 @@ internal fun DefaultChatComponent.handleUnpinMessage(message: MessageModel) {
 internal fun DefaultChatComponent.handleClearMessages() {
     chatsListRepository.clearChatHistory(chatId, false)
 }
+
+internal fun DefaultChatComponent.handleSendScheduledNow(message: MessageModel) {
+    scope.launch {
+        repositoryMessage.sendScheduledNow(chatId, message.id)
+        loadScheduledMessages()
+    }
+}

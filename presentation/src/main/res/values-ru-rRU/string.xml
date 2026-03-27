@@ -915,6 +915,48 @@
     <string name="action_send_items_count">Отправить %1$d объектов</string>
     <string name="action_send_media">Отправить медиа</string>
     <string name="action_cancel">Отмена</string>
+    <string name="action_copy">Копировать</string>
+    <string name="action_paste">Вставить</string>
+    <string name="action_cut">Вырезать</string>
+    <string name="action_select_all">Выделить все</string>
+    <string name="action_apply">Применить</string>
+    <string name="action_done">Готово</string>
+    <string name="action_refresh">Обновить</string>
+    <string name="action_open_fullscreen_editor">Полноэкранный редактор</string>
+    <string name="action_send_silent">Отправить без звука</string>
+    <string name="action_schedule_message">Отложить сообщение</string>
+    <string name="action_scheduled_messages">Отложенные сообщения</string>
+    <string name="action_scheduled_messages_count">Отложенные сообщения (%1$d)</string>
+    <string name="scheduled_messages_empty">Пока нет отложенных сообщений</string>
+    <string name="scheduled_messages_summary_count">Всего отложено: %1$d</string>
+    <string name="scheduled_messages_summary_next">Ближайшая отправка: %1$s</string>
+    <string name="scheduled_messages_summary_editable">Можно редактировать: %1$d</string>
+    <string name="scheduled_message_id">ID: %1$d</string>
+    <string name="action_edit">Изменить</string>
+    <string name="action_send_now">Отправить</string>
+    <string name="action_delete_message">Удалить</string>
+
+    <string name="rich_text_bold">Жирный</string>
+    <string name="rich_text_italic">Курсив</string>
+    <string name="rich_text_underline">Подчеркнутый</string>
+    <string name="rich_text_strikethrough">Зачеркнутый</string>
+    <string name="rich_text_spoiler">Спойлер</string>
+    <string name="rich_text_code">Код</string>
+    <string name="rich_text_pre">Моноширинный</string>
+    <string name="rich_text_link">Ссылка</string>
+    <string name="rich_text_mention">Упомянуть</string>
+    <string name="rich_text_clear">Очистить</string>
+    <string name="rich_text_link_title">Добавить ссылку</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">Язык кода</string>
+    <string name="rich_text_code_language_hint">Язык (например, kotlin)</string>
+
+    <string name="fullscreen_editor_meta">%1$d символов • %2$d блоков форматирования</string>
+    <string name="fullscreen_editor_hint">Выделите текст, чтобы применить форматирование как в Telegram</string>
+    <string name="rich_text_tools_title">Форматирование</string>
+    <string name="rich_text_selection_meta">Выделено: %1$d символов</string>
+    <string name="rich_text_selection_hint">Выделите текст для форматирования</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
 
     <!-- Bot -->
     <string name="bot_commands">Команды</string>
