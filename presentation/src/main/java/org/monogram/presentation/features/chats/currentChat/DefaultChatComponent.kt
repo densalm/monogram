@@ -193,7 +193,13 @@ class DefaultChatComponent(
         autoLoadJob = scope.launch {
             while (isActive) {
                 val currentState = _state.value
-                if (initialMessageId == null && currentState.messages.size <= 1 && !currentState.isLoading && !currentState.isLoadingOlder) {
+                if (
+                    initialMessageId == null &&
+                    currentState.messages.isEmpty() &&
+                    !currentState.isLoading &&
+                    !currentState.isLoadingOlder &&
+                    !currentState.isLoadingNewer
+                ) {
                     Log.d("DefaultChatComponent", "Auto-loading messages...")
                     loadMessages()
                 }
@@ -204,13 +210,15 @@ class DefaultChatComponent(
 
     private fun handleResume(initialMessageId: Long?) {
         val currentState = _state.value
+        if (currentState.isLoading || currentState.isLoadingOlder || currentState.isLoadingNewer) return
+
         if (!currentState.viewAsTopics) {
             if (initialMessageId != null) {
                 scrollToMessage(initialMessageId)
             } else if (currentState.messages.isEmpty()) {
                 loadMessages()
             }
-        } else if (currentState.messages.size <= 1 && currentState.currentTopicId == null) {
+        } else if (currentState.messages.isEmpty() && currentState.currentTopicId == null) {
             loadMessages()
         }
     }

@@ -45,6 +45,14 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
     }
 
     _state.update { state ->
+        if (filteredNewMessages.isEmpty()) {
+            return@update if (replace && state.messages.any { it.sendingState is MessageSendingState.Pending }) {
+                state.copy(messages = state.messages.filter { it.sendingState is MessageSendingState.Pending })
+            } else {
+                state
+            }
+        }
+
         val currentList = if (replace) {
             state.messages.filter { it.sendingState is MessageSendingState.Pending }
         } else {
@@ -53,9 +61,19 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         val isComments = state.rootMessage != null
 
-        val messageMap = currentList.associateBy { it.id }.toMutableMap()
+        val messageMap = LinkedHashMap<Long, MessageModel>(currentList.size + filteredNewMessages.size)
+        currentList.forEach { messageMap[it.id] = it }
+
+        var hasChanges = replace
         filteredNewMessages.forEach { msg ->
-            messageMap[msg.id] = msg
+            val previous = messageMap.put(msg.id, msg)
+            if (previous != msg) {
+                hasChanges = true
+            }
+        }
+
+        if (!hasChanges) {
+            return@update state
         }
 
         val mergedMessages = messageMap.values.let {
@@ -66,7 +84,7 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
             }
         }
 
-        state.copy(messages = mergedMessages)
+        if (mergedMessages == state.messages) state else state.copy(messages = mergedMessages)
     }
 }
 

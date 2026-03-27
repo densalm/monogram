@@ -92,14 +92,26 @@ fun ChatContent(
     var selectedMessageId by remember { mutableStateOf<Long?>(null) }
     val transformedMessageTexts = remember { mutableStateMapOf<Long, String>() }
     val originalMessageTexts = remember { mutableStateMapOf<Long, String>() }
-    val displayMessages = remember(state.messages, transformedMessageTexts.toMap()) {
-        state.messages.map { message ->
-            val transformedText = transformedMessageTexts[message.id] ?: return@map message
-            message.withUpdatedTextContent(transformedText)
+    val latestMessagesState = rememberUpdatedState(state.messages)
+    val selectedMessageIdState = rememberUpdatedState(selectedMessageId)
+    val displayMessages by remember {
+        derivedStateOf {
+            val baseMessages = latestMessagesState.value
+            if (transformedMessageTexts.isEmpty()) {
+                baseMessages
+            } else {
+                baseMessages.map { message ->
+                    val transformedText = transformedMessageTexts[message.id] ?: return@map message
+                    message.withUpdatedTextContent(transformedText)
+                }
+            }
         }
     }
-    val selectedMessage = remember(selectedMessageId, displayMessages) {
-        displayMessages.find { it.id == selectedMessageId }
+    val selectedMessage by remember {
+        derivedStateOf {
+            val currentSelectedId = selectedMessageIdState.value
+            displayMessages.find { it.id == currentSelectedId }
+        }
     }
     var menuOffset by remember { mutableStateOf(Offset.Zero) }
     var menuMessageSize by remember { mutableStateOf(IntSize.Zero) }
@@ -110,8 +122,8 @@ fun ChatContent(
     var editingPhotoPath by remember { mutableStateOf<String?>(null) }
     var editingVideoPath by remember { mutableStateOf<String?>(null) }
 
-    val groupedMessages = remember(displayMessages) {
-        groupMessagesByAlbum(displayMessages)
+    val groupedMessages by remember {
+        derivedStateOf { groupMessagesByAlbum(displayMessages) }
     }
     val isComments = state.rootMessage != null
     val isForumList = state.viewAsTopics && state.currentTopicId == null
