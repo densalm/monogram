@@ -101,6 +101,31 @@ class MessageMapper(
         }
     }
 
+    private fun resolveLocalFilePath(file: TdApi.File?): String? {
+        if (file == null) return null
+        val directPath = file.local.path.takeIf { isValidPath(it) }
+        if (directPath != null) return directPath
+
+        return cache.fileCache[file.id]?.local?.path?.takeIf { isValidPath(it) }
+    }
+
+    private fun resolveSenderNameFromCache(senderId: Long, fallback: String): String {
+        val user = cache.getUser(senderId)
+        if (user != null) {
+            return listOfNotNull(
+                user.firstName.takeIf { it.isNotBlank() },
+                user.lastName?.takeIf { it.isNotBlank() }
+            ).joinToString(" ").ifBlank { fallback.ifBlank { "User" } }
+        }
+
+        val chat = cache.getChat(senderId)
+        if (chat != null) {
+            return chat.title.takeIf { it.isNotBlank() } ?: fallback.ifBlank { "User" }
+        }
+
+        return fallback.ifBlank { "User" }
+    }
+
     private fun findBestAvailablePath(mainFile: TdApi.File?, sizes: Array<TdApi.PhotoSize>? = null): String? {
         if (mainFile != null && isValidPath(mainFile.local.path)) {
             return mainFile.local.path
@@ -1521,6 +1546,32 @@ class MessageMapper(
         val replyPreviewModel =
             if (replyToMsgId != null && replyPreview != null) createReplyPreviewModel(entity, replyToMsgId, replyPreview) else null
 
+        val cachedSenderUser = entity.senderId.takeIf { it > 0L }?.let { cache.getUser(it) }
+        val cachedSenderChat = if (cachedSenderUser == null && entity.senderId > 0L) {
+            cache.getChat(entity.senderId)
+        } else {
+            null
+        }
+
+        val resolvedSenderName = resolveSenderNameFromCache(entity.senderId, entity.senderName)
+        val resolvedSenderAvatar = when {
+            cachedSenderUser != null -> resolveLocalFilePath(cachedSenderUser.profilePhoto?.small)
+            cachedSenderChat != null -> resolveLocalFilePath(cachedSenderChat.photo?.small)
+            else -> null
+        }
+        val resolvedSenderPersonalAvatar = cache.getUserFullInfo(entity.senderId)
+            ?.personalPhoto
+            ?.sizes
+            ?.firstOrNull()
+            ?.photo
+            ?.let { resolveLocalFilePath(it) }
+
+        val senderStatusEmojiId = when (val type = cachedSenderUser?.emojiStatus?.type) {
+            is TdApi.EmojiStatusTypeCustomEmoji -> type.customEmojiId
+            is TdApi.EmojiStatusTypeUpgradedGift -> type.modelCustomEmojiId
+            else -> 0L
+        }
+
         val forwardInfo = entity.forwardFromName
             ?.takeIf { it.isNotBlank() }
             ?.let { fromName ->
@@ -1686,10 +1737,12 @@ class MessageMapper(
             id = entity.id,
             date = entity.date,
             isOutgoing = entity.isOutgoing,
-            senderName = entity.senderName,
+            senderName = resolvedSenderName,
             chatId = entity.chatId,
             content = content,
             senderId = entity.senderId,
+            senderAvatar = resolvedSenderAvatar,
+            senderPersonalAvatar = resolvedSenderPersonalAvatar,
             isRead = entity.isRead,
             replyToMsgId = replyToMsgId,
             replyToMsg = replyPreviewModel,
@@ -1698,7 +1751,10 @@ class MessageMapper(
             editDate = entity.editDate,
             views = entity.viewCount,
             viewCount = entity.viewCount,
-            replyCount = entity.replyCount
+            replyCount = entity.replyCount,
+            isSenderVerified = cachedSenderUser?.verificationStatus?.isVerified ?: false,
+            isSenderPremium = cachedSenderUser?.isPremium ?: false,
+            senderStatusEmojiId = senderStatusEmojiId
         )
     }
 

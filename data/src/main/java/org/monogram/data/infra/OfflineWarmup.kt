@@ -64,6 +64,11 @@ class OfflineWarmup(
         chats.forEach { chat ->
             if (chat.privateUserId != 0L) userIds.add(chat.privateUserId)
             chat.messageSenderId?.takeIf { it > 0 }?.let { userIds.add(it) }
+            messageDao.getLatestMessages(chat.id, 20)
+                .asSequence()
+                .map { it.senderId }
+                .filter { it > 0L }
+                .forEach { userIds.add(it) }
         }
         if (userIds.isEmpty()) return
 
@@ -75,7 +80,7 @@ class OfflineWarmup(
         for (userId in limited) {
             val cachedUser = existingUsers[userId]
             if (cachedUser == null || now - cachedUser.createdAt > ONE_DAY_MS) {
-                val user = gateway.execute(TdApi.GetUser(userId)) as? TdApi.User
+                val user = runCatching { gateway.execute(TdApi.GetUser(userId)) as? TdApi.User }.getOrNull()
                 if (user != null) {
                     userDao.insertUser(user.toUserEntity())
                     chatCache.putUser(user)
@@ -84,7 +89,9 @@ class OfflineWarmup(
 
             val cachedFullInfo = existingFullInfos[userId]
             if (cachedFullInfo == null || now - cachedFullInfo.createdAt > SEVEN_DAYS_MS) {
-                val fullInfo = gateway.execute(TdApi.GetUserFullInfo(userId)) as? TdApi.UserFullInfo
+                val fullInfo = runCatching {
+                    gateway.execute(TdApi.GetUserFullInfo(userId)) as? TdApi.UserFullInfo
+                }.getOrNull()
                 if (fullInfo != null) {
                     userFullInfoDao.insertUserFullInfo(fullInfo.toEntity(userId))
                     chatCache.putUserFullInfo(userId, fullInfo)

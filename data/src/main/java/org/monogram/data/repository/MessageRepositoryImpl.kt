@@ -10,6 +10,7 @@ import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.cache.ChatLocalDataSource
+import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.MessageRemoteDataSource
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.mapper.MessageMapper
@@ -35,7 +36,8 @@ class MessageRepositoryImpl(
     private val fileDataSource: FileDataSource,
     private val dispatcherProvider: DispatcherProvider,
     scopeProvider: ScopeProvider,
-    private val chatLocalDataSource: ChatLocalDataSource
+    private val chatLocalDataSource: ChatLocalDataSource,
+    private val userLocalDataSource: UserLocalDataSource
 ) : MessageRepository {
     private val scope = scopeProvider.appScope
 
@@ -310,7 +312,8 @@ class MessageRepositoryImpl(
     ): List<MessageModel> =
         withContext(dispatcherProvider.io) {
             val cached = if (fromMessageId == 0L) {
-                chatLocalDataSource.getLatestMessages(chatId, limit).map { messageMapper.mapEntityToModel(it) }
+                val cachedEntities = chatLocalDataSource.getLatestMessages(chatId, limit)
+                mapLocalMessages(cachedEntities)
             } else {
                 emptyList()
             }
@@ -324,15 +327,15 @@ class MessageRepositoryImpl(
                     cached
                 } else {
                     val local = chatLocalDataSource.getMessagesOlder(chatId, fromMessageId, limit)
-                    local.map { messageMapper.mapEntityToModel(it) }
+                    mapLocalMessages(local)
                 }
             }
         }
 
     override suspend fun getCachedMessages(chatId: Long, limit: Int): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            chatLocalDataSource.getLatestMessages(chatId, limit)
-                .map { messageMapper.mapEntityToModel(it) }
+            val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+            mapLocalMessages(local)
         }
 
     override suspend fun getMessagesNewer(
@@ -348,7 +351,7 @@ class MessageRepositoryImpl(
                 remoteMessages
             } catch (e: Exception) {
                 chatLocalDataSource.getMessagesNewer(chatId, fromMessageId, limit)
-                    .map { messageMapper.mapEntityToModel(it) }
+                    .let { mapLocalMessages(it) }
             }
         }
 
@@ -364,7 +367,8 @@ class MessageRepositoryImpl(
                 persistRemoteMessages(chatId, remoteMessages)
                 remoteMessages
             } catch (e: Exception) {
-                chatLocalDataSource.getLatestMessages(chatId, limit).map { messageMapper.mapEntityToModel(it) }
+                val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+                mapLocalMessages(local)
             }
         }
 
@@ -1165,5 +1169,80 @@ class MessageRepositoryImpl(
                 .ifBlank { null }
         }
         return cache.getChat(senderId)?.title
+    }
+
+    private suspend fun mapLocalMessages(
+        entities: List<org.monogram.data.db.model.MessageEntity>
+    ): List<MessageModel> {
+        prewarmCachedSenders(entities)
+        return entities.map { entity ->
+            val model = messageMapper.mapEntityToModel(entity)
+            enrichSenderFromCache(model)
+        }
+    }
+
+    private suspend fun prewarmCachedSenders(
+        entities: List<org.monogram.data.db.model.MessageEntity>
+    ) {
+        val senderIds = entities.asSequence()
+            .map { it.senderId }
+            .filter { it > 0L }
+            .distinct()
+            .toList()
+
+        senderIds.forEach { senderId ->
+            if (cache.getUser(senderId) != null) return@forEach
+            val localUser = runCatching { userLocalDataSource.getUser(senderId) }.getOrNull() ?: return@forEach
+            cache.putUser(localUser)
+        }
+    }
+
+    private fun enrichSenderFromCache(model: MessageModel): MessageModel {
+        val senderId = model.senderId
+        if (senderId <= 0L) return model
+
+        val cachedUser = cache.getUser(senderId)
+        if (cachedUser != null) {
+            val resolvedName = listOfNotNull(
+                cachedUser.firstName.takeIf { it.isNotBlank() },
+                cachedUser.lastName?.takeIf { it.isNotBlank() }
+            ).joinToString(" ").ifBlank { model.senderName }
+
+            val resolvedAvatar = resolveFilePath(cachedUser.profilePhoto?.small)
+            val emojiId = when (val type = cachedUser.emojiStatus?.type) {
+                is TdApi.EmojiStatusTypeCustomEmoji -> type.customEmojiId
+                is TdApi.EmojiStatusTypeUpgradedGift -> type.modelCustomEmojiId
+                else -> model.senderStatusEmojiId
+            }
+
+            return model.copy(
+                senderName = resolvedName,
+                senderAvatar = resolvedAvatar ?: model.senderAvatar,
+                isSenderVerified = cachedUser.verificationStatus?.isVerified ?: model.isSenderVerified,
+                isSenderPremium = cachedUser.isPremium || model.isSenderPremium,
+                senderStatusEmojiId = emojiId
+            )
+        }
+
+        val cachedChat = cache.getChat(senderId)
+        if (cachedChat != null) {
+            val resolvedName = cachedChat.title.takeIf { it.isNotBlank() } ?: model.senderName
+            val resolvedAvatar = resolveFilePath(cachedChat.photo?.small)
+            return model.copy(
+                senderName = resolvedName,
+                senderAvatar = resolvedAvatar ?: model.senderAvatar
+            )
+        }
+
+        return model
+    }
+
+    private fun resolveFilePath(file: TdApi.File?): String? {
+        if (file == null) return null
+        val directPath = file.local.path.takeIf { it.isNotBlank() && File(it).exists() }
+        if (directPath != null) return directPath
+
+        val cachedPath = cache.fileCache[file.id]?.local?.path
+        return cachedPath?.takeIf { it.isNotBlank() && File(it).exists() }
     }
 }

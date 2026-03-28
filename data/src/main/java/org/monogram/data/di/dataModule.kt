@@ -321,7 +321,8 @@ val dataModule = module {
             dispatcherProvider = get(),
             scopeProvider = get(),
             fileDataSource = get(),
-            chatLocalDataSource = get()
+            chatLocalDataSource = get(),
+            userLocalDataSource = get()
         )
     }
 
