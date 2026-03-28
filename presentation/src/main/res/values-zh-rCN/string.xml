@@ -322,7 +322,7 @@
     <string name="action_share">分享</string>
     <string name="support_monogram_description">MonoGram 是一个免费且开源的项目。您的支持有助于我们维持项目并开发新功能。</string>
     <string name="sponsor_sheet_description">带爱心的赞助者徽章可通过 Advanced 支持等级获得，或通过等值于 150 卢布（约
-        $1.70）的支持获得。
+        $1.96）的支持获得。
     </string>
     <string name="action_support_boosty">在 Boosty 上支持</string>
     <string name="action_maybe_later">稍后再说</string>
@@ -469,7 +469,7 @@
     <string name="connected_directly_subtitle">直接连接</string>
     <string name="switch_to_direct_subtitle">切换到直接连接</string>
     <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">由社区提供的代理。风险自负。更多信息: t.me/telegaru</string>
+    <string name="telega_proxy_subtitle">Telega Proxy 曾被曝光存在流量拦截风险。MTProto 可保护消息数据不被中间人拦截，但仍请自行评估风险后使用。更多信息: t.me/telegaru</string>
     <string name="enable_telega_proxy_title">启用 Telega Proxy</string>
     <string name="enable_telega_proxy_subtitle">自动获取并切换到最佳代理</string>
     <string name="refresh_list_title">刷新列表</string>
