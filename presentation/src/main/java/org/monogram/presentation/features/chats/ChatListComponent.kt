@@ -28,6 +28,8 @@ interface ChatListComponent {
     fun onRemoveSearchHistoryItem(chatId: Long)
     fun onMuteSelected(mute: Boolean)
     fun onArchiveSelected(archive: Boolean)
+    fun onPinSelected()
+    fun onToggleReadSelected()
     fun onDeleteSelected()
     fun onArchivePinToggle()
     fun onConfirmForwarding()

@@ -51,6 +51,7 @@ fun ChatContentTopBar(
     val isAdBlockEnabled by component.appPreferences.isAdBlockEnabled.collectAsState()
     val isSelectionMode = state.selectedMessageIds.isNotEmpty()
     val isMainChat = state.currentTopicId == null && state.rootMessage == null
+    val canClearOrDeleteChat = (!state.isGroup && !state.isChannel) || state.isAdmin
     val otherUserId = state.otherUser?.id
     val canReportChat = state.isGroup || state.isChannel ||
             (otherUserId != null && state.currentUser?.id != otherUserId)
@@ -295,11 +296,14 @@ fun ChatContentTopBar(
                     searchQuery = state.searchQuery,
                     onSearchToggle = component::onSearchToggle,
                     onSearchQueryChange = component::onSearchQueryChange,
-                    onClearHistory = if (isMainChat) component::onClearHistory else null,
-                    onDeleteChat = if (isMainChat) component::onDeleteChat else null,
+                    onClearHistory = if (isMainChat && canClearOrDeleteChat) component::onClearHistory else null,
+                    onDeleteChat = if (isMainChat && canClearOrDeleteChat) component::onDeleteChat else null,
                     onReport = if (isMainChat && canReportChat) component::onReport else null,
                     onCopyLink = if (isMainChat && (state.isGroup || state.isChannel)) {
                         { component.onCopyLink(clipboardManager) }
+                    } else null,
+                    onManageMembers = if (isMainChat && state.isGroup && (state.isAdmin || state.permissions.canInviteUsers)) {
+                        { component.onProfileClicked() }
                     } else null,
                     showBack = showBack,
                     personalAvatarPath = state.chatPersonalAvatar,

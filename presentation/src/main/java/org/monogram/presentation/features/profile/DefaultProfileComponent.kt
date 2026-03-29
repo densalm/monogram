@@ -1,19 +1,15 @@
 package org.monogram.presentation.features.profile
 
-import org.monogram.presentation.core.util.coRunCatching
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.monogram.domain.models.*
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
@@ -34,6 +30,7 @@ class DefaultProfileComponent(
 
     private val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
     private val userRepository: UserRepository = container.repositories.userRepository
+    private val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
     override val messageRepository: MessageRepository = container.repositories.messageRepository
     override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
     private val locationRepository: LocationRepository = container.repositories.locationRepository
@@ -66,6 +63,11 @@ class DefaultProfileComponent(
                 val user = if (chat == null || (!chat.isGroup && !chat.isChannel)) {
                     userRepository.getUser(chatId)
                 } else null
+                val isBlocked = if (user != null) {
+                    privacyRepository.getBlockedUsers().contains(user.id)
+                } else {
+                    chat?.blockList == true
+                }
                 val fullInfo = coRunCatching { userRepository.getChatFullInfo(chatId) }.getOrNull()
                 val description = fullInfo?.description
                 val link = fullInfo?.inviteLink
@@ -95,6 +97,7 @@ class DefaultProfileComponent(
                     it.copy(
                         chat = chat,
                         user = user,
+                        isBlocked = isBlocked,
                         fullInfo = fullInfo,
                         about = description,
                         publicLink = link,
@@ -730,6 +733,40 @@ class DefaultProfileComponent(
         onSendMessageClicked(chatId)
     }
 
+    override fun onToggleBlockUser() {
+        val userId = _state.value.user?.id ?: return
+        val shouldBlock = !_state.value.isBlocked
+        scope.launch {
+            if (shouldBlock) {
+                privacyRepository.blockUser(userId)
+            } else {
+                privacyRepository.unblockUser(userId)
+            }
+            _state.update { it.copy(isBlocked = shouldBlock) }
+            updateChat(chatId)
+        }
+    }
+
+    override fun onDeleteChat() {
+        scope.launch {
+            chatsListRepository.deleteChats(setOf(chatId))
+        }
+    }
+
+    override fun onToggleContact() {
+        val user = _state.value.user ?: return
+        scope.launch {
+            if (user.isContact) {
+                userRepository.removeContact(user.id)
+            } else {
+                userRepository.addContact(user)
+            }
+            _state.update { current ->
+                current.copy(user = current.user?.copy(isContact = !user.isContact))
+            }
+        }
+    }
+
     override fun onLeave() {
         scope.launch {
             chatsListRepository.leaveChat(chatId)
@@ -1061,7 +1098,12 @@ class DefaultProfileComponent(
         scope.launch {
             val updatedChat = chatsListRepository.getChatById(chatId)
             withContext(Dispatchers.Main) {
-                _state.update { it.copy(chat = updatedChat) }
+                _state.update {
+                    it.copy(
+                        chat = updatedChat,
+                        isBlocked = updatedChat?.blockList ?: it.isBlocked
+                    )
+                }
             }
         }
     }

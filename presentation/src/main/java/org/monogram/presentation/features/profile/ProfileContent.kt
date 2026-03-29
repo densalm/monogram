@@ -11,12 +11,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
+import androidx.compose.material.icons.rounded.Block
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,8 +123,6 @@ fun ProfileContent(component: ProfileComponent) {
     }
 
     val searchNotImplemented = stringResource(R.string.search_not_implemented)
-    val blockNotImplemented = stringResource(R.string.block_not_implemented)
-    val deleteNotImplemented = stringResource(R.string.delete_not_implemented)
     val linkCopied = stringResource(R.string.link_copied)
     val userIdCopied = stringResource(R.string.logs_user_id_copied)
 
@@ -146,7 +142,11 @@ fun ProfileContent(component: ProfileComponent) {
     }
     val canShareTopBar = !shareLink.isNullOrEmpty() || !fallbackShareText.isNullOrEmpty()
     val canReportTopBar = isGroupOrChannel && !isCurrentUserProfile
+    val canBlockTopBar = !isCurrentUserProfile && !isGroupOrChannel && user?.type != UserTypeEnum.BOT
+    val canDeleteTopBar = !isCurrentUserProfile && (!isGroupOrChannel || chat?.isMember == true)
     var showLeaveSheet by remember { mutableStateOf(false) }
+    var showDeleteChatSheet by remember { mutableStateOf(false) }
+    var showBlockSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -164,8 +164,9 @@ fun ProfileContent(component: ProfileComponent) {
                     canShare = canShareTopBar,
                     canEdit = canEditTopBar,
                     canReport = canReportTopBar,
-                    canBlock = false,
-                    canDelete = false,
+                    canBlock = canBlockTopBar,
+                    isBlocked = state.isBlocked,
+                    canDelete = canDeleteTopBar,
                     onSearch = { Toast.makeText(context, searchNotImplemented, Toast.LENGTH_SHORT).show() },
                     onShare = {
                         val valueToCopy = shareLink ?: fallbackShareText
@@ -177,8 +178,14 @@ fun ProfileContent(component: ProfileComponent) {
                     },
                     onEdit = component::onEdit,
                     onReport = component::onShowReport,
-                    onBlock = { Toast.makeText(context, blockNotImplemented, Toast.LENGTH_SHORT).show() },
-                    onDelete = { Toast.makeText(context, deleteNotImplemented, Toast.LENGTH_SHORT).show() }
+                    onBlock = { showBlockSheet = true },
+                    onDelete = {
+                        if (isGroupOrChannel) {
+                            showLeaveSheet = true
+                        } else {
+                            showDeleteChatSheet = true
+                        }
+                    }
                 )
             },
             containerColor = dynamicContainerColor
@@ -279,6 +286,7 @@ fun ProfileContent(component: ProfileComponent) {
                                     onLinkedChatClick = component::onLinkedChatClick,
                                     onShowPermissions = component::onShowPermissions,
                                     onAcceptTOS = component::onAcceptTOS,
+                                    onToggleContact = component::onToggleContact,
                                     onLocationClick = component::onLocationClick,
                                     videoPlayerPool = component.videoPlayerPool
                                 )
@@ -488,6 +496,37 @@ fun ProfileContent(component: ProfileComponent) {
                     showLeaveSheet = false
                 },
                 onDismiss = { showLeaveSheet = false }
+            )
+        }
+
+        if (showDeleteChatSheet && !isGroupOrChannel) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.Delete,
+                title = stringResource(R.string.delete_chat_title),
+                description = stringResource(R.string.delete_chat_confirmation),
+                confirmText = stringResource(R.string.action_delete_chat),
+                onConfirm = {
+                    component.onDeleteChat()
+                    showDeleteChatSheet = false
+                },
+                onDismiss = { showDeleteChatSheet = false }
+            )
+        }
+
+        if (showBlockSheet && canBlockTopBar) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.Block,
+                title = if (state.isBlocked) stringResource(R.string.unblock_user_title) else stringResource(R.string.block_user_title),
+                description = if (state.isBlocked) stringResource(R.string.unblock_user_confirmation) else stringResource(
+                    R.string.block_user_confirmation
+                ),
+                confirmText = if (state.isBlocked) stringResource(R.string.privacy_unblock_action) else stringResource(R.string.action_block),
+                onConfirm = {
+                    component.onToggleBlockUser()
+                    showBlockSheet = false
+                },
+                onDismiss = { showBlockSheet = false },
+                isDestructive = !state.isBlocked
             )
         }
 

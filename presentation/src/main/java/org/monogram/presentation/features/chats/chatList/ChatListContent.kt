@@ -426,14 +426,18 @@ fun ChatListContent(component: ChatListComponent) {
                     transitionSpec = { fadeIn() togetherWith fadeOut() }
                 ) { isSelectionMode ->
                     if (isSelectionMode) {
+                        val selectedChats = state.chats.filter { state.selectedChatIds.contains(it.id) }
+                        val canMarkUnread = selectedChats.any { !it.isMarkedAsUnread }
+
                         SelectionTopBar(
                             selectedCount = state.selectedChatIds.size,
                             onClearSelection = { component.clearSelection() },
-                            onPinClick = { },
+                            onPinClick = { component.onPinSelected() },
                             onMuteClick = { component.onMuteSelected(true) },
                             onArchiveClick = { component.onArchiveSelected(true) },
                             onDeleteClick = { showDeleteChatsSheet = true },
-                            onMoreClick = { }
+                            onToggleReadClick = { component.onToggleReadSelected() },
+                            canMarkUnread = canMarkUnread
                         )
                     } else {
                         if (state.isForwarding) {

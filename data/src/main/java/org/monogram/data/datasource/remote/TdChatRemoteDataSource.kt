@@ -1,10 +1,10 @@
 package org.monogram.data.datasource.remote
 
-import org.monogram.data.core.coRunCatching
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import org.drinkless.tdlib.TdApi
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.domain.models.ChatPermissionsModel
 
@@ -158,6 +158,18 @@ class TdChatRemoteSource(
         coRunCatching {
             val list = if (archive) TdApi.ChatListArchive() else TdApi.ChatListMain()
             gateway.execute(TdApi.AddChatToList(chatId, list))
+        }
+    }
+
+    override suspend fun toggleChatIsPinned(chatList: TdApi.ChatList, chatId: Long, isPinned: Boolean) {
+        coRunCatching {
+            gateway.execute(TdApi.ToggleChatIsPinned(chatList, chatId, isPinned))
+        }
+    }
+
+    override suspend fun toggleChatIsMarkedAsUnread(chatId: Long, isMarkedAsUnread: Boolean) {
+        coRunCatching {
+            gateway.execute(TdApi.ToggleChatIsMarkedAsUnread(chatId, isMarkedAsUnread))
         }
     }
 

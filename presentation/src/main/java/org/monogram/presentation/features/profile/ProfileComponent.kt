@@ -27,6 +27,9 @@ interface ProfileComponent {
     fun onShowQRCode()
     fun onDismissQRCode()
     fun onSendMessage()
+    fun onToggleBlockUser()
+    fun onDeleteChat()
+    fun onToggleContact()
     fun onLeave()
     fun onJoinChat()
     fun onReport(reason: String)
@@ -101,6 +104,7 @@ interface ProfileComponent {
         val miniAppUrl: String? = null,
         val miniAppName: String? = null,
         val currentUser: UserModel? = null,
+        val isBlocked: Boolean = false,
         val botWebAppUrl: String? = null,
         val botWebAppName: String? = null,
 

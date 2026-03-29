@@ -4,7 +4,6 @@ import com.arkivanov.mvikotlin.core.store.Reducer
 import com.arkivanov.mvikotlin.core.store.Store
 import com.arkivanov.mvikotlin.core.store.StoreFactory
 import com.arkivanov.mvikotlin.extensions.coroutines.CoroutineExecutor
-import org.monogram.presentation.features.chats.chatList.DefaultNewChatComponent
 import org.monogram.presentation.features.chats.newChat.NewChatStore.Intent
 import org.monogram.presentation.features.chats.newChat.NewChatStore.Label
 

@@ -1800,6 +1800,10 @@
     <string name="block_user_title">Заблокувати користувача?</string>
     <string name="block_user_confirmation">Ви впевнені, що хочете заблокувати цього користувача? Він не зможе надсилати вам повідомлення.</string>
     <string name="action_block">Заблокувати</string>
+    <string name="unblock_user_title">Розблокувати користувача?</string>
+    <string name="unblock_user_confirmation">Ви впевнені, що хочете розблокувати цього користувача? Він знову зможе
+        надсилати вам повідомлення.
+    </string>
     <string name="unpin_message_title">Відкріпити повідомлення?</string>
     <string name="unpin_message_confirmation">Ви впевнені, що хочете відкріпити це повідомлення?</string>
     <string name="action_unpin">Відкріпити</string>
@@ -1807,4 +1811,8 @@
     <string name="action_clear_recent_stickers">Очистити стікери</string>
     <string name="clear_recent_emojis_confirmation">Ви впевнені, що хочете очистити нещодавні емодзі?</string>
     <string name="action_clear_recent_emojis">Очистити емодзі</string>
+    <string name="action_add_contact">Додати до контактів</string>
+    <string name="action_remove_contact">Видалити з контактів</string>
+    <string name="action_mark_as_read">Позначити як прочитане</string>
+    <string name="action_mark_as_unread">Позначити як непрочитане</string>
 </resources>

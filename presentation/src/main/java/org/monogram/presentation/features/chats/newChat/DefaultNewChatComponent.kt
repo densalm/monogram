@@ -1,4 +1,4 @@
-package org.monogram.presentation.features.chats.chatList
+package org.monogram.presentation.features.chats.newChat
 
 import com.arkivanov.mvikotlin.core.instancekeeper.getStore
 import com.arkivanov.mvikotlin.extensions.coroutines.stateFlow
@@ -12,9 +12,6 @@ import org.monogram.domain.repository.ChatsListRepository
 import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
-import org.monogram.presentation.features.chats.newChat.NewChatComponent
-import org.monogram.presentation.features.chats.newChat.NewChatStore
-import org.monogram.presentation.features.chats.newChat.NewChatStoreFactory
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultNewChatComponent(

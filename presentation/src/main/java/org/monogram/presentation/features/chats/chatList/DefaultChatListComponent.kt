@@ -1,6 +1,5 @@
 package org.monogram.presentation.features.chats.chatList
 
-import org.monogram.presentation.core.util.coRunCatching
 import android.util.Log
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.mvikotlin.core.instancekeeper.getStore
@@ -12,6 +11,7 @@ import org.monogram.domain.models.BotMenuButtonModel
 import org.monogram.domain.models.UpdateState
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.AppPreferences
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.ChatListComponent
 import org.monogram.presentation.features.chats.ChatListStore
@@ -374,6 +374,29 @@ class DefaultChatListComponent(
         val selectedIds = _state.value.selectedChatIds
         scope.launch(Dispatchers.IO) {
             repository.toggleArchiveChats(selectedIds, archive)
+            clearSelection()
+        }
+    }
+
+    override fun onPinSelected() {
+        val selectedIds = _state.value.selectedChatIds
+        val selectedChats = _state.value.chats.filter { selectedIds.contains(it.id) }
+        val shouldPin = selectedChats.any { !it.isPinned }
+        val folderId = _state.value.selectedFolderId
+
+        scope.launch(Dispatchers.IO) {
+            repository.togglePinChats(selectedIds, shouldPin, folderId)
+            clearSelection()
+        }
+    }
+
+    override fun onToggleReadSelected() {
+        val selectedIds = _state.value.selectedChatIds
+        val selectedChats = _state.value.chats.filter { selectedIds.contains(it.id) }
+        val shouldMarkUnread = selectedChats.any { !it.isMarkedAsUnread }
+
+        scope.launch(Dispatchers.IO) {
+            repository.toggleReadChats(selectedIds, shouldMarkUnread)
             clearSelection()
         }
     }

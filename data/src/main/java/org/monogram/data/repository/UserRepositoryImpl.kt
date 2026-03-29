@@ -1,11 +1,11 @@
 package org.monogram.data.repository
 
-import org.monogram.data.core.coRunCatching
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.ScopeProvider
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.RoomUserLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
@@ -484,6 +484,22 @@ class UserRepositoryImpl(
     override suspend fun searchContacts(query: String): List<UserModel> {
         val result = remote.searchContacts(query) ?: return emptyList()
         return result.userIds.map { scope.async { getUser(it) } }.awaitAll().filterNotNull()
+    }
+
+    override suspend fun addContact(user: UserModel) {
+        val contact = TdApi.ImportedContact(
+            user.phoneNumber.orEmpty(),
+            user.firstName,
+            user.lastName.orEmpty(),
+            TdApi.FormattedText("", emptyArray())
+        )
+        remote.addContact(user.id, contact, true)
+        _userUpdateFlow.emit(user.id)
+    }
+
+    override suspend fun removeContact(userId: Long) {
+        remote.removeContacts(longArrayOf(userId))
+        _userUpdateFlow.emit(userId)
     }
 
     override suspend fun searchPublicChat(username: String): ChatModel? {

@@ -1,6 +1,5 @@
 package org.monogram.data.repository
 
-import org.monogram.data.core.coRunCatching
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -10,6 +9,7 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.*
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.ChatsCacheDataSource
 import org.monogram.data.datasource.remote.ChatRemoteSource
@@ -809,6 +809,27 @@ class ChatsListRepositoryImpl(
 
     override fun toggleArchiveChats(chatIds: Set<Long>, archive: Boolean) {
         chatIds.forEach { chatId -> scope.launch(dispatchers.io) { chatRemoteSource.archiveChat(chatId, archive) } }
+    }
+
+    override fun togglePinChats(chatIds: Set<Long>, pin: Boolean, folderId: Int) {
+        val chatList: TdApi.ChatList = when (folderId) {
+            -1 -> TdApi.ChatListMain()
+            -2 -> TdApi.ChatListArchive()
+            else -> TdApi.ChatListFolder(folderId)
+        }
+        chatIds.forEach { chatId ->
+            scope.launch(dispatchers.io) {
+                chatRemoteSource.toggleChatIsPinned(chatList, chatId, pin)
+            }
+        }
+    }
+
+    override fun toggleReadChats(chatIds: Set<Long>, markAsUnread: Boolean) {
+        chatIds.forEach { chatId ->
+            scope.launch(dispatchers.io) {
+                chatRemoteSource.toggleChatIsMarkedAsUnread(chatId, markAsUnread)
+            }
+        }
     }
 
     override fun deleteChats(chatIds: Set<Long>) {

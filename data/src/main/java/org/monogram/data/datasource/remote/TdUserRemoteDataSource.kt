@@ -1,7 +1,7 @@
 package org.monogram.data.datasource.remote
 
-import org.monogram.data.core.coRunCatching
 import org.drinkless.tdlib.TdApi
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.gateway.TelegramGateway
 
 class TdUserRemoteDataSource(
@@ -54,6 +54,18 @@ class TdUserRemoteDataSource(
 
     override suspend fun searchContacts(query: String): TdApi.Users? =
         coRunCatching { gateway.execute(TdApi.SearchContacts(query, 50)) }.getOrNull()
+
+    override suspend fun addContact(userId: Long, contact: TdApi.ImportedContact, sharePhoneNumber: Boolean) {
+        coRunCatching {
+            gateway.execute(TdApi.AddContact(userId, contact, sharePhoneNumber))
+        }
+    }
+
+    override suspend fun removeContacts(userIds: LongArray) {
+        coRunCatching {
+            gateway.execute(TdApi.RemoveContacts(userIds))
+        }
+    }
 
     override suspend fun searchPublicChat(username: String): TdApi.Chat? =
         coRunCatching { gateway.execute(TdApi.SearchPublicChat(username)) }.getOrNull()

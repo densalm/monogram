@@ -66,6 +66,7 @@ fun ChatTopBar(
     onDeleteChat: (() -> Unit)? = null,
     onReport: (() -> Unit)? = null,
     onCopyLink: (() -> Unit)? = null,
+    onManageMembers: (() -> Unit)? = null,
     showBack: Boolean = true,
     personalAvatarPath: String? = null
 ) {
@@ -327,6 +328,16 @@ fun ChatTopBar(
                                     onClick = {
                                         showMenu = false
                                         onCopyLink()
+                                    }
+                                )
+                            }
+                            if (onManageMembers != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Groups,
+                                    title = stringResource(R.string.members),
+                                    onClick = {
+                                        showMenu = false
+                                        onManageMembers()
                                     }
                                 )
                             }

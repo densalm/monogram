@@ -1785,6 +1785,8 @@
     <string name="block_user_title">屏蔽用户？</string>
     <string name="block_user_confirmation">您确定要屏蔽此用户吗？该用户将无法向您发送消息。</string>
     <string name="action_block">屏蔽</string>
+    <string name="unblock_user_title">解除屏蔽用户？</string>
+    <string name="unblock_user_confirmation">您确定要解除屏蔽此用户吗？对方将可以再次向您发送消息。</string>
     <string name="unpin_message_title">取消置顶消息？</string>
     <string name="unpin_message_confirmation">您确定要取消置顶此消息吗？</string>
     <string name="action_unpin">取消置顶</string>
@@ -1792,4 +1794,8 @@
     <string name="action_clear_recent_stickers">清除贴纸</string>
     <string name="clear_recent_emojis_confirmation">您确定要清除最近使用的表情吗？</string>
     <string name="action_clear_recent_emojis">清除表情</string>
+    <string name="action_add_contact">添加到联系人</string>
+    <string name="action_remove_contact">从联系人中移除</string>
+    <string name="action_mark_as_read">标为已读</string>
+    <string name="action_mark_as_unread">标为未读</string>
 </resources>

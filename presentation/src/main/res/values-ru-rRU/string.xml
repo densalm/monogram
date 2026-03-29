@@ -1800,6 +1800,10 @@
     <string name="block_user_title">Заблокировать пользователя?</string>
     <string name="block_user_confirmation">Вы уверены, что хотите заблокировать этого пользователя? Он не сможет отправлять вам сообщения.</string>
     <string name="action_block">Заблокировать</string>
+    <string name="unblock_user_title">Разблокировать пользователя?</string>
+    <string name="unblock_user_confirmation">Вы уверены, что хотите разблокировать этого пользователя? Он снова сможет
+        отправлять вам сообщения.
+    </string>
     <string name="unpin_message_title">Открепить сообщение?</string>
     <string name="unpin_message_confirmation">Вы уверены, что хотите открепить это сообщение?</string>
     <string name="action_unpin">Открепить</string>
@@ -1807,4 +1811,8 @@
     <string name="action_clear_recent_stickers">Очистить стикеры</string>
     <string name="clear_recent_emojis_confirmation">Вы уверены, что хотите очистить недавние эмодзи?</string>
     <string name="action_clear_recent_emojis">Очистить эмодзи</string>
+    <string name="action_add_contact">Добавить в контакты</string>
+    <string name="action_remove_contact">Удалить из контактов</string>
+    <string name="action_mark_as_read">Пометить прочитанным</string>
+    <string name="action_mark_as_unread">Пометить непрочитанным</string>
 </resources>

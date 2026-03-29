@@ -1828,6 +1828,10 @@
     <string name="block_user_title">Block User?</string>
     <string name="block_user_confirmation">Are you sure you want to block this user? This user will not be able to send you messages.</string>
     <string name="action_block">Block</string>
+    <string name="unblock_user_title">Unblock User?</string>
+    <string name="unblock_user_confirmation">Are you sure you want to unblock this user? They will be able to send you
+        messages again.
+    </string>
     <string name="unpin_message_title">Unpin message?</string>
     <string name="unpin_message_confirmation">Are you sure you want to unpin this message?</string>
     <string name="action_unpin">Unpin</string>
@@ -1835,4 +1839,8 @@
     <string name="action_clear_recent_stickers">Clear Stickers</string>
     <string name="clear_recent_emojis_confirmation">Are you sure you want to clear recent emojis?</string>
     <string name="action_clear_recent_emojis">Clear Emojis</string>
+    <string name="action_add_contact">Add to contacts</string>
+    <string name="action_remove_contact">Remove from contacts</string>
+    <string name="action_mark_as_read">Mark as read</string>
+    <string name="action_mark_as_unread">Mark as unread</string>
 </resources>

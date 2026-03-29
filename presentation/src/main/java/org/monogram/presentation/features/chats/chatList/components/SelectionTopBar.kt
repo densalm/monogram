@@ -18,7 +18,8 @@ fun SelectionTopBar(
     onMuteClick: () -> Unit,
     onArchiveClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    onMoreClick: () -> Unit
+    onToggleReadClick: () -> Unit,
+    canMarkUnread: Boolean
 ) {
     TopAppBar(
         title = {
@@ -38,7 +39,12 @@ fun SelectionTopBar(
             IconButton(onClick = onMuteClick) { Icon(Icons.AutoMirrored.Rounded.VolumeOff, stringResource(R.string.menu_mute)) }
             IconButton(onClick = onArchiveClick) { Icon(Icons.Rounded.Archive, stringResource(R.string.menu_archive)) }
             IconButton(onClick = onDeleteClick) { Icon(Icons.Rounded.Delete, stringResource(R.string.action_delete)) }
-            IconButton(onClick = onMoreClick) { Icon(Icons.Rounded.MoreVert, stringResource(R.string.more_options_cd)) }
+            IconButton(onClick = onToggleReadClick) {
+                Icon(
+                    Icons.Rounded.DoneAll,
+                    stringResource(if (canMarkUnread) R.string.action_mark_as_unread else R.string.action_mark_as_read)
+                )
+            }
         },
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer

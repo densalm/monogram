@@ -48,6 +48,7 @@ fun ProfileTopBar(
     canEdit: Boolean = false,
     canReport: Boolean = false,
     canBlock: Boolean = false,
+    isBlocked: Boolean = false,
     canDelete: Boolean = false,
     onSearch: () -> Unit = {},
     onShare: () -> Unit = {},
@@ -242,8 +243,10 @@ fun ProfileTopBar(
                             }
                             if (canBlock && userModel != null) {
                                 MenuOptionRow(
-                                    icon = Icons.Rounded.Block,
-                                    title = stringResource(R.string.menu_block_user),
+                                    icon = if (isBlocked) Icons.Rounded.LockOpen else Icons.Rounded.Block,
+                                    title = if (isBlocked) stringResource(R.string.privacy_unblock_action) else stringResource(
+                                        R.string.menu_block_user
+                                    ),
                                     textColor = MaterialTheme.colorScheme.error,
                                     iconTint = MaterialTheme.colorScheme.error,
                                     onClick = {

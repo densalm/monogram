@@ -41,6 +41,8 @@ interface ChatsListRepository {
     suspend fun searchMessages(query: String, offset: String = "", limit: Int = 50): SearchMessagesResult
     fun toggleMuteChats(chatIds: Set<Long>, mute: Boolean)
     fun toggleArchiveChats(chatIds: Set<Long>, archive: Boolean)
+    fun togglePinChats(chatIds: Set<Long>, pin: Boolean, folderId: Int)
+    fun toggleReadChats(chatIds: Set<Long>, markAsUnread: Boolean)
     fun deleteChats(chatIds: Set<Long>)
     fun leaveChat(chatId: Long)
     fun setArchivePinned(pinned: Boolean)

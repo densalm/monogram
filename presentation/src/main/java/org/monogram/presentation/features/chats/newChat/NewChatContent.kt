@@ -1,4 +1,4 @@
-package org.monogram.presentation.features.chats.chatList
+package org.monogram.presentation.features.chats.newChat
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,7 +45,6 @@ import org.monogram.presentation.features.chats.chatList.components.NewChannelCo
 import org.monogram.presentation.features.chats.chatList.components.NewGroupContent
 import org.monogram.presentation.features.chats.chatList.components.SectionHeader
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
-import org.monogram.presentation.features.chats.newChat.NewChatComponent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

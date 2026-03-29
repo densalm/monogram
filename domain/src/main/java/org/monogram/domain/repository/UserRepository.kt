@@ -31,6 +31,8 @@ interface UserRepository {
 
     suspend fun getContacts(): List<UserModel>
     suspend fun searchContacts(query: String): List<UserModel>
+    suspend fun addContact(user: UserModel)
+    suspend fun removeContact(userId: Long)
     suspend fun getChatMembers(
         chatId: Long,
         offset: Int,
