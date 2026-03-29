@@ -387,6 +387,13 @@ fun ChatContent(
         }
     }
 
+    LaunchedEffect(state.showBotCommands, isRecordingVideo) {
+        if (state.showBotCommands || isRecordingVideo) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
+
     // Pick Media Result
     val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         val albumPaths = mutableListOf<String>()
@@ -531,6 +538,10 @@ fun ChatContent(
                             component = component,
                             contentAlpha = contentAlpha,
                             onBack = { keyboardController?.hide(); component.onBackClicked() },
+                            onOpenMenu = {
+                                keyboardController?.hide()
+                                focusManager.clearFocus(force = true)
+                            },
                             onPinnedMessageClick = { msg -> scrollToMessageState.value(msg) },
                             showBack = !isTablet
                         )
@@ -581,7 +592,11 @@ fun ChatContent(
                                             )
                                         )
                                     },
-                                    onCameraClick = { isRecordingVideo = true },
+                                    onCameraClick = {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus(force = true)
+                                        isRecordingVideo = true
+                                    },
                                     onSendVoice = { path, duration, waveform ->
                                         component.onSendVoice(path, duration, waveform)
                                     },
@@ -617,7 +632,11 @@ fun ChatContent(
                                             editingPhotoPath = path
                                         }
                                     },
-                                    onShowBotCommands = { component.onShowBotCommands() },
+                                    onShowBotCommands = {
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus(force = true)
+                                        component.onShowBotCommands()
+                                    },
                                     onReplyMarkupButtonClick = {
                                         component.onReplyMarkupButtonClick(
                                             0,
@@ -822,6 +841,8 @@ fun ChatContent(
                                         } else component.onDownloadFile(audio.fileId)
                                     },
                                     onMessageOptionsClick = { msg, pos, size, clickPos ->
+                                        keyboardController?.hide()
+                                        focusManager.clearFocus(force = true)
                                         selectedMessageId = msg.id
                                         menuOffset = pos; menuMessageSize = size; clickOffset = clickPos
                                     },

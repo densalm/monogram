@@ -237,7 +237,10 @@ fun ChatTopBar(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showMenu = true }) {
+                        IconButton(onClick = {
+                            onMenu()
+                            showMenu = true
+                        }) {
                             Icon(Icons.Default.MoreVert, contentDescription = null)
                         }
                     },

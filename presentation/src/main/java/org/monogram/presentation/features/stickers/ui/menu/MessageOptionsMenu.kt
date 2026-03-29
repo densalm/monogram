@@ -233,7 +233,7 @@ fun MessageOptionsMenu(
             var x = (clickOffset.x - (menuSize.width / 2)).toInt()
             val minX = containerOffset.x.toInt() + horizontalMargin
             val maxX = containerOffset.x.toInt() + containerSize.width - menuSize.width - horizontalMargin
-            x = x.coerceIn(minX, maxX)
+            x = if (maxX >= minX) x.coerceIn(minX, maxX) else minX
 
             var y = (clickOffset.y - (menuSize.height / 2)).toInt()
             val minY = maxOf(containerOffset.y.toInt() + verticalPadding, topInset + verticalPadding)
@@ -241,7 +241,7 @@ fun MessageOptionsMenu(
                 containerOffset.y.toInt() + containerSize.height - menuSize.height - verticalPadding,
                 screenHeight - bottomInset - menuSize.height - verticalPadding
             )
-            y = y.coerceIn(minY, maxY)
+            y = if (maxY >= minY) y.coerceIn(minY, maxY) else minY
 
             IntOffset(x - containerOffset.x.toInt(), y - containerOffset.y.toInt())
         }

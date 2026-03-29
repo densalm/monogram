@@ -41,6 +41,7 @@ fun ChatContentTopBar(
     component: ChatComponent,
     contentAlpha: Float,
     onBack: () -> Unit,
+    onOpenMenu: () -> Unit = {},
     onPinnedMessageClick: (MessageModel) -> Unit,
     showBack: Boolean = true
 ) {
@@ -119,7 +120,10 @@ fun ChatContentTopBar(
                         }
                         var showMenu by remember { mutableStateOf(false) }
                         Box {
-                            IconButton(onClick = { showMenu = true }) {
+                            IconButton(onClick = {
+                                onOpenMenu()
+                                showMenu = true
+                            }) {
                                 Icon(
                                     Icons.Default.MoreVert,
                                     contentDescription = stringResource(R.string.menu_more)
@@ -254,7 +258,7 @@ fun ChatContentTopBar(
                     isVerified = state.isVerified,
                     isSponsor = state.isSponsor,
                     onBack = onBack,
-                    onMenu = { },
+                    onMenu = onOpenMenu,
                     onClick = { component.onProfileClicked() },
                     topicEmojiPath = topicEmojiPath,
                     isChannel = state.isChannel,

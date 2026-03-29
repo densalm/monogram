@@ -180,6 +180,10 @@ fun ChatInputBar(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
     val fullScreenFocusRequester = remember { FocusRequester() }
+    fun hideKeyboardAndClearFocus(force: Boolean = true) {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = force)
+    }
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
     val imeBottomPx = WindowInsets.ime.getBottom(density)
@@ -223,8 +227,7 @@ fun ChatInputBar(
             openKeyboardAfterStickerMenuClosed = false
             closeStickerMenuWithoutSlide = false
             isStickerMenuVisible = false
-            keyboardController?.hide()
-            focusManager.clearFocus(force = true)
+            hideKeyboardAndClearFocus()
         }
     }
 
@@ -628,8 +631,7 @@ fun ChatInputBar(
                                         openKeyboardAfterStickerMenuClosed = false
                                         closeStickerMenuWithoutSlide = false
                                         isStickerMenuVisible = false
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus(force = true)
+                                        hideKeyboardAndClearFocus()
                                         showGallery = true
                                     }
                                 )
@@ -682,8 +684,7 @@ fun ChatInputBar(
                                                     closeStickerMenuWithoutSlide = false
                                                     if (isKeyboardVisible) {
                                                         openStickerMenuAfterKeyboardClosed = true
-                                                        keyboardController?.hide()
-                                                        focusManager.clearFocus(force = true)
+                                                        hideKeyboardAndClearFocus()
                                                     } else {
                                                         openStickerMenuAfterKeyboardClosed = false
                                                         isStickerMenuVisible = true
@@ -691,7 +692,14 @@ fun ChatInputBar(
                                                     }
                                                 }
                                             },
-                                            onShowBotCommands = actions.onShowBotCommands,
+                                            onShowBotCommands = {
+                                                openStickerMenuAfterKeyboardClosed = false
+                                                openKeyboardAfterStickerMenuClosed = false
+                                                closeStickerMenuWithoutSlide = false
+                                                isStickerMenuVisible = false
+                                                hideKeyboardAndClearFocus()
+                                                actions.onShowBotCommands()
+                                            },
                                             onOpenMiniApp = actions.onOpenMiniApp,
                                             knownCustomEmojis = knownCustomEmojis,
                                             emojiFontFamily = emojiFontFamily,
@@ -739,12 +747,23 @@ fun ChatInputBar(
                                     isVideoMessageMode = isVideoMessageMode,
                                     onSendWithOptions = sendWithOptions,
                                     onShowSendOptionsMenu = {
+                                        openStickerMenuAfterKeyboardClosed = false
+                                        openKeyboardAfterStickerMenuClosed = false
+                                        closeStickerMenuWithoutSlide = false
+                                        isStickerMenuVisible = false
+                                        hideKeyboardAndClearFocus()
                                         showSendOptionsSheet = true
                                         actions.onRefreshScheduledMessages()
                                     },
-                                    onCameraClick = actions.onCameraClick,
+                                    onCameraClick = {
+                                        hideKeyboardAndClearFocus()
+                                        actions.onCameraClick()
+                                    },
                                     onVideoModeToggle = { isVideoMessageMode = !isVideoMessageMode },
-                                    onVoiceStart = { voiceRecorder.startRecording() },
+                                    onVoiceStart = {
+                                        hideKeyboardAndClearFocus()
+                                        voiceRecorder.startRecording()
+                                    },
                                     onVoiceStop = { cancel -> voiceRecorder.stopRecording(cancel) },
                                     onVoiceLock = { voiceRecorder.lockRecording() }
                                 )
