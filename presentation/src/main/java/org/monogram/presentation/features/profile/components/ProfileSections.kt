@@ -43,66 +43,49 @@ import org.monogram.presentation.features.profile.ProfileComponent
 import java.util.*
 
 @Composable
-fun ProfileInfoSectionSkeleton(itemCount: Int = 4) {
+fun ProfileInfoSectionSkeleton(
+    itemCount: Int = 4,
+    showLinkedChat: Boolean = true
+) {
     val shimmer = rememberShimmerBrush()
 
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(24.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            repeat(4) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(shimmer)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .height(10.dp)
-                            .fillMaxWidth(0.7f)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(shimmer)
-                    )
-                }
-            }
-        }
-    }
+    Spacer(modifier = Modifier.height(12.dp))
 
-    Box(
-        modifier = Modifier
-            .height(18.dp)
-            .fillMaxWidth(0.35f)
-            .clip(RoundedCornerShape(8.dp))
-            .background(shimmer)
-    )
-    Spacer(modifier = Modifier.height(10.dp))
+    ProfileQuickActionsSkeleton(shimmer = shimmer)
+    if (showLinkedChat) {
+        LinkedChatItemSkeleton(shimmer = shimmer)
+    }
+    SectionHeaderSkeleton(shimmer = shimmer)
 
     repeat(itemCount) { index ->
+        val position = when {
+            itemCount == 1 -> ItemPosition.STANDALONE
+            index == 0 -> ItemPosition.TOP
+            index == itemCount - 1 -> ItemPosition.BOTTOM
+            else -> ItemPosition.MIDDLE
+        }
+        val shape = when (position) {
+            ItemPosition.TOP -> RoundedCornerShape(
+                topStart = 24.dp,
+                topEnd = 24.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp
+            )
+
+            ItemPosition.MIDDLE -> RoundedCornerShape(4.dp)
+            ItemPosition.BOTTOM -> RoundedCornerShape(
+                bottomStart = 24.dp,
+                bottomEnd = 24.dp,
+                topStart = 4.dp,
+                topEnd = 4.dp
+            )
+
+            ItemPosition.STANDALONE -> RoundedCornerShape(24.dp)
+        }
+
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
-            shape = RoundedCornerShape(
-                topStart = if (index == 0) 24.dp else 4.dp,
-                topEnd = if (index == 0) 24.dp else 4.dp,
-                bottomStart = if (index == itemCount - 1) 24.dp else 4.dp,
-                bottomEnd = if (index == itemCount - 1) 24.dp else 4.dp
-            ),
+            shape = shape,
             modifier = Modifier.fillMaxWidth()
         ) {
             Row(
@@ -117,21 +100,33 @@ fun ProfileInfoSectionSkeleton(itemCount: Int = 4) {
                         .clip(CircleShape)
                         .background(shimmer)
                 )
-                Spacer(modifier = Modifier.width(14.dp))
+                Spacer(modifier = Modifier.width(16.dp))
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Box(
                         modifier = Modifier
-                            .height(14.dp)
-                            .fillMaxWidth(0.48f)
-                            .clip(RoundedCornerShape(6.dp))
+                            .height(18.dp)
+                            .fillMaxWidth(
+                                when (index % 3) {
+                                    0 -> 0.54f
+                                    1 -> 0.48f
+                                    else -> 0.58f
+                                }
+                            )
+                            .clip(RoundedCornerShape(8.dp))
                             .background(shimmer)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Box(
                         modifier = Modifier
                             .height(12.dp)
-                            .fillMaxWidth(0.72f)
-                            .clip(RoundedCornerShape(6.dp))
+                            .fillMaxWidth(
+                                when (index % 3) {
+                                    0 -> 0.86f
+                                    1 -> 0.78f
+                                    else -> 0.9f
+                                }
+                            )
+                            .clip(RoundedCornerShape(8.dp))
                             .background(shimmer)
                     )
                 }
@@ -141,6 +136,123 @@ fun ProfileInfoSectionSkeleton(itemCount: Int = 4) {
             Spacer(modifier = Modifier.height(2.dp))
         }
     }
+}
+
+@Composable
+private fun ProfileQuickActionsSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            repeat(4) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .widthIn(max = 100.dp)
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(shimmer)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .height(11.dp)
+                            .fillMaxWidth(0.8f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(shimmer)
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
+private fun LinkedChatItemSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(shimmer)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .height(18.dp)
+                        .fillMaxWidth(0.58f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .height(12.dp)
+                        .fillMaxWidth(0.92f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .width(88.dp)
+                    .height(28.dp)
+                    .clip(CircleShape)
+                    .background(shimmer)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+}
+
+@Composable
+private fun SectionHeaderSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Box(
+        modifier = Modifier
+            .padding(start = 12.dp, top = 16.dp, bottom = 8.dp)
+            .height(20.dp)
+            .width(164.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(shimmer)
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

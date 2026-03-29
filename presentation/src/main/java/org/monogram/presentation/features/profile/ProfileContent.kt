@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -20,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -206,7 +206,6 @@ fun ProfileContent(component: ProfileComponent) {
                         if (isInitialLoading) {
                             ProfileHeaderSkeleton(
                                 progress = progress,
-                                avatarSize = avatarSize,
                                 contentPadding = PaddingValues(
                                     top = topPadding,
                                     start = sidePadding,
@@ -252,7 +251,9 @@ fun ProfileContent(component: ProfileComponent) {
                     item(span = { GridItemSpan(3) }) {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             if (isInitialLoading) {
-                                ProfileInfoSectionSkeleton()
+                                ProfileInfoSectionSkeleton(
+                                    showLinkedChat = state.chatId < 0
+                                )
                             } else {
                                 ProfileInfoSection(
                                     state = state,
@@ -466,40 +467,49 @@ fun ProfileContent(component: ProfileComponent) {
 @Composable
 private fun ProfileHeaderSkeleton(
     progress: Float,
-    avatarSize: androidx.compose.ui.unit.Dp,
     contentPadding: PaddingValues
 ) {
     val shimmer = rememberShimmerBrush()
-    val titleWidth = androidx.compose.ui.unit.lerp(220.dp, 140.dp, progress)
-    val subtitleWidth = androidx.compose.ui.unit.lerp(160.dp, 100.dp, progress)
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val titleWidth = androidx.compose.ui.unit.lerp(220.dp, 124.dp, progress)
+    val subtitleWidth = androidx.compose.ui.unit.lerp(132.dp, 88.dp, progress)
+    val avatarCornerPercent = (100 * (1f - progress)).toInt()
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(contentPadding),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(contentPadding)
     ) {
+        val headerHeight = maxWidth.coerceAtMost(screenHeight * 0.6f)
+
         Box(
             modifier = Modifier
-                .size(avatarSize)
-                .clip(CircleShape)
+                .fillMaxWidth()
+                .height(headerHeight)
+                .clip(RoundedCornerShape(avatarCornerPercent))
                 .background(shimmer)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Box(
-            modifier = Modifier
-                .height(20.dp)
-                .width(titleWidth)
-                .clip(RoundedCornerShape(8.dp))
-                .background(shimmer)
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Box(
-            modifier = Modifier
-                .height(14.dp)
-                .width(subtitleWidth)
-                .clip(RoundedCornerShape(8.dp))
-                .background(shimmer)
-        )
+        ) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(horizontal = 20.dp, vertical = 32.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(22.dp)
+                        .width(titleWidth)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(shimmer)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .height(16.dp)
+                        .width(subtitleWidth)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(shimmer)
+                )
+            }
+        }
     }
 }
