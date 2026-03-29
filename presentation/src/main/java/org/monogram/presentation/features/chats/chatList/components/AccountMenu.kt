@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.chats.chatList.components
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -113,9 +114,11 @@ fun AccountMenu(
     onProfileClick: () -> Unit = {},
     onBotClick: (AttachMenuBotModel) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val addAccountNotImplemented = stringResource(R.string.not_implemented)
 
     var isVisible by remember { mutableStateOf(false) }
     var isExpanded by remember { mutableStateOf(false) }
@@ -326,8 +329,12 @@ fun AccountMenu(
                                         subtitle = stringResource(R.string.add_account_subtitle),
                                         position = ItemPosition.STANDALONE,
                                         onClick = {
+                                            Toast.makeText(
+                                                context,
+                                                addAccountNotImplemented,
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                             onAddAccountClick()
-                                            animateDismiss()
                                         }
                                     )
                                 }
