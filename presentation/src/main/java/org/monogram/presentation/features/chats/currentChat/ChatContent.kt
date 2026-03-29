@@ -729,14 +729,13 @@ fun ChatContent(
                                     translationY = contentOffset.toPx()
                                 }
                         ) {
-                            if (!showInitialLoading) {
-                                ChatContentList(
-                                    showNavPadding = false,
-                                    state = state,
-                                    component = component,
-                                    scrollState = scrollState,
-                                    groupedMessages = groupedMessages,
-                                    onPhotoClick = { msg, paths, captions, messageIds, index ->
+                            ChatContentList(
+                                showNavPadding = false,
+                                state = state,
+                                component = component,
+                                scrollState = scrollState,
+                                groupedMessages = groupedMessages,
+                                onPhotoClick = { msg, paths, captions, messageIds, index ->
                                         val content = msg.content as? MessageContent.Photo
                                         val validPath = content?.path?.takeIf { File(it).exists() }
                                         if (validPath != null) {
@@ -864,7 +863,6 @@ fun ChatContent(
                                     videoPlayerPool = component.videoPlayerPool,
                                     isAnyViewerOpen = isAnyViewerOpen
                                 )
-                            }
 
                             AnimatedVisibility(
                                 visible = showScrollToBottomButton,
@@ -962,14 +960,17 @@ fun ChatContent(
                             AnimatedVisibility(
                                 visible = showInitialLoading,
                                 enter = fadeIn(),
-                                exit = fadeOut(animationSpec = tween(200))
+                                exit = fadeOut(animationSpec = tween(400))
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .background(MaterialTheme.colorScheme.surface)
                                 ) {
-                                    MessageListShimmer()
+                                    MessageListShimmer(
+                                        isGroup = state.isGroup,
+                                        isChannel = state.isChannel
+                                    )
                                 }
                             }
                         }
