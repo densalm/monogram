@@ -14,9 +14,50 @@ import org.monogram.domain.repository.ReadUpdate
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
 import org.monogram.presentation.features.chats.currentChat.DownloadDebug
+import java.io.File
 
 
 private const val PAGE_SIZE = 50
+
+private fun isUsableAvatarPath(path: String?): Boolean {
+    if (path.isNullOrBlank()) return false
+    return when {
+        path.startsWith("http", ignoreCase = true) -> true
+        path.startsWith("content:", ignoreCase = true) -> true
+        path.startsWith("file:", ignoreCase = true) -> true
+        else -> File(path).exists()
+    }
+}
+
+private fun firstUsableAvatarPath(vararg candidates: String?): String? {
+    return candidates.firstOrNull { isUsableAvatarPath(it) }
+        ?: candidates.firstOrNull { !it.isNullOrBlank() }
+}
+
+private fun mergeSenderVisuals(previous: MessageModel, incoming: MessageModel): MessageModel {
+    if (previous.senderId != incoming.senderId) return incoming
+
+    val mergedAvatar = firstUsableAvatarPath(
+        incoming.senderAvatar,
+        incoming.senderPersonalAvatar,
+        previous.senderAvatar,
+        previous.senderPersonalAvatar
+    )
+    val mergedPersonalAvatar = firstUsableAvatarPath(
+        incoming.senderPersonalAvatar,
+        incoming.senderAvatar,
+        previous.senderPersonalAvatar,
+        previous.senderAvatar
+    )
+
+    return incoming.copy(
+        senderName = incoming.senderName.ifBlank { previous.senderName },
+        senderAvatar = mergedAvatar,
+        senderPersonalAvatar = mergedPersonalAvatar,
+        senderCustomTitle = incoming.senderCustomTitle ?: previous.senderCustomTitle,
+        senderStatusEmojiPath = incoming.senderStatusEmojiPath ?: previous.senderStatusEmojiPath
+    )
+}
 
 private suspend fun DefaultChatComponent.updateMessagesUnsafe(
     newMessages: List<MessageModel>,
@@ -69,8 +110,10 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         var hasChanges = replace
         filteredNewMessages.forEach { msg ->
-            val previous = messageMap.put(msg.id, msg)
-            if (previous != msg) {
+            val previous = messageMap[msg.id]
+            val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
+            val old = messageMap.put(msg.id, mergedMessage)
+            if (old != mergedMessage) {
                 hasChanges = true
             }
         }
@@ -781,10 +824,23 @@ private fun DefaultChatComponent.refreshMessagesForSender(senderId: Long, user: 
     _state.update { currentState ->
         val updatedMessages = currentState.messages.map { message ->
             if (message.senderId == senderId) {
+                val resolvedAvatar = firstUsableAvatarPath(
+                    user.avatarPath,
+                    user.personalAvatarPath,
+                    message.senderAvatar,
+                    message.senderPersonalAvatar
+                )
+                val resolvedPersonalAvatar = firstUsableAvatarPath(
+                    user.personalAvatarPath,
+                    user.avatarPath,
+                    message.senderPersonalAvatar,
+                    message.senderAvatar
+                )
+
                 message.copy(
                     senderName = fullName,
-                    senderAvatar = user.avatarPath ?: message.senderAvatar,
-                    senderPersonalAvatar = user.personalAvatarPath ?: message.senderPersonalAvatar,
+                    senderAvatar = resolvedAvatar,
+                    senderPersonalAvatar = resolvedPersonalAvatar,
                     isSenderVerified = user.isVerified,
                     isSenderPremium = user.isPremium,
                     senderStatusEmojiId = user.statusEmojiId,
