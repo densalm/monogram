@@ -461,14 +461,6 @@ class DefaultChatComponent(
 
     override fun onDownloadFile(fileId: Int) {
         AutoDownloadSuppression.clear(fileId)
-        Log.d(
-            DownloadDebug.TAG,
-            "onDownloadFile requested: fileId=$fileId chatId=$chatId suppressed=${
-                AutoDownloadSuppression.isSuppressed(
-                    fileId
-                )
-            } caller=${DownloadDebug.shortStack()}"
-        )
         store.accept(ChatStore.Intent.DownloadFile(fileId))
     }
 
@@ -476,14 +468,6 @@ class DefaultChatComponent(
 
     override fun onCancelDownloadFile(fileId: Int) {
         AutoDownloadSuppression.suppress(fileId)
-        Log.d(
-            DownloadDebug.TAG,
-            "onCancelDownloadFile requested: fileId=$fileId chatId=$chatId suppressed=${
-                AutoDownloadSuppression.isSuppressed(
-                    fileId
-                )
-            } caller=${DownloadDebug.shortStack()}"
-        )
         store.accept(ChatStore.Intent.CancelDownloadFile(fileId))
     }
 

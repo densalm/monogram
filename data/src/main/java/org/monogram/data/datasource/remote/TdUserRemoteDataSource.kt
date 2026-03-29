@@ -58,7 +58,7 @@ class TdUserRemoteDataSource(
     override suspend fun addContact(userId: Long, contact: TdApi.ImportedContact, sharePhoneNumber: Boolean) {
         coRunCatching {
             gateway.execute(TdApi.AddContact(userId, contact, sharePhoneNumber))
-        }
+        }.getOrThrow()
     }
 
     override suspend fun removeContacts(userIds: LongArray) {

@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ExitToApp
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,22 +28,22 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.presentation.R
-import org.monogram.presentation.core.ui.CollapsingToolbarScaffold
-import org.monogram.presentation.core.ui.ConfirmationSheet
-import org.monogram.presentation.core.ui.rememberCollapsingToolbarScaffoldState
-import org.monogram.presentation.core.ui.rememberShimmerBrush
+import org.monogram.presentation.core.ui.*
 import org.monogram.presentation.core.util.ScrollStrategy
 import org.monogram.presentation.core.util.getUserStatusText
+import org.monogram.presentation.features.chats.chatList.components.SettingsTextField
 import org.monogram.presentation.features.profile.components.*
 import org.monogram.presentation.features.viewers.ImageViewer
 import org.monogram.presentation.features.viewers.VideoViewer
 import org.monogram.presentation.features.webapp.MiniAppViewer
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileContent(component: ProfileComponent) {
     val state by component.state.subscribeAsState()
@@ -130,7 +132,7 @@ fun ProfileContent(component: ProfileComponent) {
     val canEditTopBar = when {
         isCurrentUserProfile -> true
         isGroupOrChannel -> chat.isAdmin || chat.permissions.canChangeInfo
-        else -> user?.isContact == true
+        else -> false
     }
     val shareLink = remember(user, chat, state.publicLink) {
         user?.username?.takeIf { it.isNotBlank() }?.let { "https://t.me/$it" }
@@ -143,10 +145,14 @@ fun ProfileContent(component: ProfileComponent) {
     val canShareTopBar = !shareLink.isNullOrEmpty() || !fallbackShareText.isNullOrEmpty()
     val canReportTopBar = isGroupOrChannel && !isCurrentUserProfile
     val canBlockTopBar = !isCurrentUserProfile && !isGroupOrChannel && user?.type != UserTypeEnum.BOT
+    val canEditContactTopBar = !isCurrentUserProfile && !isGroupOrChannel && user?.isContact == true
     val canDeleteTopBar = !isCurrentUserProfile && (!isGroupOrChannel || chat?.isMember == true)
     var showLeaveSheet by remember { mutableStateOf(false) }
     var showDeleteChatSheet by remember { mutableStateOf(false) }
     var showBlockSheet by remember { mutableStateOf(false) }
+    var showEditContactDialog by remember { mutableStateOf(false) }
+    var editContactFirstName by remember { mutableStateOf("") }
+    var editContactLastName by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -163,6 +169,7 @@ fun ProfileContent(component: ProfileComponent) {
                     canSearch = false,
                     canShare = canShareTopBar,
                     canEdit = canEditTopBar,
+                    canEditContact = canEditContactTopBar,
                     canReport = canReportTopBar,
                     canBlock = canBlockTopBar,
                     isBlocked = state.isBlocked,
@@ -177,6 +184,12 @@ fun ProfileContent(component: ProfileComponent) {
                         }
                     },
                     onEdit = component::onEdit,
+                    onEditContact = {
+                        val currentUser = state.user ?: return@ProfileTopBar
+                        editContactFirstName = currentUser.firstName
+                        editContactLastName = currentUser.lastName.orEmpty()
+                        showEditContactDialog = true
+                    },
                     onReport = component::onShowReport,
                     onBlock = { showBlockSheet = true },
                     onDelete = {
@@ -528,6 +541,91 @@ fun ProfileContent(component: ProfileComponent) {
                 onDismiss = { showBlockSheet = false },
                 isDestructive = !state.isBlocked
             )
+        }
+
+        if (showEditContactDialog && canEditContactTopBar && state.user != null) {
+            ModalBottomSheet(
+                onDismissRequest = { showEditContactDialog = false },
+                dragHandle = { BottomSheetDefaults.DragHandle() },
+                containerColor = MaterialTheme.colorScheme.background,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.edit_contact_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    SettingsTextField(
+                        value = editContactFirstName,
+                        onValueChange = { editContactFirstName = it },
+                        placeholder = stringResource(R.string.first_name_label),
+                        icon = Icons.Rounded.Person,
+                        position = ItemPosition.TOP,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    SettingsTextField(
+                        value = editContactLastName,
+                        onValueChange = { editContactLastName = it },
+                        placeholder = stringResource(R.string.last_name_label),
+                        icon = Icons.Rounded.Edit,
+                        position = ItemPosition.BOTTOM,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showEditContactDialog = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                stringResource(R.string.cancel_button),
+                                fontSize = 16.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                component.onEditContact(editContactFirstName, editContactLastName)
+                                showEditContactDialog = false
+                            },
+                            enabled = editContactFirstName.isNotBlank(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text(
+                                stringResource(R.string.action_save),
+                                fontSize = 16.sp,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         if (state.miniAppUrl == null) {

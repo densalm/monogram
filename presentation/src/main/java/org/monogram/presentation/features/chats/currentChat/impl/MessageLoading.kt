@@ -13,7 +13,6 @@ import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.ReadUpdate
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
-import org.monogram.presentation.features.chats.currentChat.DownloadDebug
 import java.io.File
 
 
@@ -648,7 +647,6 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
                 message.copy(content = newContent)
             }
             AutoDownloadSuppression.suppress(cancelledFileId)
-            Log.d(DownloadDebug.TAG, "downloadCancelled: messageId=$messageId fileId=$cancelledFileId chatId=$chatId")
         }
         .launchIn(scope)
 
@@ -716,14 +714,10 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
             fileIdToRetry?.let {
                 if (it != 0) {
                     val suppressed = AutoDownloadSuppression.isSuppressed(it)
-                    Log.d(
-                        DownloadDebug.TAG,
-                        "downloadCompletedError: messageId=$messageId fileId=$it suppressed=$suppressed chatId=$chatId"
-                    )
                     if (!suppressed) {
                         onDownloadFile(it)
                     } else {
-                        Log.d(DownloadDebug.TAG, "retrySkippedBySuppression: fileId=$it chatId=$chatId")
+                        Log.d("DownloadDebug", "retrySkippedBySuppression: fileId=$it chatId=$chatId")
                     }
                 }
             }

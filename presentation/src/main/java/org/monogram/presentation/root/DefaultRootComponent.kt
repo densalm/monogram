@@ -451,6 +451,9 @@ class DefaultRootComponent(
                     onChatCreated = { chatId ->
                         navigation.pop()
                         navigateToChat(chatId)
+                    },
+                    onProfileClicked = { userId ->
+                        navigation.bringToFront(Config.Profile(chatId = userId))
                     }
                 )
             )

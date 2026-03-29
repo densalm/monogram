@@ -491,9 +491,18 @@ class UserRepositoryImpl(
             user.phoneNumber.orEmpty(),
             user.firstName,
             user.lastName.orEmpty(),
-            TdApi.FormattedText("", emptyArray())
+            null
         )
         remote.addContact(user.id, contact, true)
+
+        remote.getUser(user.id)?.let { refreshedUser ->
+            userLocal.putUser(refreshedUser)
+            if (userLocal is RoomUserLocalDataSource) {
+                val personalAvatarPath = resolveStoredPersonalAvatarPath(refreshedUser.id)
+                userLocal.saveUser(refreshedUser.toEntity(personalAvatarPath))
+            }
+        }
+
         _userUpdateFlow.emit(user.id)
     }
 

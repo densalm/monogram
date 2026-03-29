@@ -46,6 +46,7 @@ fun ProfileTopBar(
     canSearch: Boolean = false,
     canShare: Boolean = false,
     canEdit: Boolean = false,
+    canEditContact: Boolean = false,
     canReport: Boolean = false,
     canBlock: Boolean = false,
     isBlocked: Boolean = false,
@@ -53,12 +54,13 @@ fun ProfileTopBar(
     onSearch: () -> Unit = {},
     onShare: () -> Unit = {},
     onEdit: () -> Unit = {},
+    onEditContact: () -> Unit = {},
     onReport: () -> Unit = {},
     onBlock: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    val hasMenuActions = canShare || canEdit || canReport || canBlock || canDelete
+    val hasMenuActions = canShare || canEdit || canEditContact || canReport || canBlock || canDelete
 
     val iconTint = lerp(
         start = MaterialTheme.colorScheme.onSurface,
@@ -228,6 +230,16 @@ fun ProfileTopBar(
                                     onClick = {
                                         showMenu = false
                                         onEdit()
+                                    }
+                                )
+                            }
+                            if (canEditContact) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Edit,
+                                    title = stringResource(R.string.contact_menu_edit_name),
+                                    onClick = {
+                                        showMenu = false
+                                        onEditContact()
                                     }
                                 )
                             }

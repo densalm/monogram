@@ -1,6 +1,5 @@
 package org.monogram.data.repository
 
-import org.monogram.data.core.coRunCatching
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.launch
@@ -9,6 +8,7 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
@@ -466,10 +466,6 @@ class MessageRepositoryImpl(
 
     override fun downloadFile(fileId: Int, priority: Int, offset: Long, limit: Long, synchronous: Boolean) {
         scope.launch {
-            Log.d(
-                "DownloadDebug",
-                "repo.downloadFile: fileId=$fileId priority=$priority offset=$offset limit=$limit sync=$synchronous"
-            )
             fileDataSource.downloadFile(fileId, priority, offset, limit, synchronous)
         }
     }
@@ -479,7 +475,6 @@ class MessageRepositoryImpl(
     }
 
     override suspend fun cancelDownloadFile(fileId: Int) {
-        Log.d("DownloadDebug", "repo.cancelDownloadFile: fileId=$fileId")
         fileDataSource.cancelDownload(fileId)
     }
 

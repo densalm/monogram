@@ -10,6 +10,9 @@ interface NewChatComponent {
 
     fun onBack()
     fun onUserClicked(userId: Long)
+    fun onOpenProfile(userId: Long)
+    fun onEditContact(userId: Long, firstName: String, lastName: String)
+    fun onRemoveContact(userId: Long)
     fun onSearchQueryChange(query: String)
     fun onCreateGroup()
     fun onCreateChannel()
@@ -22,6 +25,7 @@ interface NewChatComponent {
     fun onAutoDeleteTimeChange(seconds: Int)
     fun onConfirmCreate()
     fun onStepBack()
+    fun onConsumeValidationError()
 
     data class State(
         val contacts: List<UserModel> = emptyList(),
@@ -33,8 +37,15 @@ interface NewChatComponent {
         val title: String = "",
         val description: String = "",
         val photoPath: String? = null,
-        val autoDeleteTime: Int = 0
+        val autoDeleteTime: Int = 0,
+        val isCreating: Boolean = false,
+        val validationError: ValidationError? = null
     )
+
+    enum class ValidationError {
+        GROUP_TITLE_REQUIRED,
+        CHANNEL_TITLE_REQUIRED
+    }
 
     enum class Step {
         CONTACTS, GROUP_MEMBERS, GROUP_INFO, CHANNEL_INFO

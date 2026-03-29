@@ -1,6 +1,5 @@
 package org.monogram.data.infra
 
-import org.monogram.data.core.coRunCatching
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -10,6 +9,7 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.di.TdLibException
 import org.monogram.data.gateway.TelegramGateway
 import java.util.concurrent.ConcurrentHashMap
@@ -196,11 +196,6 @@ class FileDownloadQueue(
             }
 
             lastProgressAt[fileId] = System.currentTimeMillis()
-
-            Log.d(
-                "DownloadDebug",
-                "queue.processDownload.start: fileId=$fileId priority=${req.priority} type=${req.type} sync=${req.synchronous}"
-            )
 
             val started = withTimeoutOrNull(30000) {
                 gateway.execute(TdApi.DownloadFile(fileId, req.priority, req.offset, req.limit, req.synchronous))
@@ -503,17 +498,8 @@ class FileDownloadQueue(
         synchronous: Boolean = false,
         ignoreSuppression: Boolean = false
     ) {
-        Log.d(
-            "DownloadDebug",
-            "queue.enqueue: fileId=$fileId priority=$priority type=$type offset=$offset limit=$limit sync=$synchronous ignoreSuppression=$ignoreSuppression suppressed=${
-                suppressedAutoDownloadIds.contains(
-                    fileId
-                )
-            }"
-        )
         scope.appScope.launch(dispatcherProvider.default) {
             if (!ignoreSuppression && suppressedAutoDownloadIds.contains(fileId)) {
-                Log.d("DownloadDebug", "queue.enqueue.skippedBySuppression: fileId=$fileId")
                 return@launch
             }
 
@@ -597,10 +583,6 @@ class FileDownloadQueue(
                             !it.isManual && it.type == DownloadType.DEFAULT
                         }
                         if (pendingDefaultCount >= maxPendingDefaultAutoDownloads) {
-                            Log.d(
-                                "DownloadDebug",
-                                "queue.enqueue.skippedDefaultCap: fileId=$fileId pendingDefault=$pendingDefaultCount cap=$maxPendingDefaultAutoDownloads"
-                            )
                             return@launch
                         }
                     }
@@ -614,7 +596,6 @@ class FileDownloadQueue(
     fun cancelDownload(fileId: Int, force: Boolean = false, suppress: Boolean = true) {
         if (!force && manualDownloadIds.contains(fileId)) return
 
-        Log.d("DownloadDebug", "queue.cancel: fileId=$fileId force=$force suppress=$suppress")
         if (suppress) {
             suppressedAutoDownloadIds.add(fileId)
         }

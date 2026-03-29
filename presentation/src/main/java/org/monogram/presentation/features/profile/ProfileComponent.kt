@@ -29,6 +29,7 @@ interface ProfileComponent {
     fun onSendMessage()
     fun onToggleBlockUser()
     fun onDeleteChat()
+    fun onEditContact(firstName: String, lastName: String)
     fun onToggleContact()
     fun onLeave()
     fun onJoinChat()

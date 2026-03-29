@@ -753,6 +753,34 @@ class DefaultProfileComponent(
         }
     }
 
+    override fun onEditContact(firstName: String, lastName: String) {
+        val user = _state.value.user ?: return
+        val trimmedFirstName = firstName.trim()
+        if (trimmedFirstName.isBlank()) return
+        val normalizedLastName = lastName.trim().ifBlank { null }
+
+        scope.launch {
+            runCatching {
+                userRepository.addContact(
+                    user.copy(
+                        firstName = trimmedFirstName,
+                        lastName = normalizedLastName,
+                        isContact = true
+                    )
+                )
+            }.onSuccess {
+                _state.update { current ->
+                    current.copy(
+                        user = current.user?.copy(
+                            firstName = trimmedFirstName,
+                            lastName = normalizedLastName
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     override fun onToggleContact() {
         val user = _state.value.user ?: return
         scope.launch {
