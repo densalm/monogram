@@ -1852,4 +1852,7 @@
     <string name="action_remove_contact">Удалить из контактов</string>
     <string name="action_mark_as_read">Пометить прочитанным</string>
     <string name="action_mark_as_unread">Пометить непрочитанным</string>
+    <string name="folder_tab_edit">Изменить</string>
+    <string name="folder_tab_reorder">Порядок</string>
+    <string name="folder_tab_delete">Удалить</string>
 </resources>

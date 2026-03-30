@@ -1835,4 +1835,7 @@
     <string name="action_remove_contact">从联系人中移除</string>
     <string name="action_mark_as_read">标为已读</string>
     <string name="action_mark_as_unread">标为未读</string>
+    <string name="folder_tab_edit">编辑</string>
+    <string name="folder_tab_reorder">排序</string>
+    <string name="folder_tab_delete">删除</string>
 </resources>

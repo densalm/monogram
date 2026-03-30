@@ -1983,4 +1983,7 @@
     <string name="action_remove_contact">Odstrániť z kontaktov</string>
     <string name="action_mark_as_read">Označiť ako prečítané</string>
     <string name="action_mark_as_unread">Označiť ako neprečítané</string>
+    <string name="folder_tab_edit">Upraviť</string>
+    <string name="folder_tab_reorder">Poradie</string>
+    <string name="folder_tab_delete">Odstrániť</string>
 </resources>
