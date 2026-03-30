@@ -4,7 +4,6 @@ import com.arkivanov.mvikotlin.core.store.Reducer
 import com.arkivanov.mvikotlin.core.store.Store
 import com.arkivanov.mvikotlin.core.store.StoreFactory
 import com.arkivanov.mvikotlin.extensions.coroutines.CoroutineExecutor
-import org.monogram.presentation.features.chats.chatList.DefaultNewChatComponent
 import org.monogram.presentation.features.chats.newChat.NewChatStore.Intent
 import org.monogram.presentation.features.chats.newChat.NewChatStore.Label
 
@@ -26,6 +25,9 @@ class NewChatStoreFactory(
             when (intent) {
                 Intent.Back -> component.handleBack()
                 is Intent.UserClicked -> component.handleUserClicked(intent.userId)
+                is Intent.OpenProfile -> component.handleOpenProfile(intent.userId)
+                is Intent.EditContact -> component.handleEditContact(intent.userId, intent.firstName, intent.lastName)
+                is Intent.RemoveContact -> component.handleRemoveContact(intent.userId)
                 is Intent.SearchQueryChange -> component.handleSearchQueryChange(intent.query)
                 Intent.CreateGroup -> component.handleCreateGroup()
                 Intent.CreateChannel -> component.handleCreateChannel()
@@ -36,6 +38,7 @@ class NewChatStoreFactory(
                 is Intent.AutoDeleteTimeChange -> component.handleAutoDeleteTimeChange(intent.seconds)
                 Intent.ConfirmCreate -> component.handleConfirmCreate()
                 Intent.StepBack -> component.handleStepBack()
+                Intent.ConsumeValidationError -> component.handleConsumeValidationError()
                 is Intent.UpdateState -> dispatch(Message.UpdateState(intent.state))
             }
         }

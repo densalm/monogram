@@ -4,8 +4,38 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,22 +46,70 @@ import androidx.compose.material.icons.filled.PhoneIphone
 import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.DataUsage
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PowerSettingsNew
+import androidx.compose.material.icons.rounded.SentimentSatisfiedAlt
+import androidx.compose.material.icons.rounded.SettingsEthernet
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.*
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
@@ -39,13 +117,24 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.monogram.presentation.R
-import org.monogram.presentation.core.ui.*
+import org.monogram.presentation.core.ui.CollapsingToolbarScaffold
+import org.monogram.presentation.core.ui.ItemPosition
+import org.monogram.presentation.core.ui.SettingsItem
+import org.monogram.presentation.core.ui.StyledQRCode
+import org.monogram.presentation.core.ui.UserProfileHeader
+import org.monogram.presentation.core.ui.UsernamesTile
+import org.monogram.presentation.core.ui.generatePureBitmap
+import org.monogram.presentation.core.ui.rememberCollapsingToolbarScaffoldState
+import org.monogram.presentation.core.ui.saveBitmapToGallery
+import org.monogram.presentation.core.ui.shareBitmap
 import org.monogram.presentation.core.util.CountryManager
 import org.monogram.presentation.core.util.ScrollStrategy
 import org.monogram.presentation.core.util.formatMaskedGlobal
+import org.monogram.presentation.features.stickers.ui.menu.EmojisGrid
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import org.monogram.presentation.settings.sessions.SectionHeader
 import java.util.Locale
+import kotlin.math.roundToInt
 
 val QrBackgroundColor = Color(0xFFEFF1E6)
 val QrDarkGreen = Color(0xFF3E4D36)
@@ -71,6 +160,37 @@ fun SettingsContent(component: SettingsComponent) {
 
     val collapsingToolbarState = rememberCollapsingToolbarScaffoldState()
     var isPhoneVisible by remember { mutableStateOf(false) }
+    var showStatusMenu by remember { mutableStateOf(false) }
+    var statusAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+    var topBarStatusAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+    var headerStatusAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+    val statusMenuTransitionState = remember { MutableTransitionState(false) }
+    val density = LocalDensity.current
+
+    LaunchedEffect(showStatusMenu) {
+        statusMenuTransitionState.targetState = showStatusMenu
+    }
+
+    var cachedStatusEmojiPath by remember(state.currentUser?.id) {
+        mutableStateOf(state.currentUser?.statusEmojiPath)
+    }
+
+    LaunchedEffect(state.currentUser?.id, state.currentUser?.statusEmojiPath) {
+        val statusEmojiPath = state.currentUser?.statusEmojiPath
+        if (!statusEmojiPath.isNullOrBlank()) {
+            cachedStatusEmojiPath = statusEmojiPath
+        }
+    }
+
+    val currentUser = remember(state.currentUser, cachedStatusEmojiPath) {
+        state.currentUser?.let { user ->
+            if (user.statusEmojiId != 0L && user.statusEmojiPath.isNullOrBlank() && !cachedStatusEmojiPath.isNullOrBlank()) {
+                user.copy(statusEmojiPath = cachedStatusEmojiPath)
+            } else {
+                user
+            }
+        }
+    }
 
     val clipboardManager = LocalClipboardManager.current
     val collapsedColor = MaterialTheme.colorScheme.surface
@@ -96,6 +216,10 @@ fun SettingsContent(component: SettingsComponent) {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    BackHandler(enabled = showStatusMenu) {
+        showStatusMenu = false
     }
 
     if (state.isQrVisible) {
@@ -211,7 +335,7 @@ fun SettingsContent(component: SettingsComponent) {
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = stringResource(R.string.support_monogram_description),
+                    text = stringResource(R.string.sponsor_sheet_description),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -287,6 +411,12 @@ fun SettingsContent(component: SettingsComponent) {
         }
     }
 
+    val statusMenuScrimAlpha by animateFloatAsState(
+        targetValue = if (statusMenuTransitionState.targetState) 0.18f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "StatusMenuScrimAlpha"
+    )
+
     val iconTint = lerp(
         start = MaterialTheme.colorScheme.onSurface,
         stop = MaterialTheme.colorScheme.onSurface,
@@ -302,7 +432,7 @@ fun SettingsContent(component: SettingsComponent) {
         topBar = {
             TopAppBar(
                 title = {
-                    state.currentUser?.let { userModel ->
+                    currentUser?.let { userModel ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -326,11 +456,27 @@ fun SettingsContent(component: SettingsComponent) {
                                 )
                             }
 
+                            if (userModel.isSponsor) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Rounded.Favorite,
+                                    contentDescription = stringResource(R.string.cd_sponsor),
+                                    modifier = Modifier.size(22.dp),
+                                    tint = Color(0xFFE53935)
+                                )
+                            }
+
                             if (!userModel.statusEmojiPath.isNullOrEmpty()) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 StickerImage(
                                     path = userModel.statusEmojiPath,
-                                    modifier = Modifier.size(22.dp),
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .onGloballyPositioned { topBarStatusAnchorBounds = it.boundsInRoot() }
+                                        .clickable(onClick = {
+                                            statusAnchorBounds = topBarStatusAnchorBounds ?: statusAnchorBounds
+                                            showStatusMenu = true
+                                        }),
                                     animate = false
                                 )
                             } else if (userModel.isPremium) {
@@ -338,7 +484,13 @@ fun SettingsContent(component: SettingsComponent) {
                                 Icon(
                                     imageVector = Icons.Default.Star,
                                     contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .onGloballyPositioned { topBarStatusAnchorBounds = it.boundsInRoot() }
+                                        .clickable(onClick = {
+                                            statusAnchorBounds = topBarStatusAnchorBounds ?: statusAnchorBounds
+                                            showStatusMenu = true
+                                        }),
                                     tint = Color(0xFF31A6FD)
                                 )
                             }
@@ -462,7 +614,12 @@ fun SettingsContent(component: SettingsComponent) {
                                     start = sidePadding,
                                     end = sidePadding
                                 ),
-                                videoPlayerPool = component.videoPlayerPool
+                                videoPlayerPool = component.videoPlayerPool,
+                                onStatusClick = {
+                                    statusAnchorBounds = headerStatusAnchorBounds ?: statusAnchorBounds
+                                    showStatusMenu = true
+                                },
+                                onStatusBoundsChanged = { headerStatusAnchorBounds = it }
                             )
                         }
                     }
@@ -488,7 +645,6 @@ fun SettingsContent(component: SettingsComponent) {
                             SettingsItem(
                                 icon = Icons.Default.PhoneIphone,
                                 title = if (isPhoneVisible) CountryManager.formatPhone(
-                                    context,
                                     rawPhone
                                 ) else formatMaskedGlobal(
                                     rawPhone
@@ -507,7 +663,6 @@ fun SettingsContent(component: SettingsComponent) {
                                     clipboardManager.setText(
                                         AnnotatedString(
                                             CountryManager.formatPhone(
-                                                context,
                                                 rawPhone
                                             )
                                         )
@@ -556,7 +711,8 @@ fun SettingsContent(component: SettingsComponent) {
                                 subtitle = stringResource(R.string.edit_profile_subtitle),
                                 iconBackgroundColor = blueColor,
                                 position = ItemPosition.BOTTOM,
-                                onClick = component::onEditProfileClicked
+                                onClick = component::onEditProfileClicked,
+                                modifier = Modifier.semantics { contentDescription = "SettingsEditProfile" }
                             )
                         }
                     }
@@ -582,7 +738,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.chat_settings_subtitle),
                             iconBackgroundColor = blueColor,
                             position = ItemPosition.TOP,
-                            onClick = component::onChatSettingsClicked
+                            onClick = component::onChatSettingsClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsChatSettings" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Lock,
@@ -590,7 +747,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.privacy_security_subtitle),
                             iconBackgroundColor = greenColor,
                             position = ItemPosition.MIDDLE,
-                            onClick = component::onPrivacyClicked
+                            onClick = component::onPrivacyClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsPrivacy" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Notifications,
@@ -598,7 +756,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.notifications_sounds_subtitle),
                             iconBackgroundColor = pinkColor,
                             position = ItemPosition.MIDDLE,
-                            onClick = component::onNotificationsClicked
+                            onClick = component::onNotificationsClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsNotifications" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.DataUsage,
@@ -606,7 +765,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.data_storage_subtitle),
                             iconBackgroundColor = tealColor,
                             position = ItemPosition.MIDDLE,
-                            onClick = component::onDataStorageClicked
+                            onClick = component::onDataStorageClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsDataStorage" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.PowerSettingsNew,
@@ -622,7 +782,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.chat_folders_subtitle),
                             iconBackgroundColor = indigoColor,
                             position = ItemPosition.MIDDLE,
-                            onClick = component::onFoldersClicked
+                            onClick = component::onFoldersClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsFolders" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.SentimentSatisfiedAlt,
@@ -674,7 +835,8 @@ fun SettingsContent(component: SettingsComponent) {
                             subtitle = stringResource(R.string.telegram_premium_subtitle),
                             iconBackgroundColor = purpleColor,
                             position = ItemPosition.TOP,
-                            onClick = component::onPremiumClicked
+                            onClick = component::onPremiumClicked,
+                            modifier = Modifier.semantics { contentDescription = "SettingsPremium" }
                         )
                         SettingsItem(
                             icon = Icons.Rounded.Favorite,
@@ -715,5 +877,104 @@ fun SettingsContent(component: SettingsComponent) {
                 }
             }
         )
+    }
+
+    if (statusMenuTransitionState.currentState || statusMenuTransitionState.targetState) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = statusMenuScrimAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { showStatusMenu = false }
+        ) {
+            val menuHorizontalPadding = 16.dp
+            val menuAnchorOverlap = 12.dp
+            val menuBottomMargin = 8.dp
+            val menuWidth = (maxWidth - menuHorizontalPadding * 2).coerceAtLeast(280.dp)
+            val menuHeightLimit = 520.dp
+
+            val rootWidthPx = constraints.maxWidth.coerceAtLeast(1)
+            val rootHeightPx = constraints.maxHeight.coerceAtLeast(1)
+            val menuWidthPx = with(density) { menuWidth.roundToPx() }
+            val horizontalPaddingPx = with(density) { menuHorizontalPadding.roundToPx() }
+            val anchorOverlapPx = with(density) { menuAnchorOverlap.roundToPx() }
+            val menuBottomMarginPx = with(density) { menuBottomMargin.roundToPx() }
+            val minMenuVisibleHeightPx = with(density) { 220.dp.roundToPx() }
+
+            val statusBarTopPx = WindowInsets.statusBars.getTop(density)
+            val navigationBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+            val minTopPx = statusBarTopPx + with(density) { 8.dp.roundToPx() }
+            val fallbackTopPx = statusBarTopPx + with(density) { 56.dp.roundToPx() }
+
+            val desiredTopPx = statusAnchorBounds
+                ?.let { it.bottom.roundToInt() - anchorOverlapPx }
+                ?: fallbackTopPx
+            val desiredLeftPx = statusAnchorBounds
+                ?.let { ((it.left + it.right) / 2f - menuWidthPx / 2f).roundToInt() }
+                ?: horizontalPaddingPx
+
+            val maxLeftPx = (rootWidthPx - menuWidthPx - horizontalPaddingPx).coerceAtLeast(horizontalPaddingPx)
+            val clampedLeftPx = desiredLeftPx.coerceIn(horizontalPaddingPx, maxLeftPx)
+
+            val maxTopPx = (
+                    rootHeightPx - navigationBarBottomPx - menuBottomMarginPx - minMenuVisibleHeightPx
+                    ).coerceAtLeast(minTopPx)
+            val clampedTopPx = desiredTopPx.coerceIn(minTopPx, maxTopPx)
+
+            val maxMenuHeightPx = (
+                    rootHeightPx - clampedTopPx - navigationBarBottomPx - menuBottomMarginPx
+                    ).coerceAtLeast(minMenuVisibleHeightPx)
+            val maxMenuHeightDp = with(density) { maxMenuHeightPx.toDp() }.coerceAtMost(menuHeightLimit)
+
+            AnimatedVisibility(
+                visibleState = statusMenuTransitionState,
+                enter = fadeIn(animationSpec = tween(180)) +
+                        slideInVertically(animationSpec = tween(260)) { -it / 5 } +
+                        scaleIn(
+                            animationSpec = tween(260),
+                            initialScale = 0.94f,
+                            transformOrigin = TransformOrigin(0.85f, 0f)
+                        ),
+                exit = fadeOut(animationSpec = tween(130)) +
+                        slideOutVertically(animationSpec = tween(170)) { -it / 6 } +
+                        scaleOut(
+                            animationSpec = tween(170),
+                            targetScale = 0.97f,
+                            transformOrigin = TransformOrigin(0.85f, 0f)
+                        ),
+                modifier = Modifier.offset { IntOffset(clampedLeftPx, clampedTopPx) }
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .width(menuWidth)
+                        .heightIn(max = maxMenuHeightDp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { },
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 12.dp
+                ) {
+                    EmojisGrid(
+                        onEmojiSelected = { _, sticker ->
+                            val customEmojiId = sticker?.customEmojiId
+                            if (sticker != null && customEmojiId != null) {
+                                if (!sticker.path.isNullOrBlank()) {
+                                    cachedStatusEmojiPath = sticker.path
+                                }
+                                component.onSetEmojiStatus(customEmojiId, sticker.path)
+                                showStatusMenu = false
+                            }
+                        },
+                        emojiOnlyMode = true,
+                        contentPadding = PaddingValues(bottom = 12.dp)
+                    )
+                }
+            }
+        }
     }
 }

@@ -35,7 +35,7 @@ class TdMessageRemoteDataSource(
     val scope = scopeProvider.appScope
     private val chatRequests = ConcurrentHashMap<Long, Deferred<TdApi.Chat?>>()
     private val messageRequests = ConcurrentHashMap<Pair<Long, Long>, Deferred<TdApi.Message?>>()
-    private val refreshJobs = ConcurrentHashMap<Long, Job>()
+    private val refreshJobs = ConcurrentHashMap<Pair<Long, Long>, Job>()
     private val sendQueue = Channel<suspend () -> Unit>(Channel.BUFFERED)
     override val newMessageFlow = MutableSharedFlow<MessageModel>()
     override val messageEditedFlow = MutableSharedFlow<MessageModel>()
@@ -46,6 +46,7 @@ class TdMessageRemoteDataSource(
     )
     override val messageUploadProgressFlow = MutableSharedFlow<Pair<Long, Float>>()
     override val messageDownloadProgressFlow = MutableSharedFlow<Pair<Long, Float>>()
+    override val messageDownloadCancelledFlow = MutableSharedFlow<Long>()
     override val messageDeletedFlow = MutableSharedFlow<Pair<Long, List<Long>>>(
         extraBufferCapacity = 100,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
@@ -54,7 +55,7 @@ class TdMessageRemoteDataSource(
         extraBufferCapacity = 100,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
     )
-    override val messageDownloadCompletedFlow = MutableSharedFlow<Pair<Long, String>>()
+    override val messageDownloadCompletedFlow = MutableSharedFlow<Triple<Long, Int, String>>()
     override val pinnedMessageFlow = MutableSharedFlow<Long>(
         extraBufferCapacity = 10,
         onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.SUSPEND
@@ -72,6 +73,7 @@ class TdMessageRemoteDataSource(
     val fileIdToCustomEmojiId = ConcurrentHashMap<Int, Long>()
     private val messageUpdateJobs = ConcurrentHashMap<Pair<Long, Long>, Job>()
     private val lastProgressMap = ConcurrentHashMap<Int, Int>()
+    private val lastDownloadActiveMap = ConcurrentHashMap<Int, Boolean>()
 
     init {
         scope.launch {
@@ -132,10 +134,25 @@ class TdMessageRemoteDataSource(
         }
     }
 
-    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?): List<MessageModel> {
-        if (fromMessageId == 0L) return loadMessages(chatId, fromMessageId, 0, limit, threadId)
+    override suspend fun getMessagesOlder(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?): OlderMessagesPage {
+        if (fromMessageId == 0L) {
+            val messages = loadMessages(chatId, fromMessageId, 0, limit, threadId)
+            val page = OlderMessagesPage(
+                messages = messages,
+                reachedOldest = messages.isEmpty(),
+                isRemote = true
+            )
+            return page
+        }
+
         val messages = loadMessages(chatId, fromMessageId, 0, limit + 1, threadId)
-        return messages.filter { it.id != fromMessageId }.take(limit)
+        val filtered = messages.filter { it.id != fromMessageId }.take(limit)
+        val page = OlderMessagesPage(
+            messages = filtered,
+            reachedOldest = filtered.isEmpty(),
+            isRemote = true
+        )
+        return page
     }
 
     override suspend fun getMessagesNewer(chatId: Long, fromMessageId: Long, limit: Int, threadId: Long?): List<MessageModel> {
@@ -223,6 +240,26 @@ class TdMessageRemoteDataSource(
         } else {
             0
         }
+    }
+
+    override suspend fun getScheduledMessages(chatId: Long): List<MessageModel> {
+        val result = safeExecute(TdApi.GetChatScheduledMessages(chatId)) ?: return emptyList()
+        if (result !is TdApi.Messages) return emptyList()
+
+        return result.messages
+            .onEach { cache.putMessage(it) }
+            .map { messageMapper.mapMessageToModel(it, isChatOpen = true) }
+            .sortedBy { it.date }
+    }
+
+    override suspend fun sendScheduledNow(chatId: Long, messageId: Long) {
+        safeExecute(
+            TdApi.EditMessageSchedulingState(
+                chatId,
+                messageId,
+                null
+            )
+        )
     }
 
     private suspend fun getPinnedMessagesPage(
@@ -342,6 +379,9 @@ class TdMessageRemoteDataSource(
 
     private suspend fun loadMessages(chatId: Long, fromMessageId: Long, offset: Int, limit: Int, threadId: Long? = null): List<MessageModel> = withContext(dispatcherProvider.io) {
         val historyResult = getChatHistoryInternal(chatId, fromMessageId, offset, limit, threadId)
+            ?: throw IllegalStateException(
+                "Failed to load history for chatId=$chatId fromMessageId=$fromMessageId offset=$offset limit=$limit threadId=$threadId"
+            )
         val chat = getChat(chatId)
         val lastReadInbox = chat?.lastReadInboxMessageId ?: 0L
         val lastReadOutbox = chat?.lastReadOutboxMessageId ?: 0L
@@ -426,23 +466,18 @@ class TdMessageRemoteDataSource(
         threadId = null, replyCount = 0, canGetMessageThread = false, replyMarkup = null
     )
 
-    private fun escapeMarkdownV2(text: String): String = text.replace(Regex("[_*\\[\\]()~`>#+\\-=|{}.!\\\\]"), "\\\\$0")
-
-    override suspend fun sendMessage(chatId: Long, text: String, replyToMsgId: Long?, entities: List<MessageEntity>, threadId: Long?): TdApi.Message? {
-        val safeText = escapeMarkdownV2(text)
-        val parsedText =
-            safeExecute(TdApi.ParseTextEntities(safeText, TdApi.TextParseModeMarkdown(2))) ?: TdApi.FormattedText(
-                text,
-                emptyArray()
-            )
-        if (entities.isNotEmpty()) {
-            val tdEntities = parsedText.entities.toMutableList()
-            entities.forEach { entity ->
-                val type = entity.type
-                if (type is MessageEntityType.CustomEmoji) tdEntities.add(TdApi.TextEntity(entity.offset, entity.length, TdApi.TextEntityTypeCustomEmoji(type.emojiId)))
-            }
-            parsedText.entities = tdEntities.toTypedArray()
-        }
+    override suspend fun sendMessage(
+        chatId: Long,
+        text: String,
+        replyToMsgId: Long?,
+        entities: List<MessageEntity>,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
+        val parsedText = TdApi.FormattedText(
+            text,
+            entities.toTdTextEntities(text)
+        )
         val content = TdApi.InputMessageText().apply {
             this.text = parsedText
             this.clearDraft = true
@@ -454,14 +489,23 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         return safeExecute(req)
     }
 
-    override suspend fun sendPhoto(chatId: Long, photoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?): TdApi.Message? {
+    override suspend fun sendPhoto(
+        chatId: Long,
+        photoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
         val content = TdApi.InputMessagePhoto().apply {
             this.photo = TdApi.InputFileLocal(photoPath)
-            this.caption = TdApi.FormattedText(caption, null)
+            this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
@@ -470,6 +514,7 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         val response = safeExecute(req)
         if (response?.content is TdApi.MessagePhoto) {
@@ -482,10 +527,18 @@ class TdMessageRemoteDataSource(
         return response
     }
 
-    override suspend fun sendVideo(chatId: Long, videoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?): TdApi.Message? {
+    override suspend fun sendVideo(
+        chatId: Long,
+        videoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
         val content = TdApi.InputMessageVideo().apply {
             this.video = TdApi.InputFileLocal(videoPath)
-            this.caption = TdApi.FormattedText(caption, null)
+            this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
@@ -494,6 +547,7 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         val response = safeExecute(req)
         if (response?.content is TdApi.MessageVideo) {
@@ -504,10 +558,18 @@ class TdMessageRemoteDataSource(
         return response
     }
 
-    override suspend fun sendDocument(chatId: Long, documentPath: String, caption: String, replyToMsgId: Long?, threadId: Long?): TdApi.Message? {
+    override suspend fun sendDocument(
+        chatId: Long,
+        documentPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
         val content = TdApi.InputMessageDocument().apply {
             this.document = TdApi.InputFileLocal(documentPath)
-            this.caption = TdApi.FormattedText(caption, null)
+            this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
@@ -516,6 +578,7 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         val response = safeExecute(req)
         if (response?.content is TdApi.MessageDocument) {
@@ -547,7 +610,13 @@ class TdMessageRemoteDataSource(
         return response
     }
 
-    override suspend fun sendGif(chatId: Long, gifId: String, replyToMsgId: Long?, threadId: Long?): TdApi.Message? {
+    override suspend fun sendGif(
+        chatId: Long,
+        gifId: String,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
         val content = TdApi.InputMessageAnimation().apply {
             this.animation = TdApi.InputFileId(gifId.toInt())
         }
@@ -558,14 +627,23 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         return safeExecute(req)
     }
 
-    override suspend fun sendGifFile(chatId: Long, gifPath: String, caption: String, replyToMsgId: Long?, threadId: Long?): TdApi.Message? {
+    override suspend fun sendGifFile(
+        chatId: Long,
+        gifPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Message? {
         val content = TdApi.InputMessageAnimation().apply {
             this.animation = TdApi.InputFileLocal(gifPath)
-            this.caption = TdApi.FormattedText(caption, null)
+            this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
@@ -574,6 +652,7 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContent = content
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         val response = safeExecute(req)
         if (response?.content is TdApi.MessageAnimation) {
@@ -584,10 +663,18 @@ class TdMessageRemoteDataSource(
         return response
     }
 
-    override suspend fun sendAlbum(chatId: Long, paths: List<String>, caption: String, replyToMsgId: Long?, threadId: Long?): TdApi.Messages? {
+    override suspend fun sendAlbum(
+        chatId: Long,
+        paths: List<String>,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ): TdApi.Messages? {
         val inputMessageContents = paths.mapIndexed { index, path ->
             val isVideo = path.endsWith(".mp4", ignoreCase = true)
-            val cap = if (index == 0) TdApi.FormattedText(caption, null) else null
+            val cap = if (index == 0) TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption)) else null
             if (isVideo) TdApi.InputMessageVideo().apply {
                 this.video = TdApi.InputFileLocal(path)
                 this.caption = cap
@@ -604,6 +691,7 @@ class TdMessageRemoteDataSource(
             this.topicId = topicId
             this.replyTo = replyTo
             this.inputMessageContents = inputMessageContents
+            this.options = sendOptions.toTdMessageSendOptions()
         }
         val result = safeExecute(req)
         result?.messages?.forEach { msg ->
@@ -681,20 +769,10 @@ class TdMessageRemoteDataSource(
     }
 
     override suspend fun editMessageText(chatId: Long, messageId: Long, text: String, entities: List<MessageEntity>): TdApi.Message? {
-        val safeText = escapeMarkdownV2(text)
-        val parsedText =
-            safeExecute(TdApi.ParseTextEntities(safeText, TdApi.TextParseModeMarkdown(2))) ?: TdApi.FormattedText(
-                text,
-                emptyArray()
-            )
-        if (entities.isNotEmpty()) {
-            val tdEntities = parsedText.entities.toMutableList()
-            entities.forEach { entity ->
-                val type = entity.type
-                if (type is MessageEntityType.CustomEmoji) tdEntities.add(TdApi.TextEntity(entity.offset, entity.length, TdApi.TextEntityTypeCustomEmoji(type.emojiId)))
-            }
-            parsedText.entities = tdEntities.toTypedArray()
-        }
+        val parsedText = TdApi.FormattedText(
+            text,
+            entities.toTdTextEntities(text)
+        )
         val content = TdApi.InputMessageText().apply {
             this.text = parsedText
         }
@@ -704,6 +782,59 @@ class TdMessageRemoteDataSource(
             this.inputMessageContent = content
         }
         return safeExecute(req)
+    }
+
+    private fun List<MessageEntity>.toTdTextEntities(text: String): Array<TdApi.TextEntity> {
+        if (isEmpty()) return emptyArray()
+
+        return this
+            .mapNotNull { it.toTdTextEntity(text) }
+            .sortedWith(compareBy<TdApi.TextEntity> { it.offset }.thenByDescending { it.length })
+            .toTypedArray()
+    }
+
+    private fun MessageEntity.toTdTextEntity(text: String): TdApi.TextEntity? {
+        val start = offset.coerceIn(0, text.length)
+        val end = (offset + length).coerceIn(0, text.length)
+        val safeLength = end - start
+        if (safeLength <= 0) return null
+
+        val tdType: TdApi.TextEntityType = when (val value = type) {
+            is MessageEntityType.Bold -> TdApi.TextEntityTypeBold()
+            is MessageEntityType.Italic -> TdApi.TextEntityTypeItalic()
+            is MessageEntityType.Underline -> TdApi.TextEntityTypeUnderline()
+            is MessageEntityType.Strikethrough -> TdApi.TextEntityTypeStrikethrough()
+            is MessageEntityType.Spoiler -> TdApi.TextEntityTypeSpoiler()
+            is MessageEntityType.Code -> TdApi.TextEntityTypeCode()
+            is MessageEntityType.Pre -> {
+                if (value.language.isBlank()) TdApi.TextEntityTypePre()
+                else TdApi.TextEntityTypePreCode(value.language)
+            }
+
+            is MessageEntityType.TextUrl -> TdApi.TextEntityTypeTextUrl(value.url)
+            is MessageEntityType.Mention -> TdApi.TextEntityTypeMention()
+            is MessageEntityType.TextMention -> TdApi.TextEntityTypeMentionName(value.userId)
+            is MessageEntityType.Hashtag -> TdApi.TextEntityTypeHashtag()
+            is MessageEntityType.BotCommand -> TdApi.TextEntityTypeBotCommand()
+            is MessageEntityType.Url -> TdApi.TextEntityTypeUrl()
+            is MessageEntityType.Email -> TdApi.TextEntityTypeEmailAddress()
+            is MessageEntityType.PhoneNumber -> TdApi.TextEntityTypePhoneNumber()
+            is MessageEntityType.BankCardNumber -> TdApi.TextEntityTypeBankCardNumber()
+            is MessageEntityType.CustomEmoji -> TdApi.TextEntityTypeCustomEmoji(value.emojiId)
+            is MessageEntityType.Other -> return null
+        }
+
+        return TdApi.TextEntity(start, safeLength, tdType)
+    }
+
+    private fun MessageSendOptions.toTdMessageSendOptions(): TdApi.MessageSendOptions {
+        return TdApi.MessageSendOptions().apply {
+            this.disableNotification = silent
+            this.fromBackground = false
+            this.schedulingState = scheduleDate
+                ?.takeIf { it > 0 }
+                ?.let { TdApi.MessageSchedulingStateSendAtDate(it, 0) }
+        }
     }
 
     override suspend fun viewMessages(chatId: Long, messageIds: LongArray, forceRead: Boolean): TdApi.Ok? {
@@ -951,7 +1082,7 @@ class TdMessageRemoteDataSource(
         safeExecute(request)
     }
 
-    override suspend fun saveChatDraft(chatId: Long, draft: TdApi.DraftMessage, replyToMsgId: Long?, threadId: Long?) {
+    override suspend fun saveChatDraft(chatId: Long, draft: TdApi.DraftMessage?, replyToMsgId: Long?, threadId: Long?) {
         val request = TdApi.SetChatDraftMessage().apply {
             this.chatId = chatId
             this.draftMessage = draft
@@ -1070,7 +1201,6 @@ class TdMessageRemoteDataSource(
             }
             is TdApi.UpdateMessageReaction -> {
                 cache.removeMessage(update.chatId, update.messageId)
-                refreshMessageDebounced(update.chatId, update.messageId)
             }
             is TdApi.UpdateMessageReactions -> {
                 cache.removeMessage(update.chatId, update.messageId)
@@ -1127,7 +1257,7 @@ class TdMessageRemoteDataSource(
 
     private fun refreshMessageDebounced(chatId: Long, messageId: Long) {
         if (messageId == 0L) return
-        val key = chatId xor messageId
+        val key = chatId to messageId
         refreshJobs[key]?.cancel()
         val job = scope.launch(dispatcherProvider.io) {
             delay(200)
@@ -1205,8 +1335,22 @@ class TdMessageRemoteDataSource(
         fileDownloadQueue.updateFileCache(file)
         val isDC = file.local?.isDownloadingCompleted == true
         val isD = file.local?.isDownloadingActive == true
+        val wasDownloading = lastDownloadActiveMap[file.id] == true
+        if (isD) {
+            lastDownloadActiveMap[file.id] = true
+        } else {
+            lastDownloadActiveMap.remove(file.id)
+        }
+        val isCancelled = wasDownloading && !isD && !isDC
         val isUC = file.remote?.isUploadingCompleted == true
         val isU = file.remote?.isUploadingActive == true
+
+        if (isD || isDC || isCancelled) {
+            Log.d(
+                "DownloadDebug",
+                "td.updateFile: fileId=${file.id} isD=$isD isDC=$isDC isCancelled=$isCancelled downloaded=${file.local?.downloadedSize ?: 0}/${file.size} pathEmpty=${file.local?.path.isNullOrEmpty()}"
+            )
+        }
 
         if (isDC) {
             fileDownloadQueue.notifyDownloadComplete(file.id)
@@ -1219,13 +1363,17 @@ class TdMessageRemoteDataSource(
             if (!entries.isNullOrEmpty()) {
                 scope.launch {
                     entries.forEach { (_, messageId) ->
-                        messageDownloadCompletedFlow.emit(messageId to (file.local?.path ?: ""))
+                        messageDownloadCompletedFlow.emit(
+                            Triple(messageId, file.id, file.local?.path ?: "")
+                        )
                         messageDownloadProgressFlow.emit(messageId to 1.0f)
                     }
                 }
             } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
                 scope.launch {
-                    messageDownloadCompletedFlow.emit(file.id.toLong() to (file.local?.path ?: ""))
+                    messageDownloadCompletedFlow.emit(
+                        Triple(file.id.toLong(), file.id, file.local?.path ?: "")
+                    )
                     messageDownloadProgressFlow.emit(file.id.toLong() to 1.0f)
                 }
                 fileDownloadQueue.registry.standaloneFileIds.remove(file.id)
@@ -1247,6 +1395,19 @@ class TdMessageRemoteDataSource(
                 } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
                     scope.launch { messageDownloadProgressFlow.emit(file.id.toLong() to p) }
                 }
+            }
+        } else if (isCancelled) {
+            lastProgressMap.remove(file.id)
+            Log.d("DownloadDebug", "td.downloadCancelled.emit: fileId=${file.id}")
+            val entries = fileIdToMessageMap[file.id]
+            if (!entries.isNullOrEmpty()) {
+                scope.launch {
+                    entries.forEach { (_, messageId) ->
+                        messageDownloadCancelledFlow.emit(messageId)
+                    }
+                }
+            } else if (fileDownloadQueue.registry.standaloneFileIds.contains(file.id)) {
+                scope.launch { messageDownloadCancelledFlow.emit(file.id.toLong()) }
             }
         }
 
@@ -1302,7 +1463,13 @@ class TdMessageRemoteDataSource(
             val job = scope.launch {
                 delay(150)
                 val msg = getMessage(chatId, messageId) ?: return@launch
-                try { messageEditedFlow.emit(mapMessageToModel(msg)) } catch (e: Exception) {}
+                try {
+                    messageEditedFlow.emit(mapMessageToModel(msg))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.e("TdMessageRemote", "Error emitting edited message", e)
+                }
             }
             job.invokeOnCompletion { messageUpdateJobs.remove(key, job) }
             messageUpdateJobs[key] = job

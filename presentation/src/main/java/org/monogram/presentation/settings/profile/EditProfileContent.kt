@@ -9,7 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,6 +23,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,7 +166,7 @@ fun EditProfileContent(component: EditProfileComponent) {
                                     .padding(start = 4.dp)
                             )
                         }
-                        items(activeUsernames, key = { "active_$it" }) { username ->
+                        itemsIndexed(activeUsernames, key = { index, username -> "active_${index}_$username" }) { _, username ->
                             ListItem(
                                 headlineContent = { Text("@$username") },
                                 trailingContent = {
@@ -225,7 +227,7 @@ fun EditProfileContent(component: EditProfileComponent) {
                                     .padding(start = 4.dp)
                             )
                         }
-                        items(disabledUsernames, key = { "disabled_$it" }) { username ->
+                        itemsIndexed(disabledUsernames, key = { index, username -> "disabled_${index}_$username" }) { _, username ->
                             ListItem(
                                 headlineContent = {
                                     Text(
@@ -257,7 +259,7 @@ fun EditProfileContent(component: EditProfileComponent) {
                                     .padding(start = 4.dp)
                             )
                         }
-                        items(collectibleUsernames, key = { "collectible_$it" }) { username ->
+                        itemsIndexed(collectibleUsernames, key = { index, username -> "collectible_${index}_$username" }) { _, username ->
                             val isActive = activeUsernames.contains(username)
                             ListItem(
                                 headlineContent = { Text("@$username") },
@@ -744,6 +746,7 @@ fun EditProfileContent(component: EditProfileComponent) {
     }
 
     Scaffold(
+        modifier = Modifier.semantics { contentDescription = "EditProfileContent" },
         topBar = {
             TopAppBar(
                 title = {

@@ -82,6 +82,7 @@
     <string name="verification_delivery_telegram">Код підтвердження надіслано через Telegram на інший Ваш пристрій.</string>
     <string name="verification_delivery_sms">Ми надіслали СМС із кодом підтвердження на Ваш номер.</string>
     <string name="verification_delivery_call">Ми телефонуємо Вам, щоб повідомити код.</string>
+    <string name="verification_delivery_email">Ми надіслали код на %1$s.</string>
     <string name="verification_delivery_default">Ми надіслали код підтвердження.</string>
     <string name="confirm_button">Підтвердити</string>
     <string name="resend_code_timer">Надіслати ще раз через %1$s</string>
@@ -114,7 +115,6 @@
     <string name="search_section_global">Глобальний пошук</string>
     <string name="search_section_messages">Повідомлення</string>
     <string name="action_show_more">Більше результатів</string>
-    <string name="cd_chat_list">Список чатів</string>
     <string name="search_conversations_placeholder">Пошук чатів…</string>
     <string name="waiting_for_network">Очікування мережі…</string>
     <string name="connecting">Підключення…</string>
@@ -257,6 +257,7 @@
     <string name="menu_edit">Змінити</string>
     <string name="menu_block_user">Заблокувати</string>
     <string name="menu_leave">Покинути</string>
+    <string name="action_open">Відкрити</string>
     <string name="action_message">Повідомлення</string>
     <string name="action_join_chat">Вступить</string>
     <string name="action_report">Поскаржитися</string>
@@ -272,6 +273,7 @@
     <string name="bot_permissions_subtitle">Керування правами цього бота</string>
     <string name="username_label">Ім\'я користувача</string>
     <string name="link_label">Посилання</string>
+    <string name="invite_link_label">Посилання-запрошення</string>
     <string name="bot_info_label">Інформація про бота</string>
     <string name="description_label">Опис</string>
     <string name="bio_label">Про себе</string>
@@ -321,6 +323,9 @@
     <string name="qr_code_title">QR-код</string>
     <string name="action_share">Поділитися</string>
     <string name="support_monogram_description">MonoGram — безкоштовний проєкт із відкритим кодом. Ваша підтримка допомагає нам розвивати застосунок та додавати нові функції.</string>
+    <string name="sponsor_sheet_description">Бейдж спонсора з сердечком надається з рівня підтримки Advanced або за
+        еквівалентну підтримку від 150 ₽ (приблизно $1.96).
+    </string>
     <string name="action_support_boosty">Підтримати на Boosty</string>
     <string name="action_maybe_later">Можливо, пізніше</string>
     <string name="cd_edit_profile">Змінити профіль</string>
@@ -353,9 +358,15 @@
     <string name="telegram_premium_title">Telegram Premium</string>
     <string name="telegram_premium_subtitle">Ексклюзивні функції</string>
     <string name="support_monogram_subtitle_settings">Допомога в розвитку проєкту</string>
+    <string name="sponsor_profile_title">Підтримав MonoGram</string>
+    <string name="sponsor_profile_subtitle">Цей користувач підтримує проєкт і допомагає нам розвиватися</string>
     <string name="about_subtitle_settings">Версія та інформація про MonoGram</string>
     <string name="debug_title">Налагодження</string>
     <string name="debug_subtitle">Параметри для розробників</string>
+    <string name="debug_sponsor_sheet_title">Показати вікно спонсора</string>
+    <string name="debug_sponsor_sheet_subtitle">Відкрити нижню панель з інформацією про спонсора</string>
+    <string name="debug_force_sponsor_sync_title">Примусова синхронізація спонсорів</string>
+    <string name="debug_force_sponsor_sync_subtitle">Завантажити ID спонсорів із каналу зараз</string>
     <string name="log_out_title">Вийти</string>
     <string name="log_out_subtitle">Завершити сеанс</string>
 
@@ -460,7 +471,7 @@
     <string name="connected_directly_subtitle">Пряме підключення</string>
     <string name="switch_to_direct_subtitle">Перемкнутися на пряме з\'єднання</string>
     <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">Проксі від спільноти. Використовуйте на свій страх і ризик. Докладніше: t.me/telegaru</string>
+    <string name="telega_proxy_subtitle">Telega Proxy звинувачували у перехопленні трафіку. MTProto захищає дані повідомлень від перехоплення, але використовуйте цей проксі на власний ризик. Докладніше: t.me/telegaru</string>
     <string name="enable_telega_proxy_title">Увімкнути Telega Proxy</string>
     <string name="enable_telega_proxy_subtitle">Автоматичне отримання та перемикання</string>
     <string name="refresh_list_title">Оновити список</string>
@@ -468,6 +479,10 @@
     <string name="your_proxies_header">Ваші проксі</string>
     <string name="clear_offline_cd">Очистити офлайн</string>
     <string name="remove_all_cd">Видалити всі</string>
+    <string name="clear_offline_title">Видалити офлайн-проксі</string>
+    <string name="clear_offline_confirmation">Ця дія видалить усі проксі, які зараз недоступні. Продовжити?</string>
+    <string name="remove_all_proxies_title">Видалити всі проксі</string>
+    <string name="remove_all_proxies_confirmation">Ця дія видалить усі налаштовані проксі з застосунку. Продовжити?</string>
     <string name="no_proxies_label">Немає доданих проксі</string>
     <string name="delete_proxy_title">Видалити проксі</string>
     <string name="delete_proxy_confirmation_format">Ви впевнені, що хочете видалити проксі %1$s?</string>
@@ -479,6 +494,8 @@
     <string name="username_optional_placeholder">Ім\'я користувача (опціонально)</string>
     <string name="password_optional_placeholder">Пароль (опціонально)</string>
     <string name="save_changes_button">Зберегти зміни</string>
+    <string name="test_proxy_button">Перевірити</string>
+    <string name="test_proxy_result">Результат перевірки</string>
     <string name="action_delete">Видалити</string>
     <string name="proxy_checking">檢查中...</string>
     <string name="proxy_offline">離線</string>
@@ -536,6 +553,7 @@
     <string name="chat_settings_header">Налаштування чатів</string>
     <string name="appearance_header">Зовнішній вигляд</string>
     <string name="message_text_size_title">Розмір тексту повідомлень</string>
+    <string name="message_letter_spacing_title">Міжлітерний інтервал повідомлень</string>
     <string name="bubble_rounding_title">Скруглення блоків</string>
     <string name="reset_button">Скинути</string>
     <string name="chat_wallpaper_header">Шпалери чату</string>
@@ -608,10 +626,6 @@
     <string name="storage_usage_subtitle">Керування локальним кешем</string>
     <string name="network_usage_title">Використання мережі</string>
     <string name="network_usage_subtitle">Обсяг надісланих та отриманих даних</string>
-    <string name="database_header">База даних</string>
-    <string name="database_size_title">Розмір бази даних</string>
-    <string name="clear_database_title">Очистити базу даних</string>
-    <string name="clear_database_subtitle">Видалення всіх локальних чатів та повідомлень</string>
     <string name="automatic_media_download_header">Автозавантаження медіа</string>
     <string name="when_using_mobile_data_title">Через мобільну мережу</string>
     <string name="when_connected_on_wifi_title">Через Wi-Fi</string>
@@ -820,7 +834,10 @@
     <string name="new_channel_title">Новий канал</string>
     <string name="contacts_count_format">Контактів: %1$d</string>
     <string name="members_limit_format">%1$d / 200000</string>
+    <string name="selected_members_count">Вибрано: %1$d</string>
     <string name="search_contacts_hint">Пошук контактів…</string>
+    <string name="no_contacts_found">Контакти не знайдено</string>
+    <string name="no_search_results_format">Немає результатів для "%1$s"</string>
     <string name="sorted_by_last_seen">За часом відвідування</string>
     <string name="new_group_action">Створити групу</string>
     <string name="new_channel_action">Створити канал</string>
@@ -830,10 +847,37 @@
     <string name="channel_name_placeholder">Назва каналу</string>
     <string name="description_optional_placeholder">Опис (необов\'язково)</string>
     <string name="auto_delete_messages_title">Автовидалення повідомлень</string>
+    <string name="auto_delete_off">Вимкнено</string>
+    <string name="auto_delete_1_day">1 день</string>
+    <string name="auto_delete_2_days">2 дні</string>
+    <string name="auto_delete_3_days">3 дні</string>
+    <string name="auto_delete_4_days">4 дні</string>
+    <string name="auto_delete_5_days">5 днів</string>
+    <string name="auto_delete_6_days">6 днів</string>
+    <string name="auto_delete_1_week">1 тиждень</string>
+    <string name="auto_delete_2_weeks">2 тижні</string>
+    <string name="auto_delete_3_weeks">3 тижні</string>
+    <string name="auto_delete_1_month">1 місяць</string>
+    <string name="auto_delete_2_months">2 місяці</string>
+    <string name="auto_delete_3_months">3 місяці</string>
+    <string name="auto_delete_4_months">4 місяці</string>
+    <string name="auto_delete_5_months">5 місяців</string>
+    <string name="auto_delete_6_months">6 місяців</string>
+    <string name="auto_delete_1_year">1 рік</string>
     <string name="channel_join_info">Ви можете додати опис каналу. Будь-хто зможе приєднатися до Вашого каналу, якщо матиме посилання.</string>
     <string name="group_description_hint">Вкажіть назву та додайте фото для Вашої нової групи.</string>
     <string name="group_details_header">Дані групи</string>
     <string name="group_name_placeholder">Назва групи</string>
+    <string name="group_name_required">Введіть назву групи</string>
+    <string name="channel_name_required">Введіть назву каналу</string>
+    <string name="contact_menu_open_profile">Відкрити профіль</string>
+    <string name="contact_menu_edit_name">Змінити ім’я</string>
+    <string name="contact_menu_remove">Видалити контакт</string>
+    <string name="edit_contact_title">Редагування контакту</string>
+    <string name="first_name_label">Ім’я</string>
+    <string name="last_name_label">Прізвище</string>
+    <string name="remove_contact_title">Видалити контакт?</string>
+    <string name="remove_contact_confirmation">Ви впевнені, що хочете видалити %1$s з контактів?</string>
     <string name="group_auto_delete_info">Автоматично видаляти нові повідомлення в цій групі через певний час.</string>
     <string name="add_photo_cd">Додати фото</string>
     <string name="change_photo_cd">Змінити фото</string>
@@ -915,15 +959,123 @@
     <string name="action_send_items_count">Надіслати %1$d об’єктів</string>
     <string name="action_send_media">Надіслати медіа</string>
     <string name="action_cancel">Скасувати</string>
+    <string name="action_copy">Копіювати</string>
+    <string name="action_paste">Вставити</string>
+    <string name="action_cut">Вирізати</string>
+    <string name="action_select_all">Виділити все</string>
+    <string name="action_apply">Застосувати</string>
+    <string name="action_done">Готово</string>
+    <string name="action_refresh">Оновити</string>
+    <string name="action_open_fullscreen_editor">Повноекранний редактор</string>
+    <string name="fullscreen_editor_title">Редактор</string>
+    <string name="action_send_silent">Надіслати без звуку</string>
+    <string name="action_schedule_message">Відкласти повідомлення</string>
+    <string name="action_scheduled_messages">Відкладені повідомлення</string>
+    <string name="action_scheduled_messages_count">Відкладені повідомлення (%1$d)</string>
+    <string name="scheduled_messages_empty">Поки немає відкладених повідомлень</string>
+    <string name="scheduled_messages_summary_count">Усього відкладено: %1$d</string>
+    <string name="scheduled_messages_summary_next">Найближча відправка: %1$s</string>
+    <string name="scheduled_messages_summary_editable">Можна редагувати: %1$d</string>
+    <string name="scheduled_message_id">ID: %1$d</string>
+    <string name="action_edit">Змінити</string>
+    <string name="action_send_now">Надіслати</string>
+    <string name="action_delete_message">Видалити</string>
+
+    <string name="rich_text_bold">Жирний</string>
+    <string name="rich_text_italic">Курсив</string>
+    <string name="rich_text_underline">Підкреслений</string>
+    <string name="rich_text_strikethrough">Перекреслений</string>
+    <string name="rich_text_spoiler">Спойлер</string>
+    <string name="rich_text_code">Код</string>
+    <string name="rich_text_pre">Моноширинний</string>
+    <string name="rich_text_link">Посилання</string>
+    <string name="rich_text_mention">Згадати</string>
+    <string name="rich_text_emoji">Емодзі</string>
+    <string name="rich_text_clear">Очистити</string>
+    <string name="rich_text_link_title">Додати посилання</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">Мова коду</string>
+    <string name="rich_text_code_language_hint">Мова (наприклад, kotlin)</string>
+
+    <string name="fullscreen_editor_meta">%1$d символів • %2$d блоків форматування</string>
+    <string name="fullscreen_editor_blocks">%1$d блоків форматування</string>
+    <string name="fullscreen_editor_hint">Виділіть текст, щоб застосувати форматування як у Telegram</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
 
     <!-- Bot -->
     <string name="bot_commands">Команди</string>
 
+    <!-- Chat Typing -->
+    <string name="typing_typing">друкує</string>
+    <string name="typing_recording_video">записує відео</string>
+    <string name="typing_recording_voice">записує голосове</string>
+    <string name="typing_uploading_photo">надсилає фото</string>
+    <string name="typing_uploading_video">надсилає відео</string>
+    <string name="typing_uploading_document">надсилає файл</string>
+    <string name="typing_choosing_sticker">вибирає стікер</string>
+    <string name="typing_playing_game">грає</string>
+    <string name="typing_someone">Хтось</string>
+    <string name="typing_and">і</string>
+    <string name="typing_and_more">і ще %d</string>
+    <string name="typing_multi_typing">друкують</string>
+    <plurals name="typing_multi_people">
+        <item quantity="one">%d людина друкує</item>
+        <item quantity="few">%d людини друкують</item>
+        <item quantity="many">%d людей друкують</item>
+        <item quantity="other">%d людей друкують</item>
+    </plurals>
+
+    <!-- Storage Mapper -->
+    <string name="storage_photos">Фотографії</string>
+    <string name="storage_videos">Відео</string>
+    <string name="storage_documents">Документи</string>
+    <string name="storage_stickers">Стікери</string>
+    <string name="storage_music">Музика</string>
+    <string name="storage_voice_messages">Голосові повідомлення</string>
+    <string name="storage_video_messages">Відеоповідомлення</string>
+    <string name="storage_other_files">Інші файли</string>
+    <string name="storage_other_cache">Інше / Кеш</string>
+    <string name="storage_chat_format">Чат %d</string>
+
+    <!-- Network Mapper -->
+    <string name="network_calls">Дзвінки</string>
+
+    <!-- Notification Service -->
+    <string name="notification_service_waiting">Очікування нових повідомлень</string>
+    <string name="notification_service_stop">Зупинити</string>
+    <string name="notification_service_channel_name">Фонова робота</string>
+    <string name="notification_service_channel_description">Сповіщення про роботу програми у фоновому режимі</string>
+
     <!-- Chat Mapper / Media Types -->
-    <string name="chat_mapper_photo">Фото</string>
-    <string name="chat_mapper_video">Відео</string>
-    <string name="chat_mapper_voice">Голосове повідомлення</string>
+    <string name="chat_mapper_photo">📷 Фото</string>
+    <string name="chat_mapper_video">📹 Відео</string>
+    <string name="chat_mapper_voice">🎤 Голосове повідомлення</string>
+    <string name="chat_mapper_sticker">🧩 Стікер</string>
+    <string name="chat_mapper_document">📎 Документ</string>
+    <string name="chat_mapper_audio">🎵 Аудіо</string>
+    <string name="chat_mapper_gif">GIF</string>
+    <string name="chat_mapper_video_note">🎬 Відеоповідомлення</string>
+    <string name="chat_mapper_contact">👤 Контакт</string>
+    <string name="chat_mapper_poll">📊 Опитування</string>
+    <string name="chat_mapper_location">📍 Геолокація</string>
+    <string name="chat_mapper_call">📞 Дзвінок</string>
+    <string name="chat_mapper_game">🎮 Гра</string>
+    <string name="chat_mapper_invoice">💳 Рахунок</string>
+    <string name="chat_mapper_story">📚 Історія</string>
+    <string name="chat_mapper_pinned">📌 Закріплене повідомлення</string>
     <string name="chat_mapper_message">Повідомлення</string>
+    <string name="chat_mapper_bot">Бот</string>
+    <string name="chat_mapper_online">В мережі</string>
+    <string name="chat_mapper_offline">Не в мережі</string>
+    <string name="chat_mapper_seen_just_now">був(ла) щойно</string>
+    <string name="chat_mapper_seen_minutes_ago">був(ла) %d хвилину тому</string>
+    <string name="chat_mapper_seen_minutes_ago_plural">був(ла) %d хвилин тому</string>
+    <string name="chat_mapper_seen_at">був(ла) о %s</string>
+    <string name="chat_mapper_seen_yesterday">був(ла) вчора о %s</string>
+    <string name="chat_mapper_seen_date">був(ла) %s</string>
+    <string name="chat_mapper_seen_recently">був(ла) нещодавно</string>
+    <string name="chat_mapper_seen_week">був(ла) на цьому тижні</string>
+    <string name="chat_mapper_seen_month">був(ла) в цьому місяці</string>
 
     <!-- Pinned Messages -->
     <string name="pinned_messages">Закріплені повідомлення</string>
@@ -1158,6 +1310,7 @@
     <string name="viewer_seek_forward_format">+%1$ds</string>
     <string name="viewer_thumbnail_cd">Мініатюра %1$d</string>
     <string name="viewer_page_indicator">%1$d із %2$d</string>
+    <string name="viewer_loading_original">Завантажується оригінал...</string>
 
     <!-- Selection: Viewer Actions -->
     <string name="action_download">Завантажити</string>
@@ -1652,4 +1805,54 @@
 
     <string name="chat_theme_editor_preset_nord_name">Норд</string>
     <string name="chat_theme_editor_preset_nord_description">Прохолодні північні сині відтінки зі спокійним професійним балансом.</string>
+    <!-- Circular recorder -->
+    <string name="recorder_permissions_required">Потрібні дозволи на камеру та мікрофон</string>
+    <string name="recorder_processing">Обробка...</string>
+    <string name="recorder_processing_error">Помилка обробки: %1$s</string>
+    <string name="recorder_close_cd">Закрити запис</string>
+    <string name="recorder_switch_cd">Перемкнути камеру</string>
+    <string name="recorder_done_cd">Завершити запис</string>
+    <string name="recorder_rec_label">REC</string>
+    <string name="recorder_ready_label">ГОТОВО</string>
+    <string name="recorder_time_format">Час: %1$s</string>
+    <string name="recorder_zoom_format">Зум: %1$.1fx (діапазон %2$.1fx - %3$.1fx)</string>
+    <string name="recorder_cancel">Скасувати</string>
+
+    <string name="clear_history_title">Очистити історію?</string>
+    <string name="clear_history_confirmation">Ви впевнені, що хочете очистити історію чату? Цю дію неможливо скасувати.</string>
+    <string name="action_clear_history">Очистити історію</string>
+    <string name="delete_chat_title">Видалити чат?</string>
+    <string name="delete_chat_confirmation">Ви впевнені, що хочете видалити цей чат? Цю дію неможливо скасувати.</string>
+    <string name="action_delete_chat">Видалити чат</string>
+    <string name="leave_chat_title">Покинути чат?</string>
+    <string name="leave_chat_confirmation">Ви впевнені, що хочете покинути цей чат?</string>
+    <string name="action_leave">Покинути</string>
+    <string name="delete_channel_title">Видалити канал?</string>
+    <string name="delete_group_title">Видалити групу?</string>
+    <string name="delete_channel_confirmation">Ви впевнені, що хочете видалити цей канал? Усі повідомлення та медіа буде втрачено.</string>
+    <string name="delete_group_confirmation">Ви впевнені, що хочете видалити цю групу? Усі повідомлення та медіа буде втрачено.</string>
+    <string name="delete_chats_title">Видалити %1$d чатів?</string>
+    <string name="delete_chats_confirmation">Ви впевнені, що хочете видалити вибрані чати?</string>
+    <string name="action_delete_chats">Видалити чати</string>
+    <string name="block_user_title">Заблокувати користувача?</string>
+    <string name="block_user_confirmation">Ви впевнені, що хочете заблокувати цього користувача? Він не зможе надсилати вам повідомлення.</string>
+    <string name="action_block">Заблокувати</string>
+    <string name="unblock_user_title">Розблокувати користувача?</string>
+    <string name="unblock_user_confirmation">Ви впевнені, що хочете розблокувати цього користувача? Він знову зможе
+        надсилати вам повідомлення.
+    </string>
+    <string name="unpin_message_title">Відкріпити повідомлення?</string>
+    <string name="unpin_message_confirmation">Ви впевнені, що хочете відкріпити це повідомлення?</string>
+    <string name="action_unpin">Відкріпити</string>
+    <string name="clear_recent_stickers_confirmation">Ви впевнені, що хочете очистити нещодавні стікери?</string>
+    <string name="action_clear_recent_stickers">Очистити стікери</string>
+    <string name="clear_recent_emojis_confirmation">Ви впевнені, що хочете очистити нещодавні емодзі?</string>
+    <string name="action_clear_recent_emojis">Очистити емодзі</string>
+    <string name="action_add_contact">Додати до контактів</string>
+    <string name="action_remove_contact">Видалити з контактів</string>
+    <string name="action_mark_as_read">Позначити як прочитане</string>
+    <string name="action_mark_as_unread">Позначити як непрочитане</string>
+    <string name="folder_tab_edit">Змінити</string>
+    <string name="folder_tab_reorder">Порядок</string>
+    <string name="folder_tab_delete">Видалити</string>
 </resources>

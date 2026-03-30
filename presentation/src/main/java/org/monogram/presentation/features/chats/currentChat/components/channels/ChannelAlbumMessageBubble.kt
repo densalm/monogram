@@ -44,6 +44,7 @@ fun ChannelAlbumMessageBubble(
     fontSize: Float,
     bubbleRadius: Float = 16f,
     onPhotoClick: (MessageModel) -> Unit,
+    onDownloadPhoto: (Int) -> Unit = {},
     onVideoClick: (MessageModel) -> Unit,
     onDocumentClick: (MessageModel) -> Unit = {},
     onAudioClick: (MessageModel) -> Unit = {},
@@ -193,6 +194,7 @@ fun ChannelAlbumMessageBubble(
                     autoplayGifs = autoplayGifs,
                     autoplayVideos = autoplayVideos,
                     onPhotoClick = onPhotoClick,
+                    onDownloadPhoto = onDownloadPhoto,
                     onVideoClick = onVideoClick,
                     onCancelDownload = onCancelDownload,
                     onLongClick = onLongClick,
@@ -235,7 +237,9 @@ fun ChannelAlbumMessageBubble(
                             ),
                             color = MaterialTheme.colorScheme.onSurface,
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) {
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
                                     revealedSpoilers.add(index)
                                 }
                             },
@@ -442,7 +446,9 @@ fun ChannelDocumentAlbumBubble(
                         modifier = Modifier.padding(vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },
@@ -646,7 +652,9 @@ fun ChannelAudioAlbumBubble(
                         modifier = Modifier.padding(vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },

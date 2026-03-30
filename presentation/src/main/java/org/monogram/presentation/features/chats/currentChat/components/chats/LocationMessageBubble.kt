@@ -45,6 +45,7 @@ fun LocationMessageBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float,
     isGroup: Boolean = false,
     onClick: () -> Unit,
@@ -112,7 +113,7 @@ fun LocationMessageBubble(
             )
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(msg, toProfile = toProfile)
                 }
 
@@ -182,7 +183,8 @@ fun LocationMessageBubble(
                             text = "Location",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = fontSize.sp
+                                fontSize = fontSize.sp,
+                                letterSpacing = letterSpacing.sp
                             ),
                             color = contentColor
                         )
@@ -232,6 +234,7 @@ fun VenueMessageBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float,
     isGroup: Boolean = false,
     onClick: () -> Unit,
@@ -298,7 +301,7 @@ fun VenueMessageBubble(
             )
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(msg, toProfile = toProfile)
                 }
 
@@ -368,7 +371,8 @@ fun VenueMessageBubble(
                             text = content.title,
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = fontSize.sp
+                                fontSize = fontSize.sp,
+                                letterSpacing = letterSpacing.sp
                             ),
                             color = contentColor,
                             maxLines = 1,

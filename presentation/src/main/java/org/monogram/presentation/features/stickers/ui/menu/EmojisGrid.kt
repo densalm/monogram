@@ -25,11 +25,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.monogram.domain.models.RecentEmojiModel
@@ -46,6 +48,7 @@ import org.monogram.presentation.features.stickers.ui.view.StickerItem
 @Composable
 fun EmojisGrid(
     onEmojiSelected: (String, StickerModel?) -> Unit,
+    emojiOnlyMode: Boolean = false,
     onSearchFocused: (Boolean) -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(0.dp),
     stickerRepository: StickerRepository = koinInject(),
@@ -56,6 +59,7 @@ fun EmojisGrid(
     var selectedSetId by remember { mutableLongStateOf(-1L) } // -1 for recent, -2 for standard
     val recentEmojis by stickerRepository.recentEmojis.collectAsState(initial = emptyList())
     var searchQuery by remember { mutableStateOf("") }
+    var debouncedSearchQuery by remember { mutableStateOf("") }
     var isSearchFocused by remember { mutableStateOf(false) }
     var previewStickerSet by remember { mutableStateOf<StickerSetModel?>(null) }
     val scope = rememberCoroutineScope()
@@ -67,6 +71,12 @@ fun EmojisGrid(
     val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
     val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
+    val filteredRecentEmojis = remember(recentEmojis, emojiOnlyMode) {
+        if (emojiOnlyMode) recentEmojis.filter { it.sticker?.customEmojiId != null } else recentEmojis
+    }
+    val visibleStandardEmojis = remember(standardEmojis, emojiOnlyMode) {
+        if (emojiOnlyMode) emptyList() else standardEmojis
+    }
 
     LaunchedEffect(Unit) {
         standardEmojis = stickerRepository.getDefaultEmojis()
@@ -74,45 +84,86 @@ fun EmojisGrid(
     }
 
     LaunchedEffect(searchQuery) {
-        if (searchQuery.length >= 2) {
+        if (searchQuery.isBlank()) {
+            debouncedSearchQuery = ""
+        } else {
             delay(300)
-            searchResultsEmojis = stickerRepository.searchEmojis(searchQuery)
-            searchResultsCustomEmojis = stickerRepository.searchCustomEmojis(searchQuery)
+            debouncedSearchQuery = searchQuery
+        }
+    }
+
+    LaunchedEffect(debouncedSearchQuery) {
+        if (debouncedSearchQuery.length >= 2) {
+            searchResultsEmojis = if (emojiOnlyMode) {
+                emptyList()
+            } else {
+                stickerRepository.searchEmojis(debouncedSearchQuery)
+            }
+            searchResultsCustomEmojis = stickerRepository.searchCustomEmojis(debouncedSearchQuery)
         } else {
             searchResultsEmojis = emptyList()
             searchResultsCustomEmojis = emptyList()
         }
     }
 
-    // Sync selected tab with scroll position
-    val firstVisibleItemIndex by remember { derivedStateOf { gridState.firstVisibleItemIndex } }
-    LaunchedEffect(firstVisibleItemIndex, customEmojiSets, recentEmojis, standardEmojis, searchQuery) {
-        if (searchQuery.isNotEmpty() || !gridState.isScrollInProgress) return@LaunchedEffect
+    val sectionOffsets = remember(filteredRecentEmojis, visibleStandardEmojis, customEmojiSets) {
+        val offsets = mutableListOf<EmojiSectionOffset>()
+        var cursor = 0
 
-        var currentCount = 0
-        if (recentEmojis.isNotEmpty()) {
-            if (firstVisibleItemIndex < recentEmojis.size + 1) {
-                selectedSetId = -1L
-                return@LaunchedEffect
-            }
-            currentCount += recentEmojis.size + 1
+        if (filteredRecentEmojis.isNotEmpty()) {
+            val count = filteredRecentEmojis.size + 1
+            offsets += EmojiSectionOffset(id = -1L, startIndex = cursor, endExclusive = cursor + count)
+            cursor += count
         }
 
-        if (standardEmojis.isNotEmpty()) {
-            if (firstVisibleItemIndex >= currentCount && firstVisibleItemIndex < currentCount + standardEmojis.size + 1) {
-                selectedSetId = -2L
-                return@LaunchedEffect
-            }
-            currentCount += standardEmojis.size + 1
+        if (visibleStandardEmojis.isNotEmpty()) {
+            val count = visibleStandardEmojis.size + 1
+            offsets += EmojiSectionOffset(id = -2L, startIndex = cursor, endExclusive = cursor + count)
+            cursor += count
         }
 
-        for (set in customEmojiSets) {
-            if (firstVisibleItemIndex >= currentCount && firstVisibleItemIndex < currentCount + set.stickers.size + 1) {
-                selectedSetId = set.id
-                break
-            }
-            currentCount += set.stickers.size + 1
+        customEmojiSets.forEach { set ->
+            val count = set.stickers.size + 1
+            offsets += EmojiSectionOffset(id = set.id, startIndex = cursor, endExclusive = cursor + count)
+            cursor += count
         }
+
+        offsets
+    }
+
+    val sectionStartById = remember(sectionOffsets) {
+        sectionOffsets.associate { it.id to it.startIndex }
+    }
+
+    val localSearchFallbackResults = remember(debouncedSearchQuery, visibleStandardEmojis) {
+        if (debouncedSearchQuery.isNotEmpty()) {
+            visibleStandardEmojis.filter { it.contains(debouncedSearchQuery) }
+        } else {
+            emptyList()
+        }
+    }
+
+    LaunchedEffect(sectionOffsets) {
+        if (sectionOffsets.isNotEmpty() && sectionOffsets.none { it.id == selectedSetId }) {
+            selectedSetId = sectionOffsets.first().id
+        }
+    }
+
+    LaunchedEffect(gridState, searchQuery, sectionOffsets) {
+        if (searchQuery.isNotEmpty() || sectionOffsets.isEmpty()) return@LaunchedEffect
+
+        snapshotFlow { gridState.firstVisibleItemIndex }
+            .distinctUntilChanged()
+            .collect { firstIndex ->
+                val currentSectionId = sectionOffsets
+                    .firstOrNull { firstIndex in it.startIndex until it.endExclusive }
+                    ?.id
+                    ?: sectionOffsets.lastOrNull()?.id
+
+                if (currentSectionId != null && currentSectionId != selectedSetId) {
+                    selectedSetId = currentSectionId
+                }
+            }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -134,26 +185,13 @@ fun EmojisGrid(
             EmojiSetsRow(
                 customEmojiSets = customEmojiSets,
                 selectedSetId = selectedSetId,
+                hasRecent = filteredRecentEmojis.isNotEmpty(),
+                hasStandard = visibleStandardEmojis.isNotEmpty(),
                 onSetSelected = { id ->
                     selectedSetId = id
                     scope.launch {
-                        var targetIndex = 0
-                        if (id == -1L) {
-                            gridState.animateScrollToItem(0)
-                        } else if (id == -2L) {
-                            if (recentEmojis.isNotEmpty()) targetIndex += recentEmojis.size + 1
-                            gridState.animateScrollToItem(targetIndex)
-                        } else {
-                            if (recentEmojis.isNotEmpty()) targetIndex += recentEmojis.size + 1
-                            if (standardEmojis.isNotEmpty()) targetIndex += standardEmojis.size + 1
-                            for (set in customEmojiSets) {
-                                if (set.id == id) {
-                                    gridState.animateScrollToItem(targetIndex)
-                                    break
-                                }
-                                targetIndex += set.stickers.size + 1
-                            }
-                        }
+                        val targetIndex = sectionStartById[id] ?: return@launch
+                        gridState.animateScrollToItem(targetIndex)
                     }
                 }
             )
@@ -165,9 +203,7 @@ fun EmojisGrid(
         )
 
         Box(modifier = Modifier.fillMaxSize()) {
-            val isScrollingFast by rememberIsScrollingFast(gridState)
-
-            CompositionLocalProvider(LocalIsScrolling provides (gridState.isScrollInProgress && isScrollingFast)) {
+            CompositionLocalProvider(LocalIsScrolling provides gridState.isScrollInProgress) {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 48.dp),
                     state = gridState,
@@ -186,7 +222,7 @@ fun EmojisGrid(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 PackHeader(stringResource(R.string.emojis_header_all))
                             }
-                            items(searchResultsEmojis) { emoji ->
+                            itemsIndexed(searchResultsEmojis, key = { index, emoji -> "search_emoji_${index}_$emoji" }) { _, emoji ->
                                 EmojiGridItem(emoji, emojiFontFamily) {
                                     onEmojiSelected(emoji, null)
                                     scope.launch { stickerRepository.addRecentEmoji(RecentEmojiModel(emoji)) }
@@ -198,12 +234,14 @@ fun EmojisGrid(
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 PackHeader(stringResource(R.string.emojis_header_custom))
                             }
-                            items(searchResultsCustomEmojis) { sticker ->
+                            items(searchResultsCustomEmojis, key = { "search_custom_${it.id}" }) { sticker ->
                                 Box(
                                     modifier = Modifier
                                         .aspectRatio(1f)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)),
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+                                            shape = CircleShape
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     StickerItem(
@@ -215,9 +253,8 @@ fun EmojisGrid(
                             }
                         }
 
-                        if (searchResultsEmojis.isEmpty() && searchResultsCustomEmojis.isEmpty()) {
-                            val filtered = standardEmojis.filter { it.contains(searchQuery) }
-                            items(filtered) { emoji ->
+                        if (!emojiOnlyMode && searchResultsEmojis.isEmpty() && searchResultsCustomEmojis.isEmpty()) {
+                            itemsIndexed(localSearchFallbackResults, key = { index, emoji -> "search_local_${index}_$emoji" }) { _, emoji ->
                                 EmojiGridItem(emoji, emojiFontFamily) {
                                     onEmojiSelected(emoji, null)
                                     scope.launch { stickerRepository.addRecentEmoji(RecentEmojiModel(emoji)) }
@@ -226,16 +263,24 @@ fun EmojisGrid(
                         }
                     } else {
                         // Recent Emojis
-                        if (recentEmojis.isNotEmpty()) {
+                        if (filteredRecentEmojis.isNotEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 PackHeader(stringResource(R.string.emojis_header_recent))
                             }
-                            items(recentEmojis) { item ->
+                            itemsIndexed(
+                                filteredRecentEmojis,
+                                key = { index, item ->
+                                    val stickerKey = item.sticker?.customEmojiId ?: item.sticker?.id
+                                    "recent_${stickerKey ?: item.emoji}_$index"
+                                }
+                            ) { _, item ->
                                 Box(
                                     modifier = Modifier
                                         .aspectRatio(1f)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)),
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+                                            shape = CircleShape
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     val sticker = item.sticker
@@ -260,11 +305,14 @@ fun EmojisGrid(
                         }
 
                         // Standard Emojis
-                        if (standardEmojis.isNotEmpty()) {
+                        if (visibleStandardEmojis.isNotEmpty()) {
                             item(span = { GridItemSpan(maxLineSpan) }) {
                                 PackHeader(stringResource(R.string.emojis_header_standard))
                             }
-                            items(standardEmojis) { emoji ->
+                            itemsIndexed(
+                                visibleStandardEmojis,
+                                key = { index, emoji -> "standard_${emoji}_$index" }
+                            ) { _, emoji ->
                                 EmojiGridItem(emoji, emojiFontFamily) {
                                     onEmojiSelected(emoji, null)
                                     scope.launch { stickerRepository.addRecentEmoji(RecentEmojiModel(emoji)) }
@@ -281,8 +329,10 @@ fun EmojisGrid(
                                 Box(
                                     modifier = Modifier
                                         .aspectRatio(1f)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f)),
+                                        .background(
+                                            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
+                                            shape = CircleShape
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     StickerItem(
@@ -342,7 +392,7 @@ fun EmojiSearchBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 32.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isSearchMode) {
@@ -368,9 +418,16 @@ fun EmojiSearchBar(
             onValueChange = onQueryChange,
             modifier = Modifier
                 .weight(1f)
-                .height(48.dp)
+                .heightIn(min = 44.dp)
                 .onFocusChanged { onFocusChanged(it.isFocused) },
-            placeholder = { Text(stringResource(R.string.emojis_search_placeholder), style = MaterialTheme.typography.bodyMedium) },
+            placeholder = {
+                Text(
+                    text = stringResource(R.string.emojis_search_placeholder),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    )
+                )
+            },
             leadingIcon = if (!isSearchMode) {
                 {
                     Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -394,7 +451,9 @@ fun EmojiSearchBar(
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
             ),
-            textStyle = MaterialTheme.typography.bodyMedium
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                platformStyle = PlatformTextStyle(includeFontPadding = false)
+            )
         )
     }
 }
@@ -403,18 +462,28 @@ fun EmojiSearchBar(
 fun EmojiSetsRow(
     customEmojiSets: List<StickerSetModel>,
     selectedSetId: Long,
+    hasRecent: Boolean,
+    hasStandard: Boolean,
     onSetSelected: (Long) -> Unit
 ) {
     val listState = rememberLazyListState()
 
     LaunchedEffect(selectedSetId) {
         val index = when (selectedSetId) {
-            -1L -> 0
-            -2L -> 1
-            else -> customEmojiSets.indexOfFirst { it.id == selectedSetId } + 2
+            -1L -> if (hasRecent) 0 else -1
+            -2L -> when {
+                hasRecent -> 1
+                hasStandard -> 0
+                else -> -1
+            }
+
+            else -> {
+                val base = (if (hasRecent) 1 else 0) + (if (hasStandard) 1 else 0)
+                customEmojiSets.indexOfFirst { it.id == selectedSetId }.takeIf { it >= 0 }?.let { base + it } ?: -1
+            }
         }
         if (index >= 0) {
-            listState.animateScrollToItem(index)
+            listState.scrollToItem(index)
         }
     }
 
@@ -422,32 +491,36 @@ fun EmojiSetsRow(
         state = listState,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = 4.dp),
         contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        item {
-            SetItem(
-                isSelected = selectedSetId == -1L,
-                onClick = { onSetSelected(-1L) },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Outlined.EmojiEmotions,
-                        contentDescription = stringResource(R.string.common_recent),
-                        tint = if (selectedSetId == -1L) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            )
+        if (hasRecent) {
+            item {
+                SetItem(
+                    isSelected = selectedSetId == -1L,
+                    onClick = { onSetSelected(-1L) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Outlined.EmojiEmotions,
+                            contentDescription = stringResource(R.string.common_recent),
+                            tint = if (selectedSetId == -1L) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                )
+            }
         }
 
-        item {
-            SetItem(
-                isSelected = selectedSetId == -2L,
-                onClick = { onSetSelected(-2L) },
-                content = { Text("😀", fontSize = 22.sp) }
-            )
+        if (hasStandard) {
+            item {
+                SetItem(
+                    isSelected = selectedSetId == -2L,
+                    onClick = { onSetSelected(-2L) },
+                    content = { Text("😀", fontSize = 22.sp) }
+                )
+            }
         }
 
         items(
@@ -480,35 +553,8 @@ fun EmojiSetsRow(
     }
 }
 
-@Composable
-fun rememberIsScrollingFast(state: LazyGridState, thresholdItemsPerSecond: Float = 6f): State<Boolean> {
-    val isFast = remember { mutableStateOf(false) }
-    
-    LaunchedEffect(state) {
-        var lastIndex = state.firstVisibleItemIndex
-        var lastTime = System.nanoTime()
-        
-        while (true) {
-            if (state.isScrollInProgress) {
-                val currentIndex = state.firstVisibleItemIndex
-                val now = System.nanoTime()
-                val dt = (now - lastTime) / 1_000_000_000f
-
-                if (dt > 0.1f) {
-                     val itemsMoved = kotlin.math.abs(currentIndex - lastIndex)
-                     val speed = itemsMoved / dt
-                     isFast.value = speed > thresholdItemsPerSecond
-                     
-                     lastIndex = currentIndex
-                     lastTime = now
-                }
-            } else {
-                if (isFast.value) isFast.value = false
-                lastIndex = state.firstVisibleItemIndex
-                lastTime = System.nanoTime()
-            }
-            delay(50)
-        }
-    }
-    return isFast
-}
+private data class EmojiSectionOffset(
+    val id: Long,
+    val startIndex: Int,
+    val endExclusive: Int
+)

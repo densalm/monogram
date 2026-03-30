@@ -4,22 +4,42 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Subject
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.*
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
@@ -28,6 +48,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import org.monogram.domain.models.*
 import org.monogram.domain.repository.InlineBotResultsModel
@@ -42,6 +64,8 @@ import org.monogram.presentation.features.gallery.GalleryScreen
 import org.monogram.presentation.features.stickers.ui.menu.StickerEmojiMenu
 import java.io.File
 import java.io.FileOutputStream
+import java.util.*
+import kotlinx.coroutines.delay
 
 @Immutable
 data class ChatInputBarState(
@@ -63,11 +87,13 @@ data class ChatInputBarState(
     val currentInlineQuery: String? = null,
     val isInlineBotLoading: Boolean = false,
     val attachBots: List<AttachMenuBotModel> = emptyList(),
+    val scheduledMessages: List<MessageModel> = emptyList(),
+    val isPremiumUser: Boolean = false,
 )
 
 @Immutable
 data class ChatInputBarActions(
-    val onSend: (String, List<MessageEntity>) -> Unit,
+    val onSend: (String, List<MessageEntity>, MessageSendOptions) -> Unit,
     val onStickerClick: (String) -> Unit = {},
     val onGifClick: (GifModel) -> Unit = {},
     val onAttachClick: () -> Unit = {},
@@ -79,7 +105,7 @@ data class ChatInputBarActions(
     val onDraftChange: (String) -> Unit = {},
     val onTyping: () -> Unit = {},
     val onCancelMedia: () -> Unit = {},
-    val onSendMedia: (List<String>, String) -> Unit = { _, _ -> },
+    val onSendMedia: (List<String>, String, List<MessageEntity>, MessageSendOptions) -> Unit = { _, _, _, _ -> },
     val onMediaOrderChange: (List<String>) -> Unit = {},
     val onMediaClick: (String) -> Unit = {},
     val onShowBotCommands: () -> Unit = {},
@@ -92,6 +118,10 @@ data class ChatInputBarActions(
     val onInlineSwitchPm: (String, String) -> Unit = { _, _ -> },
     val onAttachBotClick: (AttachMenuBotModel) -> Unit = {},
     val onGalleryClick: () -> Unit = {},
+    val onRefreshScheduledMessages: () -> Unit = {},
+    val onEditScheduledMessage: (MessageModel) -> Unit = {},
+    val onDeleteScheduledMessage: (MessageModel) -> Unit = {},
+    val onSendScheduledNow: (MessageModel) -> Unit = {},
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,21 +163,114 @@ fun ChatInputBar(
 
     var textValue by remember { mutableStateOf(TextFieldValue(state.draftText)) }
     var isStickerMenuVisible by remember { mutableStateOf(false) }
+    var closeStickerMenuWithoutSlide by remember { mutableStateOf(false) }
+    var openStickerMenuAfterKeyboardClosed by remember { mutableStateOf(false) }
+    var openKeyboardAfterStickerMenuClosed by remember { mutableStateOf(false) }
     var isVideoMessageMode by remember { mutableStateOf(false) }
     var isGifSearchFocused by remember { mutableStateOf(false) }
     var showGallery by remember { mutableStateOf(false) } // New state for gallery visibility
     var showCamera by remember { mutableStateOf(false) } // New state for camera visibility
+    var showFullScreenEditor by remember { mutableStateOf(false) }
+    var showFullScreenEmojiPicker by remember { mutableStateOf(false) }
+    var showFullScreenLinkDialog by remember { mutableStateOf(false) }
+    var fullScreenLinkValue by remember { mutableStateOf("https://") }
+    var showFullScreenLanguageDialog by remember { mutableStateOf(false) }
+    var fullScreenLanguageValue by remember { mutableStateOf("") }
+    var showSendOptionsSheet by remember { mutableStateOf(false) }
+    var showScheduleDatePicker by remember { mutableStateOf(false) }
+    var showScheduleTimePicker by remember { mutableStateOf(false) }
+    var pendingScheduleDateMillis by remember { mutableStateOf<Long?>(null) }
+    var showScheduledMessagesSheet by remember { mutableStateOf(false) }
 
     val knownCustomEmojis = remember { mutableStateMapOf<Long, StickerModel>() }
 
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
+    val fullScreenFocusRequester = remember { FocusRequester() }
+    fun hideKeyboardAndClearFocus(force: Boolean = true) {
+        keyboardController?.hide()
+        focusManager.clearFocus(force = force)
+    }
+    val configuration = LocalConfiguration.current
     val density = LocalDensity.current
-    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val isKeyboardVisible = imeBottomPx > 0
+    var lastImeHeightPx by remember { mutableIntStateOf(0) }
+    LaunchedEffect(imeBottomPx) {
+        if (imeBottomPx > 0) {
+            lastImeHeightPx = imeBottomPx
+        }
+    }
+    val stickerMenuHeight = with(density) {
+        val imeHeightDp = maxOf(imeBottomPx, lastImeHeightPx).toDp()
+        val fallbackHeightDp = maxOf(configuration.screenHeightDp.dp * 0.42f, 320.dp)
+        maxOf(imeHeightDp, fallbackHeightDp)
+    }
+    val transitionHoldBottomInset = with(density) {
+        if (!isKeyboardVisible && !isStickerMenuVisible && (openStickerMenuAfterKeyboardClosed || openKeyboardAfterStickerMenuClosed)) {
+            lastImeHeightPx.toDp()
+        } else {
+            0.dp
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible, openStickerMenuAfterKeyboardClosed) {
+        if (!isKeyboardVisible && openStickerMenuAfterKeyboardClosed) {
+            openStickerMenuAfterKeyboardClosed = false
+            closeStickerMenuWithoutSlide = false
+            isStickerMenuVisible = true
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible, openKeyboardAfterStickerMenuClosed) {
+        if (isKeyboardVisible && openKeyboardAfterStickerMenuClosed) {
+            openKeyboardAfterStickerMenuClosed = false
+        }
+    }
+
+    LaunchedEffect(showGallery) {
+        if (showGallery) {
+            openStickerMenuAfterKeyboardClosed = false
+            openKeyboardAfterStickerMenuClosed = false
+            closeStickerMenuWithoutSlide = false
+            isStickerMenuVisible = false
+            hideKeyboardAndClearFocus()
+        }
+    }
 
     var lastEditingMessageId by remember { mutableStateOf<Long?>(null) }
 
     val voiceRecorder = rememberVoiceRecorder(onRecordingFinished = actions.onSendVoice)
+    val maxMessageLength = remember(state.pendingMediaPaths, state.isPremiumUser) {
+        if (state.pendingMediaPaths.isNotEmpty() && !state.isPremiumUser) 1024 else 4096
+    }
+    val currentMessageLength = textValue.text.length
+    val isOverMessageLimit = currentMessageLength > maxMessageLength
+
+    val sendWithOptions: (MessageSendOptions) -> Unit = sendWithOptions@{
+        if (isOverMessageLimit) return@sendWithOptions
+        val isTextEmpty = textValue.text.isBlank()
+        val captionEntities = extractEntities(textValue.annotatedString, knownCustomEmojis)
+
+        if (state.pendingMediaPaths.isNotEmpty() && canSendMedia) {
+            actions.onSendMedia(state.pendingMediaPaths, textValue.text, captionEntities, it)
+            textValue = TextFieldValue("")
+            knownCustomEmojis.clear()
+        } else if (state.editingMessage != null && canWriteText) {
+            if (!isTextEmpty) {
+                actions.onSaveEdit(textValue.text, captionEntities)
+            }
+        } else if (canWriteText && !isTextEmpty) {
+            actions.onSend(textValue.text, captionEntities, it)
+            textValue = TextFieldValue("")
+            knownCustomEmojis.clear()
+        }
+
+        if (it.scheduleDate != null) {
+            actions.onRefreshScheduledMessages()
+        }
+    }
 
     val filteredCommands = remember(textValue.text, state.botCommands) {
         if (textValue.text.startsWith("/")) {
@@ -236,6 +359,7 @@ fun ChatInputBar(
                             if (type.path != null) {
                                 knownCustomEmojis[type.emojiId] = StickerModel(
                                     id = type.emojiId,
+                                    customEmojiId = type.emojiId,
                                     width = 0,
                                     height = 0,
                                     emoji = "",
@@ -268,7 +392,17 @@ fun ChatInputBar(
                                     )
                                 }
 
-                                else -> {}
+                                else -> {
+                                    val richEntity = richEntityToAnnotation(type)
+                                    if (richEntity != null) {
+                                        addStringAnnotation(
+                                            RICH_ENTITY_TAG,
+                                            richEntity,
+                                            entity.offset,
+                                            entity.offset + entity.length
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -287,11 +421,30 @@ fun ChatInputBar(
         }
     }
 
-    BackHandler(enabled = isStickerMenuVisible || state.pendingMediaPaths.isNotEmpty() || showGallery || showCamera) {
+    BackHandler(enabled = isStickerMenuVisible || openStickerMenuAfterKeyboardClosed || openKeyboardAfterStickerMenuClosed || state.pendingMediaPaths.isNotEmpty() || showGallery || showCamera || showFullScreenEditor || showSendOptionsSheet || showScheduledMessagesSheet || showFullScreenEmojiPicker || showScheduleDatePicker || showScheduleTimePicker) {
         if (isGifSearchFocused) {
             focusManager.clearFocus()
+        } else if (openStickerMenuAfterKeyboardClosed) {
+            openStickerMenuAfterKeyboardClosed = false
+        } else if (openKeyboardAfterStickerMenuClosed) {
+            openKeyboardAfterStickerMenuClosed = false
         } else if (isStickerMenuVisible) {
+            closeStickerMenuWithoutSlide = false
             isStickerMenuVisible = false
+        } else if (showFullScreenEmojiPicker) {
+            showFullScreenEmojiPicker = false
+        } else if (showScheduleTimePicker) {
+            showScheduleTimePicker = false
+            pendingScheduleDateMillis = null
+        } else if (showScheduleDatePicker) {
+            showScheduleDatePicker = false
+            pendingScheduleDateMillis = null
+        } else if (showSendOptionsSheet) {
+            showSendOptionsSheet = false
+        } else if (showScheduledMessagesSheet) {
+            showScheduledMessagesSheet = false
+        } else if (showFullScreenEditor) {
+            showFullScreenEditor = false
         } else if (state.pendingMediaPaths.isNotEmpty()) {
             actions.onCancelMedia()
         } else if (showGallery) {
@@ -358,6 +511,7 @@ fun ChatInputBar(
                     modifier = Modifier
                         .fillMaxWidth()
                         .imePadding()
+                        .padding(bottom = transitionHoldBottomInset)
                 ) {
                     InputPreviewSection(
                         editingMessage = state.editingMessage,
@@ -435,7 +589,7 @@ fun ChatInputBar(
                         BotCommandSuggestions(
                             commands = filteredCommands,
                             onCommandClick = { command ->
-                                actions.onSend("/$command", emptyList())
+                                actions.onSend("/$command", emptyList(), MessageSendOptions())
                                 textValue = TextFieldValue("")
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -487,6 +641,11 @@ fun ChatInputBar(
                                     pendingMediaPaths = state.pendingMediaPaths,
                                     canSendMedia = canSendMedia,
                                     onAttachClick = {
+                                        openStickerMenuAfterKeyboardClosed = false
+                                        openKeyboardAfterStickerMenuClosed = false
+                                        closeStickerMenuWithoutSlide = false
+                                        isStickerMenuVisible = false
+                                        hideKeyboardAndClearFocus()
                                         showGallery = true
                                     }
                                 )
@@ -514,7 +673,13 @@ fun ChatInputBar(
                                     } else {
                                         InputTextFieldContainer(
                                             textValue = textValue,
-                                            onValueChange = { textValue = it },
+                                            onValueChange = { incoming ->
+                                                textValue =
+                                                    mergeInputTextValuePreservingAnnotations(textValue, incoming)
+                                            },
+                                            onRichTextValueChange = { incoming ->
+                                                textValue = incoming
+                                            },
                                             isBot = state.isBot,
                                             botMenuButton = state.botMenuButton,
                                             botCommands = state.botCommands,
@@ -522,16 +687,47 @@ fun ChatInputBar(
                                             canWriteText = canWriteText,
                                             isStickerMenuVisible = isStickerMenuVisible,
                                             onStickerMenuToggle = {
-                                                isStickerMenuVisible = !isStickerMenuVisible
-                                                if (isStickerMenuVisible) focusManager.clearFocus()
+                                                if (isStickerMenuVisible) {
+                                                    openStickerMenuAfterKeyboardClosed = false
+                                                    openKeyboardAfterStickerMenuClosed = true
+                                                    closeStickerMenuWithoutSlide = true
+                                                    isStickerMenuVisible = false
+                                                    focusRequester.requestFocus()
+                                                } else {
+                                                    openKeyboardAfterStickerMenuClosed = false
+                                                    closeStickerMenuWithoutSlide = false
+                                                    if (isKeyboardVisible) {
+                                                        openStickerMenuAfterKeyboardClosed = true
+                                                        hideKeyboardAndClearFocus()
+                                                    } else {
+                                                        openStickerMenuAfterKeyboardClosed = false
+                                                        isStickerMenuVisible = true
+                                                        focusManager.clearFocus()
+                                                    }
+                                                }
                                             },
-                                            onShowBotCommands = actions.onShowBotCommands,
+                                            onShowBotCommands = {
+                                                openStickerMenuAfterKeyboardClosed = false
+                                                openKeyboardAfterStickerMenuClosed = false
+                                                closeStickerMenuWithoutSlide = false
+                                                isStickerMenuVisible = false
+                                                hideKeyboardAndClearFocus()
+                                                actions.onShowBotCommands()
+                                            },
                                             onOpenMiniApp = actions.onOpenMiniApp,
                                             knownCustomEmojis = knownCustomEmojis,
                                             emojiFontFamily = emojiFontFamily,
                                             focusRequester = focusRequester,
                                             pendingMediaPaths = state.pendingMediaPaths,
-                                            onFocus = { isStickerMenuVisible = false },
+                                            onFocus = {
+                                                openStickerMenuAfterKeyboardClosed = false
+                                                openKeyboardAfterStickerMenuClosed = false
+                                                if (isStickerMenuVisible) {
+                                                    closeStickerMenuWithoutSlide = true
+                                                }
+                                                isStickerMenuVisible = false
+                                            },
+                                            onOpenFullScreenEditor = { showFullScreenEditor = true },
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     }
@@ -539,30 +735,102 @@ fun ChatInputBar(
                             }
 
                             if (!voiceRecorder.isLocked) {
+                                if (state.scheduledMessages.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        actions.onRefreshScheduledMessages()
+                                        showScheduledMessagesSheet = true
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.Schedule,
+                                            contentDescription = stringResource(R.string.action_scheduled_messages),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
                                 Spacer(modifier = Modifier.width(8.dp))
 
-                                InputBarSendButton(
-                                    textValue = textValue,
-                                    editingMessage = state.editingMessage,
-                                    pendingMediaPaths = state.pendingMediaPaths,
-                                    canWriteText = canWriteText,
-                                    canSendVoice = canSendVoice,
-                                    canSendMedia = canSendMedia,
-                                    isVideoMessageMode = isVideoMessageMode,
-                                    knownCustomEmojis = knownCustomEmojis,
-                                    onSend = actions.onSend,
-                                    onSaveEdit = actions.onSaveEdit,
-                                    onSendMedia = actions.onSendMedia,
-                                    onCameraClick = actions.onCameraClick,
-                                    onVideoModeToggle = { isVideoMessageMode = !isVideoMessageMode },
-                                    onTextValueChange = { textValue = it },
-                                    onKnownEmojisClear = { knownCustomEmojis.clear() },
-                                    onVoiceStart = { voiceRecorder.startRecording() },
-                                    onVoiceStop = { cancel -> voiceRecorder.stopRecording(cancel) },
-                                    onVoiceLock = { voiceRecorder.lockRecording() }
-                                )
+                                Box(contentAlignment = Alignment.CenterEnd) {
+                                    InputBarSendButton(
+                                        textValue = textValue,
+                                        editingMessage = state.editingMessage,
+                                        pendingMediaPaths = state.pendingMediaPaths,
+                                        isOverCharLimit = isOverMessageLimit,
+                                        canWriteText = canWriteText,
+                                        canSendVoice = canSendVoice,
+                                        canSendMedia = canSendMedia,
+                                        isVideoMessageMode = isVideoMessageMode,
+                                        onSendWithOptions = sendWithOptions,
+                                        onShowSendOptionsMenu = {
+                                            openStickerMenuAfterKeyboardClosed = false
+                                            openKeyboardAfterStickerMenuClosed = false
+                                            closeStickerMenuWithoutSlide = false
+                                            isStickerMenuVisible = false
+                                            hideKeyboardAndClearFocus()
+                                            showSendOptionsSheet = true
+                                            actions.onRefreshScheduledMessages()
+                                        },
+                                        onCameraClick = {
+                                            hideKeyboardAndClearFocus()
+                                            actions.onCameraClick()
+                                        },
+                                        onVideoModeToggle = { isVideoMessageMode = !isVideoMessageMode },
+                                        onVoiceStart = {
+                                            hideKeyboardAndClearFocus()
+                                            voiceRecorder.startRecording()
+                                        },
+                                        onVoiceStop = { cancel -> voiceRecorder.stopRecording(cancel) },
+                                        onVoiceLock = { voiceRecorder.lockRecording() }
+                                    )
+
+                                    SendOptionsPopup(
+                                        expanded = showSendOptionsSheet,
+                                        scheduledMessagesCount = state.scheduledMessages.size,
+                                        onDismiss = { showSendOptionsSheet = false },
+                                        onSendSilent = {
+                                            showSendOptionsSheet = false
+                                            sendWithOptions(MessageSendOptions(silent = true))
+                                        },
+                                        onScheduleMessage = {
+                                            showSendOptionsSheet = false
+                                            pendingScheduleDateMillis = null
+                                            showScheduleDatePicker = true
+                                        },
+                                        onOpenScheduledMessages = {
+                                            showSendOptionsSheet = false
+                                            showScheduledMessagesSheet = true
+                                            actions.onRefreshScheduledMessages()
+                                        }
+                                    )
+                                }
                             }
                         }
+                    }
+
+                    AnimatedVisibility(
+                        visible = !voiceRecorder.isRecording &&
+                                !showFullScreenEditor &&
+                                currentMessageLength > 1000,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.message_length_counter,
+                                currentMessageLength,
+                                maxMessageLength
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            textAlign = TextAlign.End,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isOverMessageLimit) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
                     }
 
                     AnimatedVisibility(
@@ -579,42 +847,29 @@ fun ChatInputBar(
 
                     AnimatedVisibility(
                         visible = isStickerMenuVisible,
-                        enter = expandVertically(
-                            animationSpec = tween(200),
-                            expandFrom = Alignment.Top
-                        ) + fadeIn(),
-                        exit = shrinkVertically(
-                            animationSpec = tween(200),
-                            shrinkTowards = Alignment.Top
-                        ) + fadeOut()
+                        enter = slideInVertically(
+                            animationSpec = tween(220),
+                            initialOffsetY = { it }
+                        ) + fadeIn(animationSpec = tween(170)),
+                        exit = if (closeStickerMenuWithoutSlide) {
+                            fadeOut(animationSpec = tween(90))
+                        } else {
+                            slideOutVertically(
+                                animationSpec = tween(170),
+                                targetOffsetY = { it }
+                            ) + fadeOut(animationSpec = tween(120))
+                        }
                     ) {
                         StickerEmojiMenu(
                             onStickerSelected = { sticker ->
                                 actions.onStickerClick(sticker)
                             },
                             onEmojiSelected = { emoji, sticker ->
-                                val currentText = textValue.annotatedString
-                                val selection = textValue.selection
-
-                                val emojiAnnotated = if (sticker != null) {
-                                    knownCustomEmojis[sticker.id] = sticker
-                                    buildAnnotatedString {
-                                        append(emoji)
-                                        addStringAnnotation(CUSTOM_EMOJI_TAG, sticker.id.toString(), 0, emoji.length)
-                                    }
-                                } else {
-                                    AnnotatedString(emoji)
-                                }
-
-                                val newText = buildAnnotatedString {
-                                    append(currentText.subSequence(0, selection.start))
-                                    append(emojiAnnotated)
-                                    append(currentText.subSequence(selection.end, currentText.length))
-                                }
-
-                                textValue = textValue.copy(
-                                    annotatedString = newText,
-                                    selection = TextRange(selection.start + emojiAnnotated.length)
+                                textValue = insertEmojiAtSelection(
+                                    value = textValue,
+                                    emoji = emoji,
+                                    sticker = sticker,
+                                    knownCustomEmojis = knownCustomEmojis
                                 )
                             },
                             onGifSelected = { gif ->
@@ -623,6 +878,7 @@ fun ChatInputBar(
                             onSearchFocused = { focused ->
                                 isGifSearchFocused = focused
                             },
+                            panelHeight = stickerMenuHeight,
                             videoPlayerPool = videoPlayerPool,
                             stickerRepository = stickerRepository
                         )
@@ -670,6 +926,628 @@ fun ChatInputBar(
                     }
                 )
             }
+
+            if (showFullScreenEditor) {
+                val editorEntities = remember(textValue.annotatedString, knownCustomEmojis.size) {
+                    extractEntities(textValue.annotatedString, knownCustomEmojis)
+                }
+                val richEntityCount = remember(editorEntities) {
+                    editorEntities.count { richEntityToAnnotation(it.type) != null }
+                }
+                val hasFormattableSelectionInEditor = hasFormattableSelection(textValue)
+                val fullScreenContainerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                val fullScreenFieldColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                val fullScreenToolbarColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                val fullScreenAccentColor = MaterialTheme.colorScheme.primary
+
+                Dialog(
+                    onDismissRequest = { showFullScreenEditor = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.58f))
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .fillMaxHeight(0.95f),
+                            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                            color = fullScreenContainerColor
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .statusBarsPadding()
+                                    .navigationBarsPadding()
+                                    .imePadding()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(onClick = { showFullScreenEditor = false }) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = stringResource(R.string.action_cancel),
+                                            tint = fullScreenAccentColor
+                                        )
+                                    }
+
+                                    Text(
+                                        text = stringResource(R.string.fullscreen_editor_title),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    IconButton(
+                                        onClick = {
+                                            sendWithOptions(MessageSendOptions())
+                                            showFullScreenEditor = false
+                                        },
+                                        enabled = !isOverMessageLimit
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = stringResource(R.string.action_send),
+                                            tint = if (isOverMessageLimit) {
+                                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                            } else {
+                                                fullScreenAccentColor
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                                ) {
+                                    FullScreenEditorMetaPill(
+                                        text = stringResource(
+                                            R.string.message_length_counter,
+                                            currentMessageLength,
+                                            maxMessageLength
+                                        ),
+                                        color = if (isOverMessageLimit) {
+                                            MaterialTheme.colorScheme.error.copy(alpha = 0.22f)
+                                        } else {
+                                            fullScreenAccentColor.copy(alpha = 0.2f)
+                                        },
+                                        contentColor = if (isOverMessageLimit) {
+                                            MaterialTheme.colorScheme.error
+                                        } else {
+                                            fullScreenAccentColor
+                                        }
+                                    )
+                                    FullScreenEditorMetaPill(
+                                        text = stringResource(
+                                            R.string.fullscreen_editor_blocks,
+                                            richEntityCount
+                                        ),
+                                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f),
+                                        contentColor = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(20.dp))
+
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth(),
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = fullScreenFieldColor
+                                ) {
+                                    InputTextField(
+                                        textValue = textValue,
+                                        onValueChange = { incoming ->
+                                            textValue = mergeInputTextValuePreservingAnnotations(textValue, incoming)
+                                        },
+                                        onRichTextValueChange = { incoming ->
+                                            textValue = incoming
+                                        },
+                                        enableContextMenu = false,
+                                        enableRichContextActions = false,
+                                        canWriteText = canWriteText,
+                                        knownCustomEmojis = knownCustomEmojis,
+                                        emojiFontFamily = emojiFontFamily,
+                                        focusRequester = fullScreenFocusRequester,
+                                        pendingMediaPaths = state.pendingMediaPaths,
+                                        maxEditorHeight = 860.dp,
+                                        onFocus = { isStickerMenuVisible = false },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 14.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(58.dp),
+                                        shape = RoundedCornerShape(32.dp),
+                                        color = fullScreenToolbarColor
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .horizontalScroll(rememberScrollState())
+                                                .padding(horizontal = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.FormatBold,
+                                                hint = stringResource(R.string.rich_text_bold),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = toggleRichEntity(textValue, MessageEntityType.Bold)
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.FormatItalic,
+                                                hint = stringResource(R.string.rich_text_italic),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = toggleRichEntity(textValue, MessageEntityType.Italic)
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.FormatUnderlined,
+                                                hint = stringResource(R.string.rich_text_underline),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = toggleRichEntity(textValue, MessageEntityType.Underline)
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.FormatStrikethrough,
+                                                hint = stringResource(R.string.rich_text_strikethrough),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = toggleRichEntity(
+                                                        textValue,
+                                                        MessageEntityType.Strikethrough
+                                                    )
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.Code,
+                                                hint = stringResource(R.string.rich_text_code),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = toggleRichEntity(textValue, MessageEntityType.Code)
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.Link,
+                                                hint = stringResource(R.string.rich_text_link),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    val selection = textValue.selection
+                                                    if (selection.start != selection.end) {
+                                                        val normalized = if (selection.start <= selection.end) {
+                                                            selection
+                                                        } else {
+                                                            TextRange(selection.end, selection.start)
+                                                        }
+                                                        val current = textValue.annotatedString
+                                                            .getStringAnnotations(
+                                                                RICH_ENTITY_TAG,
+                                                                normalized.start,
+                                                                normalized.end
+                                                            )
+                                                            .firstOrNull {
+                                                                decodeRichEntity(it.item) is MessageEntityType.TextUrl
+                                                            }
+                                                        fullScreenLinkValue =
+                                                            (current?.let { decodeRichEntity(it.item) } as? MessageEntityType.TextUrl)?.url
+                                                                ?: "https://"
+                                                        showFullScreenLinkDialog = true
+                                                    }
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.AlternateEmail,
+                                                hint = stringResource(R.string.rich_text_mention),
+                                                onClick = {
+                                                    textValue = insertMentionAtSelection(textValue)
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.AutoMirrored.Outlined.Subject,
+                                                hint = stringResource(R.string.rich_text_pre),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    val selection = textValue.selection
+                                                    if (selection.start != selection.end) {
+                                                        val normalized = if (selection.start <= selection.end) {
+                                                            selection
+                                                        } else {
+                                                            TextRange(selection.end, selection.start)
+                                                        }
+                                                        val current = textValue.annotatedString
+                                                            .getStringAnnotations(
+                                                                RICH_ENTITY_TAG,
+                                                                normalized.start,
+                                                                normalized.end
+                                                            )
+                                                            .firstOrNull {
+                                                                decodeRichEntity(it.item) is MessageEntityType.Pre
+                                                            }
+                                                        fullScreenLanguageValue =
+                                                            (current?.let { decodeRichEntity(it.item) } as? MessageEntityType.Pre)?.language.orEmpty()
+                                                        showFullScreenLanguageDialog = true
+                                                    }
+                                                }
+                                            )
+                                            FullScreenEditorToolButton(
+                                                icon = Icons.Outlined.FormatClear,
+                                                hint = stringResource(R.string.rich_text_clear),
+                                                enabled = hasFormattableSelectionInEditor,
+                                                onClick = {
+                                                    textValue = clearRichFormatting(textValue)
+                                                }
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Surface(
+                                        modifier = Modifier.size(58.dp),
+                                        shape = CircleShape,
+                                        color = fullScreenToolbarColor
+                                    ) {
+                                        IconButton(onClick = { showFullScreenEmojiPicker = true }) {
+                                            Text(
+                                                text = "☺",
+                                                style = MaterialTheme.typography.headlineSmall,
+                                                color = fullScreenAccentColor
+                                            )
+                                        }
+                                    }
+                                }
+
+                                AnimatedVisibility(visible = !isKeyboardVisible) {
+                                    Text(
+                                        text = stringResource(R.string.fullscreen_editor_hint),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showFullScreenLinkDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showFullScreenLinkDialog = false },
+                        title = { Text(text = stringResource(R.string.rich_text_link_title)) },
+                        text = {
+                            OutlinedTextField(
+                                value = fullScreenLinkValue,
+                                onValueChange = { fullScreenLinkValue = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(text = stringResource(R.string.rich_text_link_hint)) }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                val normalizedUrl = normalizeEditorUrl(fullScreenLinkValue)
+                                if (normalizedUrl != null) {
+                                    textValue = applyTextUrlEntity(textValue, normalizedUrl)
+                                }
+                                showFullScreenLinkDialog = false
+                            }) {
+                                Text(text = stringResource(R.string.action_apply))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showFullScreenLinkDialog = false }) {
+                                Text(text = stringResource(R.string.action_cancel))
+                            }
+                        }
+                    )
+                }
+
+                if (showFullScreenLanguageDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showFullScreenLanguageDialog = false },
+                        title = { Text(text = stringResource(R.string.rich_text_code_language_title)) },
+                        text = {
+                            OutlinedTextField(
+                                value = fullScreenLanguageValue,
+                                onValueChange = { fullScreenLanguageValue = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text(text = stringResource(R.string.rich_text_code_language_hint)) }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                textValue = applyPreEntity(textValue, fullScreenLanguageValue)
+                                showFullScreenLanguageDialog = false
+                            }) {
+                                Text(text = stringResource(R.string.action_apply))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showFullScreenLanguageDialog = false }) {
+                                Text(text = stringResource(R.string.action_cancel))
+                            }
+                        }
+                    )
+                }
+
+                if (showFullScreenEmojiPicker) {
+                    ModalBottomSheet(
+                        onDismissRequest = { showFullScreenEmojiPicker = false },
+                        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                    ) {
+                        StickerEmojiMenu(
+                            onStickerSelected = {},
+                            onEmojiSelected = { emoji, sticker ->
+                                textValue = insertEmojiAtSelection(
+                                    value = textValue,
+                                    emoji = emoji,
+                                    sticker = sticker,
+                                    knownCustomEmojis = knownCustomEmojis
+                                )
+                            },
+                            onGifSelected = {},
+                            emojiOnlyMode = true,
+                            onSearchFocused = {},
+                            videoPlayerPool = videoPlayerPool,
+                            stickerRepository = stickerRepository
+                        )
+                    }
+                }
+
+            }
+
+            if (showScheduleDatePicker) {
+                ScheduleDatePickerDialog(
+                    onDismiss = {
+                        showScheduleDatePicker = false
+                        pendingScheduleDateMillis = null
+                    },
+                    onDateSelected = { selectedDateMillis ->
+                        pendingScheduleDateMillis = selectedDateMillis
+                        showScheduleDatePicker = false
+                        showScheduleTimePicker = true
+                    }
+                )
+            }
+
+            if (showScheduleTimePicker) {
+                val defaultTime = remember {
+                    Calendar.getInstance().let { now -> now.get(Calendar.HOUR_OF_DAY) to now.get(Calendar.MINUTE) }
+                }
+
+                ScheduleTimePickerDialog(
+                    initialHour = defaultTime.first,
+                    initialMinute = defaultTime.second,
+                    onDismiss = {
+                        showScheduleTimePicker = false
+                        pendingScheduleDateMillis = null
+                    },
+                    onConfirm = { hour, minute ->
+                        val selectedDateMillis = pendingScheduleDateMillis
+                        pendingScheduleDateMillis = null
+                        showScheduleTimePicker = false
+                        if (selectedDateMillis != null) {
+                            val scheduleDate = buildScheduledDateEpochSeconds(selectedDateMillis, hour, minute)
+                            sendWithOptions(MessageSendOptions(scheduleDate = scheduleDate))
+                        }
+                    }
+                )
+            }
+
+            if (showScheduledMessagesSheet) {
+                val scheduledMessagesSorted = remember(state.scheduledMessages) {
+                    state.scheduledMessages.sortedBy { it.date }
+                }
+                val nextScheduled = scheduledMessagesSorted.firstOrNull()
+                val editableScheduledCount = remember(scheduledMessagesSorted) {
+                    scheduledMessagesSorted.count { canEditScheduledMessage(it) }
+                }
+
+                ModalBottomSheet(
+                    onDismissRequest = { showScheduledMessagesSheet = false },
+                    dragHandle = { BottomSheetDefaults.DragHandle() },
+                    containerColor = MaterialTheme.colorScheme.background,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 28.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_scheduled_messages),
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text(
+                                    text = scheduledMessagesSorted.size.toString(),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.scheduled_messages_summary_count,
+                                        scheduledMessagesSorted.size
+                                    ),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (nextScheduled != null) {
+                                        stringResource(
+                                            R.string.scheduled_messages_summary_next,
+                                            formatScheduledTimestamp(nextScheduled.date)
+                                        )
+                                    } else {
+                                        stringResource(R.string.scheduled_messages_empty)
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.scheduled_messages_summary_editable,
+                                        editableScheduledCount
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        if (scheduledMessagesSorted.isEmpty()) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.scheduled_messages_empty),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(14.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shape = RoundedCornerShape(24.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 380.dp)
+                            ) {
+                                LazyColumn(
+                                    contentPadding = PaddingValues(vertical = 6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    itemsIndexed(
+                                        scheduledMessagesSorted,
+                                        key = { _, message -> message.id }) { index, message ->
+                                        ScheduledMessageRow(
+                                            message = message,
+                                            onSendNow = { actions.onSendScheduledNow(message) },
+                                            onEdit = {
+                                                actions.onEditScheduledMessage(message)
+                                                showScheduledMessagesSheet = false
+                                                showFullScreenEditor = true
+                                            },
+                                            onDelete = {
+                                                actions.onDeleteScheduledMessage(message)
+                                                actions.onRefreshScheduledMessages()
+                                            }
+                                        )
+
+                                        if (index < scheduledMessagesSorted.lastIndex) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(horizontal = 12.dp),
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    actions.onRefreshScheduledMessages()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(text = stringResource(R.string.action_refresh))
+                            }
+
+                            Button(
+                                onClick = { showScheduledMessagesSheet = false },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(56.dp),
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(text = stringResource(R.string.action_done))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(showFullScreenEditor) {
+        if (showFullScreenEditor) {
+            fullScreenFocusRequester.requestFocus()
         }
     }
 }
@@ -697,6 +1575,315 @@ private fun ClosedTopicBar() {
 }
 
 @Composable
+private fun SendOptionsPopup(
+    expanded: Boolean,
+    scheduledMessagesCount: Int,
+    onDismiss: () -> Unit,
+    onSendSilent: () -> Unit,
+    onScheduleMessage: () -> Unit,
+    onOpenScheduledMessages: () -> Unit
+) {
+    var renderPopup by remember { mutableStateOf(expanded) }
+    var contentVisible by remember { mutableStateOf(false) }
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (contentVisible) 0.44f else 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "SendOptionsScrimAlpha"
+    )
+    val scrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = scrimAlpha)
+
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            renderPopup = true
+            contentVisible = true
+        } else if (renderPopup) {
+            contentVisible = false
+            delay(180)
+            renderPopup = false
+        }
+    }
+
+    if (!renderPopup) return
+
+    Dialog(
+        onDismissRequest = {
+            if (expanded) onDismiss()
+        },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(scrimColor)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
+        ) {
+            AnimatedVisibility(
+                visible = contentVisible,
+                enter = fadeIn(animationSpec = tween(180)) +
+                        slideInVertically(animationSpec = spring(dampingRatio = 0.82f, stiffness = 700f)) { it / 5 } +
+                        scaleIn(
+                            animationSpec = spring(dampingRatio = 0.86f, stiffness = 650f),
+                            initialScale = 0.92f,
+                            transformOrigin = TransformOrigin(1f, 1f)
+                        ),
+                exit = fadeOut(animationSpec = tween(140)) +
+                        slideOutVertically(animationSpec = tween(140)) { it / 8 } +
+                        scaleOut(
+                            animationSpec = tween(140),
+                            targetScale = 0.96f,
+                            transformOrigin = TransformOrigin(1f, 1f)
+                        ),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 60.dp)
+            ) {
+                Surface(
+                    modifier = Modifier.widthIn(min = 220.dp, max = 260.dp),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 18.dp
+                ) {
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        AnimatedVisibility(
+                            visible = contentVisible,
+                            enter = fadeIn(animationSpec = tween(220, delayMillis = 35)) +
+                                    slideInVertically(animationSpec = tween(220, delayMillis = 35)) { it / 3 },
+                            exit = fadeOut(animationSpec = tween(90))
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    SendOptionsMenuLabel(
+                                        title = stringResource(R.string.action_send_silent)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.NotificationsOff,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = onSendSilent
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = contentVisible,
+                            enter = fadeIn(animationSpec = tween(220, delayMillis = 70)) +
+                                    slideInVertically(animationSpec = tween(220, delayMillis = 70)) { it / 3 },
+                            exit = fadeOut(animationSpec = tween(90))
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    SendOptionsMenuLabel(
+                                        title = stringResource(R.string.action_schedule_message),
+                                        subtitle = stringResource(R.string.cd_select_date) + " / " + stringResource(R.string.cd_select_time)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = onScheduleMessage
+                            )
+                        }
+
+                        if (scheduledMessagesCount > 0) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+
+                            AnimatedVisibility(
+                                visible = contentVisible,
+                                enter = fadeIn(animationSpec = tween(220, delayMillis = 105)) +
+                                        slideInVertically(animationSpec = tween(220, delayMillis = 105)) { it / 3 },
+                                exit = fadeOut(animationSpec = tween(90))
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        SendOptionsMenuLabel(
+                                            title = stringResource(
+                                                R.string.action_scheduled_messages_count,
+                                                scheduledMessagesCount
+                                            )
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.Subject,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    },
+                                    onClick = onOpenScheduledMessages
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendOptionsMenuLabel(
+    title: String,
+    subtitle: String? = null
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScheduleDatePickerDialog(
+    onDismiss: () -> Unit,
+    onDateSelected: (Long) -> Unit
+) {
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = System.currentTimeMillis()
+    )
+
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                enabled = datePickerState.selectedDateMillis != null,
+                onClick = {
+                    datePickerState.selectedDateMillis?.let(onDateSelected)
+                }
+            ) {
+                Text(text = stringResource(R.string.action_done))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_cancel))
+            }
+        }
+    ) {
+        DatePicker(state = datePickerState)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScheduleTimePickerDialog(
+    initialHour: Int,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int, Int) -> Unit
+) {
+    val context = LocalContext.current
+    val is24HourFormat = remember(context) { DateFormat.is24HourFormat(context) }
+    val timePickerState = rememberTimePickerState(
+        initialHour = initialHour,
+        initialMinute = initialMinute,
+        is24Hour = is24HourFormat
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.cd_select_time)) },
+        text = {
+            TimePicker(
+                state = timePickerState,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(timePickerState.hour, timePickerState.minute) }) {
+                Text(text = stringResource(R.string.action_done))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun FullScreenEditorMetaPill(
+    text: String,
+    color: Color,
+    contentColor: Color
+) {
+    Surface(
+        color = color,
+        shape = RoundedCornerShape(999.dp)
+    ) {
+        Text(
+            text = text,
+            color = contentColor,
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun FullScreenEditorToolButton(
+    icon: ImageVector,
+    hint: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(
+                enabled = enabled,
+                onClick = onClick,
+                onLongClick = {
+                    Toast.makeText(context, hint, Toast.LENGTH_SHORT).show()
+                }
+            )
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = hint,
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+            }
+        )
+    }
+}
+
+@Composable
 private fun InputBarLeadingIcons(
     editingMessage: MessageModel?,
     pendingMediaPaths: List<String>,
@@ -716,6 +1903,271 @@ private fun InputBarLeadingIcons(
     } else if (!canSendMedia) {
         Spacer(modifier = Modifier.width(12.dp))
     }
+}
+
+@Composable
+private fun ScheduledMessageRow(
+    message: MessageModel,
+    onSendNow: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(CircleShape)
+                .fillMaxSize()
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                shape = CircleShape
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = scheduledMessageTypeLabel(message).take(1),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = message.senderName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = formatScheduledTimestamp(message.date),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = messagePreviewText(message),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = stringResource(R.string.scheduled_message_id, message.id),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        OutlinedButton(
+            onClick = onSendNow,
+            modifier = Modifier
+                .weight(1f)
+                .height(40.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.action_send_now),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false
+            )
+        }
+
+        OutlinedButton(
+            onClick = onEdit,
+            enabled = canEditScheduledMessage(message),
+            modifier = Modifier
+                .weight(1f)
+                .height(40.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.action_edit),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false
+            )
+        }
+
+        FilledTonalButton(
+            onClick = onDelete,
+            modifier = Modifier
+                .weight(1f)
+                .height(40.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.action_delete_message),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                softWrap = false
+            )
+        }
+    }
+}
+
+private fun messagePreviewText(message: MessageModel): String {
+    return when (val content = message.content) {
+        is MessageContent.Text -> content.text
+        is MessageContent.Photo -> if (content.caption.isNotBlank()) content.caption else "Photo"
+        is MessageContent.Video -> if (content.caption.isNotBlank()) content.caption else "Video"
+        is MessageContent.Document -> if (content.caption.isNotBlank()) content.caption else "Document"
+        is MessageContent.Gif -> if (content.caption.isNotBlank()) content.caption else "GIF"
+        is MessageContent.Sticker -> "Sticker"
+        is MessageContent.Voice -> "Voice message"
+        is MessageContent.VideoNote -> "Video message"
+        is MessageContent.Audio -> "Audio"
+        is MessageContent.Location -> "Location"
+        is MessageContent.Venue -> content.title
+        is MessageContent.Contact -> listOf(content.firstName, content.lastName).filter { it.isNotBlank() }
+            .joinToString(" ")
+
+        is MessageContent.Service -> content.text
+        is MessageContent.Poll -> content.question
+        is MessageContent.Unsupported -> "Unsupported message"
+        else -> "Message"
+    }
+}
+
+private fun scheduledMessageTypeLabel(message: MessageModel): String {
+    return when (message.content) {
+        is MessageContent.Text -> "Text"
+        is MessageContent.Photo -> "Photo"
+        is MessageContent.Video -> "Video"
+        is MessageContent.Document -> "Document"
+        is MessageContent.Gif -> "GIF"
+        is MessageContent.Sticker -> "Sticker"
+        is MessageContent.Voice -> "Voice"
+        is MessageContent.VideoNote -> "Video message"
+        else -> "Message"
+    }
+}
+
+private fun canEditScheduledMessage(message: MessageModel): Boolean {
+    return when (message.content) {
+        is MessageContent.Text -> true
+
+        else -> false
+    }
+}
+
+private fun formatScheduledTimestamp(epochSeconds: Int): String {
+    return try {
+        val formatter = java.text.SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault())
+        formatter.format(Date(epochSeconds * 1000L))
+    } catch (_: Exception) {
+        ""
+    }
+}
+
+private fun buildScheduledDateEpochSeconds(selectedDateMillis: Long, hour: Int, minute: Int): Int {
+    val utcDate = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        timeInMillis = selectedDateMillis
+    }
+
+    val selected = Calendar.getInstance().apply {
+        set(Calendar.YEAR, utcDate.get(Calendar.YEAR))
+        set(Calendar.MONTH, utcDate.get(Calendar.MONTH))
+        set(Calendar.DAY_OF_MONTH, utcDate.get(Calendar.DAY_OF_MONTH))
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    val now = Calendar.getInstance()
+    if (selected.before(now)) {
+        selected.timeInMillis = now.timeInMillis + 60_000L
+    }
+
+    return (selected.timeInMillis / 1000L).toInt()
+}
+
+private fun normalizeEditorUrl(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return null
+    return if (trimmed.contains("://")) trimmed else "https://$trimmed"
+}
+
+private fun insertMentionAtSelection(value: TextFieldValue): TextFieldValue {
+    val selection = if (value.selection.start <= value.selection.end) value.selection else TextRange(
+        value.selection.end,
+        value.selection.start
+    )
+    val base = value.annotatedString
+    val insertion =
+        if (selection.start == selection.end) "@" else "@${value.text.substring(selection.start, selection.end)}"
+
+    val newAnnotated = buildAnnotatedString {
+        append(base.subSequence(0, selection.start))
+        append(insertion)
+        append(base.subSequence(selection.end, base.length))
+    }
+
+    val newCursor = selection.start + insertion.length
+    return value.copy(annotatedString = newAnnotated, selection = TextRange(newCursor, newCursor))
+}
+
+private fun insertEmojiAtSelection(
+    value: TextFieldValue,
+    emoji: String,
+    sticker: StickerModel?,
+    knownCustomEmojis: MutableMap<Long, StickerModel>
+): TextFieldValue {
+    val currentText = value.annotatedString
+    val selection = value.selection
+
+    val emojiAnnotated = if (sticker != null) {
+        val customEmojiEntityId = sticker.customEmojiId ?: sticker.id
+        knownCustomEmojis[customEmojiEntityId] = sticker
+        val symbol = emoji.ifBlank { sticker.emoji.ifBlank { "\uD83D\uDE42" } }
+        buildAnnotatedString {
+            append(symbol)
+            addStringAnnotation(CUSTOM_EMOJI_TAG, customEmojiEntityId.toString(), 0, symbol.length)
+        }
+    } else {
+        AnnotatedString(emoji.ifBlank { "\uD83D\uDE42" })
+    }
+
+    val newText = buildAnnotatedString {
+        append(currentText.subSequence(0, selection.start))
+        append(emojiAnnotated)
+        append(currentText.subSequence(selection.end, currentText.length))
+    }
+
+    return value.copy(
+        annotatedString = newText,
+        selection = TextRange(selection.start + emojiAnnotated.length)
+    )
 }
 
 private fun Context.hasAllPermissions(permissions: List<String>): Boolean {

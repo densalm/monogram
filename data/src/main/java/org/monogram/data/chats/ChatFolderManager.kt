@@ -1,15 +1,14 @@
 package org.monogram.data.chats
 
 import android.util.Log
-import org.monogram.core.DispatcherProvider
-import org.monogram.core.ScopeProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.drinkless.tdlib.TdApi
+import org.monogram.core.DispatcherProvider
+import org.monogram.core.ScopeProvider
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.db.dao.ChatFolderDao
 import org.monogram.data.db.model.ChatFolderEntity
 import org.monogram.data.gateway.TelegramGateway
@@ -73,7 +72,7 @@ class ChatFolderManager(
         Log.d(TAG, "handleChatFoldersUpdate: ${folderInfos.size} folders")
 
         val currentFolders = foldersFlow.value
-        val newFolders = listOf(FolderModel(-1, "Все", "All")) +
+        val newFolders = listOf(FolderModel(-1, "", "All")) +
                 folderInfos.map { info ->
                     val existing = currentFolders.find { it.id == info.id }
                     FolderModel(
@@ -92,7 +91,7 @@ class ChatFolderManager(
 
         folderInfos.forEach { info ->
             scope.launch(dispatchers.io) {
-                runCatching {
+                coRunCatching {
                     val result = gateway.execute(TdApi.GetChatFolder(info.id))
                     val chatIds = result.includedChatIds.toList()
                     val pinnedIds = result.pinnedChatIds.toList()

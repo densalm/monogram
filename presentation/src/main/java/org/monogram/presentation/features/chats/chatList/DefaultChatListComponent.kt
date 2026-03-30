@@ -1,15 +1,23 @@
 package org.monogram.presentation.features.chats.chatList
 
+import android.util.Log
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.mvikotlin.core.instancekeeper.getStore
 import com.arkivanov.mvikotlin.extensions.coroutines.stateFlow
 import com.arkivanov.mvikotlin.main.store.DefaultStoreFactory
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import org.monogram.domain.models.BotMenuButtonModel
 import org.monogram.domain.models.UpdateState
-import org.monogram.domain.repository.*
+import org.monogram.domain.repository.ChatsListRepository
+import org.monogram.domain.repository.SettingsRepository
+import org.monogram.domain.repository.UpdateRepository
+import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.AppPreferences
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.ChatListComponent
 import org.monogram.presentation.features.chats.ChatListStore
@@ -26,18 +34,23 @@ class DefaultChatListComponent(
     private val onConfirmForward: (Set<Long>) -> Unit = {},
     internal val isForwarding: Boolean = false,
     private val onNewChatClick: () -> Unit = {},
+    private val onEditFoldersClick: () -> Unit = {},
     activeChatId: Value<Long>
 ) : ChatListComponent, AppComponentContext by context {
 
     private val repository: ChatsListRepository = container.repositories.chatsListRepository
     private val repositoryUser: UserRepository = container.repositories.userRepository
     private val settingsRepository: SettingsRepository = container.repositories.settingsRepository
-    private val externalProxyRepository: ExternalProxyRepository = container.repositories.externalProxyRepository
     private val updateRepository: UpdateRepository = container.repositories.updateRepository
     override val appPreferences: AppPreferences = container.preferences.appPreferences
     override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
 
-    private val _state = MutableStateFlow(ChatListComponent.State(isForwarding = isForwarding))
+    private val _state = MutableStateFlow(
+        ChatListComponent.State(
+            isForwarding = isForwarding,
+            isLoadingByFolder = mapOf(-1 to true)
+        )
+    )
 
     private val store = instanceKeeper.getStore {
         ChatListStoreFactory(
@@ -52,7 +65,6 @@ class DefaultChatListComponent(
     private var searchJob: Job? = null
     private var isFetchingMoreMessages = false
     private var nextMessagesOffset = ""
-    @Volatile private var repositoryFolderId: Int = -1
 
     init {
         activeChatId.subscribe { id ->
@@ -71,13 +83,21 @@ class DefaultChatListComponent(
             repositoryUser.getMe()
         }
 
-        repository.chatListFlow
-            .onEach { list ->
-                val distinctList = list.distinctBy { it.id }
-                val folderId = repositoryFolderId
+        repository.folderChatsFlow
+            .onEach { update ->
+                val distinctList = update.chats.distinctBy { it.id }
+                val pinnedCount = distinctList.count { it.isPinned }
+                if (pinnedCount > 0) {
+                    Log.d(
+                        TAG,
+                        "folder=${update.folderId} chats=${distinctList.size} pinned=$pinnedCount pinnedIds=${
+                            distinctList.filter { it.isPinned }.take(10).joinToString { it.id.toString() }
+                        }"
+                    )
+                }
                 _state.update {
                     val newChatsByFolder = it.chatsByFolder.toMutableMap()
-                    newChatsByFolder[folderId] = distinctList
+                    newChatsByFolder[update.folderId] = distinctList
                     it.copy(chatsByFolder = newChatsByFolder)
                 }
             }
@@ -89,12 +109,11 @@ class DefaultChatListComponent(
             }
             .launchIn(scope)
 
-        repository.isLoadingFlow
-            .onEach { isLoading ->
-                val folderId = repositoryFolderId
+        repository.folderLoadingFlow
+            .onEach { update ->
                 _state.update {
                     val newLoadingByFolder = it.isLoadingByFolder.toMutableMap()
-                    newLoadingByFolder[folderId] = isLoading
+                    newLoadingByFolder[update.folderId] = update.isLoading
                     it.copy(isLoadingByFolder = newLoadingByFolder)
                 }
             }
@@ -103,7 +122,12 @@ class DefaultChatListComponent(
         repository.connectionStateFlow
             .onEach { status ->
                 _state.update { it.copy(connectionStatus = status) }
-                updateProxyStatus()
+            }
+            .launchIn(scope)
+
+        appPreferences.enabledProxyId
+            .onEach { enabledProxyId ->
+                _state.update { it.copy(isProxyEnabled = enabledProxyId != null) }
             }
             .launchIn(scope)
 
@@ -124,13 +148,6 @@ class DefaultChatListComponent(
                 _state.update { it.copy(searchHistory = history) }
             }
             .launchIn(scope)
-
-        scope.launch {
-            while (isActive) {
-                updateProxyStatus()
-                delay(5000)
-            }
-        }
 
         settingsRepository.getAttachMenuBots()
             .onEach { bots ->
@@ -167,13 +184,9 @@ class DefaultChatListComponent(
             store.accept(ChatListStore.Intent.UpdateState(it))
         }.launchIn(scope)
 
-        loadMore()
-    }
-
-    private suspend fun updateProxyStatus() {
-        val proxies = externalProxyRepository.getProxies()
-        val isProxyEnabled = proxies.any { it.isEnabled }
-        _state.update { it.copy(isProxyEnabled = isProxyEnabled) }
+        scope.launch(Dispatchers.IO) {
+            repository.selectFolder(_state.value.selectedFolderId)
+        }
     }
 
     override fun retryConnection() {
@@ -183,10 +196,16 @@ class DefaultChatListComponent(
     override fun onFolderClicked(id: Int) {
         if (_state.value.selectedFolderId == id) return
 
-        _state.update { it.copy(selectedFolderId = id) }
+        _state.update {
+            val loadingByFolder = it.isLoadingByFolder.toMutableMap()
+            loadingByFolder[id] = true
+            it.copy(
+                selectedFolderId = id,
+                isLoadingByFolder = loadingByFolder
+            )
+        }
 
         scope.launch(Dispatchers.IO) {
-            repositoryFolderId = id
             repository.selectFolder(id)
         }
     }
@@ -284,6 +303,26 @@ class DefaultChatListComponent(
         searchJob = scope.launch(Dispatchers.IO) {
             delay(300)
             if (query.isNotEmpty()) {
+                if (_state.value.selectedFolderId == -2) {
+                    val archivedChats = _state.value.chatsByFolder[-2].orEmpty()
+                    val trimmedQuery = query.trim()
+                    val archiveResults = archivedChats.filter { chat ->
+                        chat.title.contains(trimmedQuery, ignoreCase = true) ||
+                                chat.lastMessageText.contains(trimmedQuery, ignoreCase = true)
+                    }
+
+                    _state.update {
+                        it.copy(
+                            searchResults = archiveResults,
+                            globalSearchResults = emptyList(),
+                            messageSearchResults = emptyList(),
+                            canLoadMoreMessages = false
+                        )
+                    }
+                    nextMessagesOffset = ""
+                    return@launch
+                }
+
                 val localResults = repository.searchChats(query)
                 _state.update { it.copy(searchResults = localResults) }
 
@@ -324,7 +363,7 @@ class DefaultChatListComponent(
         }
 
         scope.launch(Dispatchers.IO) {
-            runCatching {
+            coRunCatching {
                 repositoryUser.setEmojiStatus(customEmojiId)
             }
         }
@@ -357,6 +396,29 @@ class DefaultChatListComponent(
         }
     }
 
+    override fun onPinSelected() {
+        val selectedIds = _state.value.selectedChatIds
+        val selectedChats = _state.value.chats.filter { selectedIds.contains(it.id) }
+        val shouldPin = selectedChats.any { !it.isPinned }
+        val folderId = _state.value.selectedFolderId
+
+        scope.launch(Dispatchers.IO) {
+            repository.togglePinChats(selectedIds, shouldPin, folderId)
+            clearSelection()
+        }
+    }
+
+    override fun onToggleReadSelected() {
+        val selectedIds = _state.value.selectedChatIds
+        val selectedChats = _state.value.chats.filter { selectedIds.contains(it.id) }
+        val shouldMarkUnread = selectedChats.any { !it.isMarkedAsUnread }
+
+        scope.launch(Dispatchers.IO) {
+            repository.toggleReadChats(selectedIds, shouldMarkUnread)
+            clearSelection()
+        }
+    }
+
     override fun onDeleteSelected() {
         val selectedIds = _state.value.selectedChatIds
         scope.launch(Dispatchers.IO) {
@@ -381,6 +443,26 @@ class DefaultChatListComponent(
 
     override fun onProxySettingsClicked() {
         onProxySettingsClick()
+    }
+
+    override fun onEditFoldersClicked() {
+        onEditFoldersClick()
+    }
+
+    override fun onDeleteFolder(folderId: Int) {
+        if (folderId <= 0) return
+
+        scope.launch(Dispatchers.IO) {
+            repository.deleteFolder(folderId)
+            if (_state.value.selectedFolderId == folderId) {
+                onFolderClicked(-1)
+            }
+        }
+    }
+
+    override fun onEditFolder(folderId: Int) {
+        if (folderId <= 0) return
+        onEditFoldersClick()
     }
 
     override fun onOpenInstantView(url: String) {
@@ -483,8 +565,8 @@ class DefaultChatListComponent(
         }
     }
 
-    override fun onResume() {
-        repository.refresh()
+    companion object {
+        private const val TAG = "PinnedUiDiag"
     }
 
     private fun toggleSelection(id: Long) {

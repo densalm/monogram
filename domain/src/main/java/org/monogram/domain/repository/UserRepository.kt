@@ -6,11 +6,17 @@ import org.monogram.domain.models.*
 
 interface UserRepository {
     val currentUserFlow: StateFlow<UserModel?>
+    val anyUserUpdateFlow: Flow<Long>
     suspend fun getMe(): UserModel
     suspend fun getUser(userId: Long): UserModel?
     suspend fun getUserFullInfo(userId: Long): UserModel?
     fun getUserFlow(userId: Long): Flow<UserModel?>
-    suspend fun getUserProfilePhotos(userId: Long, offset: Int = 0, limit: Int = 10): List<String>
+    suspend fun getUserProfilePhotos(
+        userId: Long,
+        offset: Int = 0,
+        limit: Int = 10,
+        ensureFullRes: Boolean = false
+    ): List<String>
     fun getUserProfilePhotosFlow(userId: Long): Flow<List<String>>
 
     suspend fun getChatFullInfo(chatId: Long): ChatFullInfoModel?
@@ -25,6 +31,8 @@ interface UserRepository {
 
     suspend fun getContacts(): List<UserModel>
     suspend fun searchContacts(query: String): List<UserModel>
+    suspend fun addContact(user: UserModel)
+    suspend fun removeContact(userId: Long)
     suspend fun getChatMembers(
         chatId: Long,
         offset: Int,
@@ -53,6 +61,7 @@ interface UserRepository {
     suspend fun setBusinessOpeningHours(openingHours: BusinessOpeningHoursModel?)
     suspend fun toggleUsernameIsActive(username: String, isActive: Boolean)
     suspend fun reorderActiveUsernames(usernames: List<String>)
+    fun forceSponsorSync()
 }
 
 sealed class ChatMembersFilter {

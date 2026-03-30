@@ -9,6 +9,8 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
     // Chats and their positions in lists
     val allChats = ConcurrentHashMap<Long, TdApi.Chat>()
     val activeListPositions = ConcurrentHashMap<Long, TdApi.ChatPosition>()
+    val authoritativeActiveListChatIds = ConcurrentHashMap.newKeySet<Long>()
+    val protectedPinnedChatIds = ConcurrentHashMap.newKeySet<Long>()
     val onlineMemberCount = ConcurrentHashMap<Long, Int>()
 
     // Messages: ChatId -> (MessageId -> Message)
@@ -50,7 +52,9 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
         if (existing != null) {
             synchronized(existing) {
                 existing.title = chat.title
-                existing.photo = chat.photo
+                if (chat.photo != null || existing.photo == null) {
+                    existing.photo = chat.photo
+                }
                 existing.permissions = chat.permissions
                 existing.lastMessage = chat.lastMessage
 
@@ -115,7 +119,9 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
                 existing.usernames = user.usernames
                 existing.phoneNumber = user.phoneNumber
                 existing.status = user.status
-                existing.profilePhoto = user.profilePhoto
+                if (user.profilePhoto != null || existing.profilePhoto == null) {
+                    existing.profilePhoto = user.profilePhoto
+                }
                 existing.emojiStatus = user.emojiStatus
                 existing.isPremium = user.isPremium
                 existing.verificationStatus = user.verificationStatus
@@ -191,9 +197,15 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
                 existing.senderId = message.senderId
                 existing.date = message.date
                 existing.editDate = message.editDate
-                existing.forwardInfo = message.forwardInfo
-                existing.interactionInfo = message.interactionInfo
-                existing.replyTo = message.replyTo
+                if (message.forwardInfo != null || existing.forwardInfo == null) {
+                    existing.forwardInfo = message.forwardInfo
+                }
+                if (message.interactionInfo != null || existing.interactionInfo == null) {
+                    existing.interactionInfo = message.interactionInfo
+                }
+                if (message.replyTo != null || existing.replyTo == null) {
+                    existing.replyTo = message.replyTo
+                }
                 existing.selfDestructIn = message.selfDestructIn
                 existing.content = message.content
                 existing.replyMarkup = message.replyMarkup
@@ -240,6 +252,8 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
     override fun clearAll() {
         allChats.clear()
         activeListPositions.clear()
+        authoritativeActiveListChatIds.clear()
+        protectedPinnedChatIds.clear()
         onlineMemberCount.clear()
         messages.clear()
         usersCache.clear()
@@ -268,6 +282,10 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
     fun putChatFromEntity(entity: org.monogram.data.db.model.ChatEntity) {
         val chatList = if (entity.isArchived) TdApi.ChatListArchive() else TdApi.ChatListMain()
         val cachedPositions = parsePositionsCache(entity.positionsCache)
+        val restoredLastMessageDate = when {
+            entity.lastMessageDate > 0L -> entity.lastMessageDate
+            else -> entity.lastMessageTime.toLongOrNull() ?: 0L
+        }
         val chat = TdApi.Chat().apply {
             id = entity.id
             title = entity.title
@@ -276,12 +294,52 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
             unreadReactionCount = entity.unreadReactionCount
             photo = entity.avatarPath?.let { path ->
                 TdApi.ChatPhotoInfo().apply {
-                    small = TdApi.File().apply { local = TdApi.LocalFile().apply { this.path = path } }
+                    small = TdApi.File().apply {
+                        id = entity.photoId
+                        local = TdApi.LocalFile().apply { this.path = path }
+                    }
+                }
+            } ?: entity.photoId.takeIf { it != 0 }?.let { photoId ->
+                TdApi.ChatPhotoInfo().apply {
+                    small = TdApi.File().apply {
+                        id = photoId
+                        local = TdApi.LocalFile().apply { this.path = "" }
+                    }
                 }
             }
             lastMessage = TdApi.Message().apply {
-                content = TdApi.MessageText().apply { text = TdApi.FormattedText(entity.lastMessageText, emptyArray()) }
-                date = entity.lastMessageTime.toIntOrNull() ?: 0
+                content = when (entity.lastMessageContentType) {
+                    "photo" -> TdApi.MessagePhoto().apply {
+                        photo = TdApi.Photo().apply { sizes = emptyArray(); minithumbnail = null; hasStickers = false }
+                        caption = TdApi.FormattedText(entity.lastMessageText, emptyArray())
+                        isSecret = false
+                        showCaptionAboveMedia = false
+                        selfDestructType = null
+                    }
+
+                    "video" -> TdApi.MessageVideo().apply {
+                        video = TdApi.Video()
+                        caption = TdApi.FormattedText(entity.lastMessageText, emptyArray())
+                        showCaptionAboveMedia = false
+                        isSecret = false
+                        selfDestructType = null
+                    }
+
+                    "voice" -> TdApi.MessageVoiceNote().apply {
+                        voiceNote = TdApi.VoiceNote()
+                        caption = TdApi.FormattedText(entity.lastMessageText, emptyArray())
+                        isListened = false
+                    }
+
+                    "sticker" -> TdApi.MessageSticker().apply {
+                        sticker = TdApi.Sticker()
+                        isPremium = false
+                    }
+
+                    else -> TdApi.MessageText()
+                        .apply { text = TdApi.FormattedText(entity.lastMessageText, emptyArray()) }
+                }
+                date = restoredLastMessageDate.toInt()
                 id = entity.lastMessageId
                 isOutgoing = entity.isLastMessageOutgoing
             }
@@ -338,6 +396,14 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
                 entity.permissionCanCreateTopics
             )
             clientData = "mc:${entity.memberCount};oc:${entity.onlineCount}"
+        }
+        if (entity.photoId != 0) {
+            fileCache[entity.photoId] = TdApi.File().apply {
+                id = entity.photoId
+                local = TdApi.LocalFile().apply {
+                    this.path = entity.avatarPath.orEmpty()
+                }
+            }
         }
         chatPermissionsCache[entity.id] = chat.permissions
         onlineMemberCount[entity.id] = entity.onlineCount

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.EmojiEmotions
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
@@ -42,16 +43,17 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import org.koin.compose.koinInject
 import org.monogram.domain.models.StickerSetModel
 import org.monogram.presentation.R
-import org.monogram.presentation.features.stickers.ui.view.LocalIsScrolling
-import org.monogram.presentation.features.webapp.MiniAppViewer
+import org.monogram.presentation.core.ui.ConfirmationSheet
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.ui.SettingsTile
 import org.monogram.presentation.core.ui.StickerSetItem
 import org.monogram.presentation.core.ui.getItemShape
+import org.monogram.presentation.features.stickers.ui.view.LocalIsScrolling
+import org.monogram.presentation.features.webapp.MiniAppViewer
+import kotlin.math.abs
 
 private enum class StickerTab(val titleRes: Int, val icon: ImageVector) {
     Stickers(R.string.stickers_tab, Icons.AutoMirrored.Rounded.StickyNote2),
@@ -62,6 +64,18 @@ private enum class StickerTab(val titleRes: Int, val icon: ImageVector) {
 @Composable
 fun StickersContent(component: StickersComponent) {
     val state by component.state.subscribeAsState()
+    var debouncedSearchQuery by remember { mutableStateOf("") }
+    var showClearRecentStickersSheet by remember { mutableStateOf(false) }
+    var showClearRecentEmojisSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.searchQuery) {
+        if (state.searchQuery.isBlank()) {
+            debouncedSearchQuery = ""
+        } else {
+            delay(300)
+            debouncedSearchQuery = state.searchQuery
+        }
+    }
 
     val orangeColor = Color(0xFFF9AB00)
     val tealColor = Color(0xFF00BFA5)
@@ -188,11 +202,11 @@ fun StickersContent(component: StickersComponent) {
                     } else {
                         when (tabIndex) {
                             0 -> {
-                                val filteredSets = remember(state.stickerSets, state.searchQuery) {
-                                    if (state.searchQuery.isEmpty()) state.stickerSets
+                                val filteredSets = remember(state.stickerSets, debouncedSearchQuery) {
+                                    if (debouncedSearchQuery.isEmpty()) state.stickerSets
                                     else state.stickerSets.filter {
                                         it.title.contains(
-                                            state.searchQuery,
+                                            debouncedSearchQuery,
                                             ignoreCase = true
                                         )
                                     }
@@ -209,7 +223,7 @@ fun StickersContent(component: StickersComponent) {
                                     clearRecentSubtitle = stringResource(R.string.clear_recent_stickers_subtitle),
                                     clearRecentIcon = Icons.AutoMirrored.Rounded.StickyNote2,
                                     clearRecentIconColor = orangeColor,
-                                    onClearRecent = component::onClearRecentStickers,
+                                    onClearRecent = { showClearRecentStickersSheet = true },
                                     onSetClick = component::onStickerSetClicked,
                                     onSetToggle = component::onToggleStickerSet,
                                     onSetArchive = component::onArchiveStickerSet,
@@ -217,20 +231,20 @@ fun StickersContent(component: StickersComponent) {
                                     listState = stickersListState,
                                     searchQuery = state.searchQuery,
                                     onSearchQueryChange = component::onSearchQueryChanged,
-                                    emptyText = if (state.searchQuery.isEmpty()) stringResource(R.string.no_sticker_sets_installed) else stringResource(
+                                    emptyText = if (debouncedSearchQuery.isEmpty()) stringResource(R.string.no_sticker_sets_installed) else stringResource(
                                         R.string.no_stickers_found_format,
-                                        state.searchQuery
+                                        debouncedSearchQuery
                                     ),
                                     onAddStickers = component::onAddStickersClicked
                                 )
                             }
 
                             1 -> {
-                                val filteredSets = remember(state.emojiSets, state.searchQuery) {
-                                    if (state.searchQuery.isEmpty()) state.emojiSets
+                                val filteredSets = remember(state.emojiSets, debouncedSearchQuery) {
+                                    if (debouncedSearchQuery.isEmpty()) state.emojiSets
                                     else state.emojiSets.filter {
                                         it.title.contains(
-                                            state.searchQuery,
+                                            debouncedSearchQuery,
                                             ignoreCase = true
                                         )
                                     }
@@ -247,7 +261,7 @@ fun StickersContent(component: StickersComponent) {
                                     clearRecentSubtitle = stringResource(R.string.clear_recent_emojis_subtitle_settings),
                                     clearRecentIcon = Icons.Rounded.EmojiEmotions,
                                     clearRecentIconColor = tealColor,
-                                    onClearRecent = component::onClearRecentEmojis,
+                                    onClearRecent = { showClearRecentEmojisSheet = true },
                                     onSetClick = component::onStickerSetClicked,
                                     onSetToggle = component::onToggleStickerSet,
                                     onSetArchive = component::onArchiveStickerSet,
@@ -255,9 +269,9 @@ fun StickersContent(component: StickersComponent) {
                                     listState = emojisListState,
                                     searchQuery = state.searchQuery,
                                     onSearchQueryChange = component::onSearchQueryChanged,
-                                    emptyText = if (state.searchQuery.isEmpty()) stringResource(R.string.no_emoji_packs_installed) else stringResource(
+                                    emptyText = if (debouncedSearchQuery.isEmpty()) stringResource(R.string.no_emoji_packs_installed) else stringResource(
                                         R.string.no_emojis_found_format,
-                                        state.searchQuery
+                                        debouncedSearchQuery
                                     ),
                                     onAddStickers = component::onAddStickersClicked
                                 )
@@ -283,6 +297,34 @@ fun StickersContent(component: StickersComponent) {
                     onDismiss = { component.onDismissMiniApp() }
                 )
             }
+        }
+
+        if (showClearRecentStickersSheet) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.Delete,
+                title = stringResource(R.string.clear_recent_stickers_title),
+                description = stringResource(R.string.clear_recent_stickers_confirmation),
+                confirmText = stringResource(R.string.action_clear_recent_stickers),
+                onConfirm = {
+                    component.onClearRecentStickers()
+                    showClearRecentStickersSheet = false
+                },
+                onDismiss = { showClearRecentStickersSheet = false }
+            )
+        }
+
+        if (showClearRecentEmojisSheet) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.Delete,
+                title = stringResource(R.string.clear_recent_emojis_title_settings),
+                description = stringResource(R.string.clear_recent_emojis_confirmation),
+                confirmText = stringResource(R.string.action_clear_recent_emojis),
+                onConfirm = {
+                    component.onClearRecentEmojis()
+                    showClearRecentEmojisSheet = false
+                },
+                onDismiss = { showClearRecentEmojisSheet = false }
+            )
         }
     }
 }
@@ -468,7 +510,8 @@ private fun GenericStickerList(
                                             val intensity = ((topThreshold - pointerY) / topThreshold).coerceIn(0f, 1f)
                                             autoScrollVelocity = -(6f + (18f * intensity))
                                         } else if (pointerY > bottomThreshold) {
-                                            val intensity = ((pointerY - bottomThreshold) / topThreshold).coerceIn(0f, 1f)
+                                            val intensity =
+                                                ((pointerY - bottomThreshold) / topThreshold).coerceIn(0f, 1f)
                                             autoScrollVelocity = 6f + (18f * intensity)
                                         } else {
                                             autoScrollVelocity = 0f

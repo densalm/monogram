@@ -1,5 +1,6 @@
 package org.monogram.data.repository
 
+import org.monogram.data.core.coRunCatching
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -7,16 +8,17 @@ import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
 import androidx.core.content.FileProvider
-import org.monogram.core.ScopeProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.monogram.core.ScopeProvider
 import org.monogram.data.datasource.remote.UpdateRemoteDateSource
 import org.monogram.data.infra.FileDownloadQueue
 import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.service.UpdateInstallReceiver
-import org.monogram.domain.models.*
+import org.monogram.domain.models.UpdateInfo
+import org.monogram.domain.models.UpdateState
 import org.monogram.domain.repository.AuthRepository
 import org.monogram.domain.repository.AuthStep
 import org.monogram.domain.repository.UpdateRepository
@@ -41,7 +43,7 @@ class UpdateRepositoryImpl(
 
     init {
         scope.launch {
-            fileUpdateHandler.downloadProgress.collect { (id, progress) ->
+            fileUpdateHandler.fileDownloadProgress.collect { (id, progress) ->
                 val info = currentUpdateInfo ?: return@collect
                 val current = _updateState.value
                 if (info.fileId.toLong() == id &&
@@ -53,7 +55,7 @@ class UpdateRepositoryImpl(
         }
 
         scope.launch {
-            fileUpdateHandler.downloadCompleted.collect { (id, path) ->
+            fileUpdateHandler.fileDownloadCompleted.collect { (id, path) ->
                 val info = currentUpdateInfo ?: return@collect
                 if (info.fileId.toLong() == id) {
                     _updateState.value = UpdateState.ReadyToInstall(path)
@@ -67,8 +69,8 @@ class UpdateRepositoryImpl(
 
         _updateState.value = UpdateState.Checking
 
-        runCatching {
-            val info = remote.fetchLatestUpdate() ?: return@runCatching _updateState.value.let {
+        coRunCatching {
+            val info = remote.fetchLatestUpdate() ?: return@coRunCatching _updateState.value.let {
                 _updateState.value = UpdateState.Error("No update found")
             }
 
@@ -82,7 +84,7 @@ class UpdateRepositoryImpl(
 
             if (info.versionCode <= currentVersionCode) {
                 _updateState.value = UpdateState.UpToDate
-                return@runCatching
+                return@coRunCatching
             }
 
             currentUpdateInfo = info

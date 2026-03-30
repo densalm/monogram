@@ -1,13 +1,20 @@
 package org.monogram.presentation.features.profile.components
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,12 +33,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.net.toUri
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -42,6 +51,7 @@ import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.UserStatusType
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
+import org.monogram.presentation.core.ui.rememberShimmerBrush
 import org.monogram.presentation.core.util.getUserStatusText
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
@@ -89,49 +99,55 @@ fun LazyGridScope.profileMediaSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceContainer,
-                            RoundedCornerShape(24.dp)
-                        )
+                        .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(24.dp))
                         .clip(RoundedCornerShape(24.dp))
                 ) {
-                    ScrollableRow(
+                    PrimaryScrollableTabRow(
+                        selectedTabIndex = state.selectedTabIndex,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .selectableGroup()
-                            .padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(horizontal = 4.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        edgePadding = 4.dp,
+                        divider = {},
+                        indicator = {
+                            Box(
+                                Modifier
+                                    .tabIndicatorOffset(state.selectedTabIndex)
+                                    .fillMaxHeight()
+                                    .padding(vertical = 4.dp)
+                                    .zIndex(-1f)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .background(MaterialTheme.colorScheme.primary)
+                            )
+                        }
                     ) {
                         tabs.forEachIndexed { index, titleFunc ->
                             val selected = state.selectedTabIndex == index
-                            Box(
-                                Modifier
+
+                            Tab(
+                                selected = selected,
+                                onClick = { onTabSelected(index) },
+                                modifier = Modifier
                                     .height(44.dp)
-                                    .padding(horizontal = 2.dp)
-                                    .clip(RoundedCornerShape(22.dp))
-                                    .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                    .selectable(
-                                        selected = selected,
-                                        onClick = { onTabSelected(index) },
-                                        role = Role.Tab
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = titleFunc(),
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            }
+                                    .padding(vertical = 4.dp)
+                                    .clip(RoundedCornerShape(24.dp)),
+                                selectedContentColor = MaterialTheme.colorScheme.onPrimary,
+                                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = {
+                                    Text(
+                                        text = titleFunc(),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            )
                         }
                     }
                 }
             }
         }
     }
-
 
     item(span = { GridItemSpan(3) }) {
         LaunchedEffect(state.selectedTabIndex) {
@@ -166,59 +182,163 @@ fun LazyGridScope.profileMediaSection(
     val isMediaLoading = state.isLoadingMedia || state.isLoadingMoreMedia
     val canLoadMedia = state.canLoadMoreMedia
 
-    if (isGroup) {
-        when (state.selectedTabIndex) {
-            0 -> mediaGrid(state.mediaMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick, onLoadMedia)
-            1 -> membersList(state.members, videoPlayerPool, state.isLoadingMembers, state.canLoadMoreMembers, onLoadMore, onMemberClick, onMemberLongClick)
-            2 -> filesList(state.fileMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            3 -> audioList(state.audioMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            4 -> voiceList(state.voiceMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            5 -> linksList(state.linkMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            6 -> gifsGrid(state.gifMessages, videoPlayerPool, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-        }
-    } else {
-        when (state.selectedTabIndex) {
-            0 -> mediaGrid(state.mediaMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick, onLoadMedia)
-            1 -> filesList(state.fileMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            2 -> audioList(state.audioMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            3 -> voiceList(state.voiceMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            4 -> linksList(state.linkMessages, isMediaLoading, canLoadMedia, onLoadMore, onMessageClick)
-            5 -> gifsGrid(
-                state.gifMessages,
-                videoPlayerPool,
-                isMediaLoading,
-                canLoadMedia,
-                onLoadMore,
-                onMessageClick
+    item(span = { GridItemSpan(3) }) {
+        AnimatedContent(
+            targetState = state.selectedTabIndex,
+            transitionSpec = {
+                if (targetState > initialState) {
+                    slideInHorizontally { width -> width } + fadeIn() togetherWith
+                    slideOutHorizontally { width -> -width } + fadeOut()
+                } else {
+                    slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                    slideOutHorizontally { width -> width } + fadeOut()
+                }
+            },
+            label = "tabs"
+        ) { tab ->
+            ProfileTabContent(
+                tab = tab,
+                state = state,
+                videoPlayerPool = videoPlayerPool,
+                onLoadMore = onLoadMore,
+                onMessageClick = onMessageClick,
+                onLoadMedia = onLoadMedia,
+                onMemberClick = onMemberClick,
+                onMemberLongClick = onMemberLongClick
             )
         }
     }
 
-    val needsLoadingIndicator = if (isGroup && state.selectedTabIndex == 1) {
+    val shouldAutoLoadMore = if (isGroup && state.selectedTabIndex == 1) {
         state.canLoadMoreMembers && !state.isLoadingMembers && state.members.isNotEmpty()
     } else {
         state.canLoadMoreMedia && !state.isLoadingMoreMedia && !state.isLoadingMedia
     }
 
-    if (needsLoadingIndicator) {
+    if (shouldAutoLoadMore) {
         item(span = { GridItemSpan(3) }, key = "loader") {
             LaunchedEffect(state.selectedTabIndex, state.mediaMessages.size, state.members.size) {
                 onLoadMore()
             }
+            Spacer(modifier = Modifier.height(1.dp))
+        }
+    }
+
+    val showMembersPaginationSkeleton =
+        isGroup && state.selectedTabIndex == 1 && state.isLoadingMembers && state.members.isNotEmpty()
+    val showMediaPaginationSkeleton =
+        (!isGroup || state.selectedTabIndex != 1) && state.isLoadingMoreMedia
+
+    if (showMembersPaginationSkeleton || showMediaPaginationSkeleton) {
+        item(span = { GridItemSpan(3) }, key = "pagination_skeleton") {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp
-                )
+                val shimmer = rememberShimmerBrush()
+                if (showMembersPaginationSkeleton) {
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        repeat(3) {
+                            MemberListSkeletonRow(shimmer = shimmer)
+                        }
+                    }
+                } else {
+                    val mediaTypeIndex = if (isGroup && state.selectedTabIndex > 1) {
+                        state.selectedTabIndex - 1
+                    } else {
+                        state.selectedTabIndex
+                    }
+
+                    when (mediaTypeIndex) {
+                        0, 5 -> {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                repeat(3) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(shimmer)
+                                    )
+                                }
+                            }
+                        }
+
+                        else -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                repeat(2) {
+                                    MessageListSkeletonRow(shimmer = shimmer)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+@Composable
+fun ProfileTabContent(
+    tab: Int,
+    state: ProfileComponent.State,
+    videoPlayerPool: VideoPlayerPool,
+    onLoadMore: () -> Unit,
+    onMessageClick: (MessageModel) -> Unit,
+    onLoadMedia: (MessageModel) -> Unit,
+    onMemberClick: (Long) -> Unit,
+    onMemberLongClick: (Long) -> Unit
+) {
+    val gridState = rememberLazyGridState()
+    val viewportHeightPx = LocalWindowInfo.current.containerSize.height
+    val density = LocalDensity.current
+
+    val viewportHeightDp = with(density) { viewportHeightPx.toDp() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 1.dp, max = viewportHeightDp)
+    ) {
+        LazyVerticalGrid(
+            modifier = Modifier.fillMaxSize(),
+            columns = GridCells.Fixed(3),
+            state = gridState
+        ) {
+            val isGroup = state.chat?.isGroup == true || state.chat?.isChannel == true
+
+            if (isGroup) {
+                when (tab) {
+                    0 -> mediaGrid(state.mediaMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick, onLoadMedia)
+                    1 -> membersList(state.members, videoPlayerPool, state.isLoadingMembers, state.canLoadMoreMembers, onLoadMore, onMemberClick, onMemberLongClick)
+                    2 -> filesList(state.fileMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    3 -> audioList(state.audioMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    4 -> voiceList(state.voiceMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    5 -> linksList(state.linkMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    6 -> gifsGrid(state.gifMessages, videoPlayerPool, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                }
+            } else {
+                when (tab) {
+                    0 -> mediaGrid(state.mediaMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick, onLoadMedia)
+                    1 -> filesList(state.fileMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    2 -> audioList(state.audioMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    3 -> voiceList(state.voiceMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    4 -> linksList(state.linkMessages, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                    5 -> gifsGrid(state.gifMessages, videoPlayerPool, state.isLoadingMedia, state.canLoadMoreMedia, onLoadMore, onMessageClick)
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun ScrollableRow(
@@ -247,7 +367,16 @@ private fun LazyGridScope.membersList(
     val uniqueMembers = members.distinctBy { it.user.id }
 
     if (uniqueMembers.isEmpty()) {
-        if (!isLoading) {
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "members_skeleton") {
+                val shimmer = rememberShimmerBrush()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    repeat(8) {
+                        MemberListSkeletonRow(shimmer = shimmer)
+                    }
+                }
+            }
+        } else {
             item(span = { GridItemSpan(3) }) {
                 EmptyState(stringResource(R.string.empty_members))
             }
@@ -286,6 +415,15 @@ private fun LazyGridScope.membersList(
                                 contentDescription = stringResource(R.string.cd_verified),
                                 modifier = Modifier.size(18.dp),
                                 tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        if (user.isSponsor) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Rounded.Favorite,
+                                contentDescription = stringResource(R.string.cd_sponsor),
+                                modifier = Modifier.size(18.dp),
+                                tint = Color(0xFFE53935)
                             )
                         }
 
@@ -372,8 +510,14 @@ private fun LazyGridScope.mediaGrid(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_media))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "media_skeleton") {
+                MediaGridSkeleton(rows = 3)
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_media))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "media_${msg.id}" }) { index, msg ->
@@ -397,6 +541,12 @@ private fun LazyGridScope.mediaGrid(
                     else -> null to false
                 }
 
+                val thumbnailPath = when (val content = msg.content) {
+                    is MessageContent.Photo -> content.thumbnailPath
+                    is MessageContent.Video -> content.thumbnailPath
+                    else -> null
+                }
+
                 val minithumbnail = when (val content = msg.content) {
                     is MessageContent.Photo -> content.minithumbnail
                     is MessageContent.Video -> content.minithumbnail
@@ -405,11 +555,16 @@ private fun LazyGridScope.mediaGrid(
 
                 val context = LocalContext.current
                 val isValidFile = path != null && File(path).exists()
+                val isValidThumbnail = thumbnailPath != null && File(thumbnailPath).exists()
 
-                if (isValidFile || minithumbnail != null) {
+                if (isValidFile || isValidThumbnail || minithumbnail != null) {
                     AsyncImage(
-                        model = remember(path, minithumbnail) {
-                            val data = if (isValidFile) path else minithumbnail
+                        model = remember(path, thumbnailPath, minithumbnail) {
+                            val data = when {
+                                isValidFile -> path
+                                isValidThumbnail -> thumbnailPath
+                                else -> minithumbnail
+                            }
                             ImageRequest.Builder(context)
                                 .data(data)
                                 .size(300, 300)
@@ -423,18 +578,15 @@ private fun LazyGridScope.mediaGrid(
                     )
                 } else {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(rememberShimmerBrush()),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
-                
-                if (!isValidFile) {
+
+                if (!isValidFile && !isValidThumbnail) {
                     LaunchedEffect(msg.id) {
                         onLoadMedia(msg)
                     }
@@ -487,8 +639,19 @@ private fun LazyGridScope.audioList(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_audio))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "audio_skeleton") {
+                val shimmer = rememberShimmerBrush()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    repeat(5) {
+                        MessageListSkeletonRow(shimmer = shimmer)
+                    }
+                }
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_audio))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "audio_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -543,8 +706,19 @@ private fun LazyGridScope.voiceList(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_voice))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "voice_skeleton") {
+                val shimmer = rememberShimmerBrush()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    repeat(5) {
+                        MessageListSkeletonRow(shimmer = shimmer)
+                    }
+                }
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_voice))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "voice_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -600,8 +774,19 @@ private fun LazyGridScope.filesList(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_files))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "files_skeleton") {
+                val shimmer = rememberShimmerBrush()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    repeat(5) {
+                        MessageListSkeletonRow(shimmer = shimmer)
+                    }
+                }
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_files))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "file_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -655,8 +840,19 @@ private fun LazyGridScope.linksList(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_links))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "links_skeleton") {
+                val shimmer = rememberShimmerBrush()
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    repeat(5) {
+                        MessageListSkeletonRow(shimmer = shimmer)
+                    }
+                }
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_links))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "link_${msg.id}" }, span = { _, _ -> GridItemSpan(3) }) { index, msg ->
@@ -721,8 +917,14 @@ private fun LazyGridScope.gifsGrid(
     val uniqueMessages = messages.distinctBy { it.id }
 
     if (uniqueMessages.isEmpty()) {
-        item(span = { GridItemSpan(3) }) {
-            EmptyState(stringResource(R.string.empty_gifs))
+        if (isLoading) {
+            item(span = { GridItemSpan(3) }, key = "gifs_skeleton") {
+                MediaGridSkeleton(rows = 2)
+            }
+        } else {
+            item(span = { GridItemSpan(3) }) {
+                EmptyState(stringResource(R.string.empty_gifs))
+            }
         }
     } else {
         itemsIndexed(uniqueMessages, key = { _, msg -> "gif_${msg.id}" }) { index, msg ->
@@ -765,11 +967,10 @@ private fun LazyGridScope.gifsGrid(
                         )
                     }
                 } else {
-                    CircularProgressIndicator(
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(24.dp),
-                        strokeWidth = 2.dp
+                            .fillMaxSize()
+                            .background(rememberShimmerBrush())
                     )
                 }
             }
@@ -800,5 +1001,93 @@ private fun EmptyState(text: String) {
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
         )
+    }
+}
+
+@Composable
+private fun MediaGridSkeleton(rows: Int) {
+    val shimmer = rememberShimmerBrush()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+        repeat(rows) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(shimmer)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberListSkeletonRow(shimmer: androidx.compose.ui.graphics.Brush) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(shimmer)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .height(14.dp)
+                    .fillMaxWidth(0.52f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(shimmer)
+            )
+            Box(
+                modifier = Modifier
+                    .height(12.dp)
+                    .fillMaxWidth(0.34f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(shimmer)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageListSkeletonRow(shimmer: androidx.compose.ui.graphics.Brush) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(shimmer)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .height(14.dp)
+                    .fillMaxWidth(0.6f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(shimmer)
+            )
+            Box(
+                modifier = Modifier
+                    .height(12.dp)
+                    .fillMaxWidth(0.42f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(shimmer)
+            )
+        }
     }
 }

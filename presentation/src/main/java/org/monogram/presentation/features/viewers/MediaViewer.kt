@@ -44,6 +44,8 @@ fun MediaViewer(
     onSaveGif: ((String) -> Unit)? = null,
     captions: List<String?> = emptyList(),
     fileIds: List<Int> = emptyList(),
+    imageDownloadingStates: List<Boolean> = emptyList(),
+    imageDownloadProgressStates: List<Float> = emptyList(),
     supportsStreaming: Boolean = false,
     downloadUtils: IDownloadUtils,
     showImageNumber: Boolean = true,
@@ -120,7 +122,7 @@ fun MediaViewer(
     ) {
         HorizontalPager(
             state = pagerState,
-            key = { page -> mediaItems.getOrNull(page) ?: page },
+            key = { page -> "media_page_${page}" },
             pageSize = PageSize.Fill,
             pageSpacing = 0.dp,
             beyondViewportPageCount = 0,
@@ -166,6 +168,8 @@ fun MediaViewer(
             } else {
                 ImagePage(
                     path = path,
+                    isDownloading = imageDownloadingStates.getOrNull(page) == true,
+                    downloadProgress = imageDownloadProgressStates.getOrNull(page) ?: 0f,
                     zoomState = zoomState,
                     rootState = rootState,
                     screenHeightPx = screenHeightPx,

@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.webapp.components
 
+import org.monogram.presentation.core.util.coRunCatching
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
@@ -11,6 +12,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -18,6 +21,7 @@ import androidx.compose.material.icons.rounded.AddToHomeScreen
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
@@ -61,7 +65,13 @@ fun MiniAppMenu(
             .padding(top = if (isFullscreen) 64.dp else 56.dp, end = 16.dp)
     ) {
         Box(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
             contentAlignment = Alignment.TopEnd
         ) {
             ViewerSettingsDropdown {
@@ -85,7 +95,7 @@ fun MiniAppMenu(
                     icon = Icons.AutoMirrored.Rounded.OpenInNew,
                     title = stringResource(R.string.mini_app_menu_open_in_browser),
                     onClick = {
-                        runCatching {
+                        coRunCatching {
                             context.startActivity(
                                 Intent(
                                     Intent.ACTION_VIEW,

@@ -103,7 +103,6 @@ dependencies {
     implementation(libs.bundles.koin)
     
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.lottie.compose)
     implementation(libs.play.services.mlkit.barcode.scanning)
     implementation(libs.zxing.core)
     implementation(libs.androidx.biometric)
@@ -111,4 +110,5 @@ dependencies {
     implementation(libs.maplibre.compose)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.play.services.location)
+    testImplementation(libs.junit)
 }

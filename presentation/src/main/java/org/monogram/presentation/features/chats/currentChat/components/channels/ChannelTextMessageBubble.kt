@@ -35,6 +35,7 @@ fun ChannelTextMessageBubble(
     isSameSenderAbove: Boolean = false,
     isSameSenderBelow: Boolean = false,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float,
     showLinkPreviews: Boolean = true,
     onReplyClick: (MessageModel) -> Unit = {},
@@ -108,13 +109,16 @@ fun ChannelTextMessageBubble(
                     inlineContent = inlineContent,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = finalFontSize.sp,
+                        letterSpacing = letterSpacing.sp,
                         lineHeight = (finalFontSize * 1.1f).sp
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 2.dp),
                     onSpoilerClick = { index ->
-                        if (!revealedSpoilers.contains(index)) {
+                        if (revealedSpoilers.contains(index)) {
+                            revealedSpoilers.remove(index)
+                        } else {
                             revealedSpoilers.add(index)
                         }
                     },

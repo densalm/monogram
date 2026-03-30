@@ -1,6 +1,9 @@
 package org.monogram.presentation.features.chats.chatList.components
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,10 +15,13 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.ShieldMoon
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,9 +47,11 @@ fun ChatListTopBar(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchToggle: () -> Unit,
-    onStatusClick: () -> Unit,
+    onStatusClick: (Rect?) -> Unit,
     onMenuClick: () -> Unit
 ) {
+    var statusAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+
     AnimatedContent(
         targetState = isSearchActive,
         transitionSpec = {
@@ -104,7 +112,16 @@ fun ChatListTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .animateContentSize(
+                            animationSpec = spring(
+                                dampingRatio = 0.9f,
+                                stiffness = 450f
+                            )
+                        )
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = stringResource(R.string.app_name_monogram),
@@ -115,7 +132,11 @@ fun ChatListTopBar(
 
                         if (!user?.statusEmojiPath.isNullOrBlank()) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            Box(modifier = Modifier.clickable(onClick = onStatusClick)) {
+                            Box(
+                                modifier = Modifier
+                                    .onGloballyPositioned { statusAnchorBounds = it.boundsInRoot() }
+                                    .clickable { onStatusClick(statusAnchorBounds) }
+                            ) {
                                 StickerImage(
                                     path = user.statusEmojiPath,
                                     modifier = Modifier.size(28.dp),
@@ -128,38 +149,118 @@ fun ChatListTopBar(
                                 contentDescription = stringResource(R.string.telegram_premium_title),
                                 modifier = Modifier
                                     .size(22.dp)
-                                    .clickable(onClick = onStatusClick),
+                                    .onGloballyPositioned { statusAnchorBounds = it.boundsInRoot() }
+                                    .clickable { onStatusClick(statusAnchorBounds) },
                                 tint = Color(0xFF31A6FD)
                             )
                         }
                     }
 
-                    if (connectionStatus != null && connectionStatus !is ConnectionStatus.Connected) {
-                        val (text, color) = when (connectionStatus) {
-                            ConnectionStatus.WaitingForNetwork -> stringResource(R.string.waiting_for_network) to MaterialTheme.colorScheme.error
-                            ConnectionStatus.Connecting -> stringResource(R.string.connecting) to MaterialTheme.colorScheme.onSurfaceVariant
-                            ConnectionStatus.Updating -> stringResource(R.string.updating) to MaterialTheme.colorScheme.primary
-                            ConnectionStatus.ConnectingToProxy -> stringResource(R.string.connecting_to_proxy) to MaterialTheme.colorScheme.primary
-                        }
-                        Text(
-                            text = text,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = color,
-                            modifier = Modifier.clickable {
-                                if (connectionStatus == ConnectionStatus.Connecting || connectionStatus == ConnectionStatus.ConnectingToProxy) {
-                                    onProxySettingsClick()
-                                } else {
-                                    onRetryConnection()
-                                }
+                    val statusInfo = when {
+                        connectionStatus != null && connectionStatus !is ConnectionStatus.Connected -> {
+                            val (text, color, action) = when (connectionStatus) {
+                                ConnectionStatus.WaitingForNetwork -> Triple(
+                                    stringResource(R.string.waiting_for_network),
+                                    MaterialTheme.colorScheme.error,
+                                    TopBarStatusAction.Retry
+                                )
+
+                                ConnectionStatus.Connecting -> Triple(
+                                    stringResource(R.string.connecting),
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                    TopBarStatusAction.ProxySettings
+                                )
+
+                                ConnectionStatus.Updating -> Triple(
+                                    stringResource(R.string.updating),
+                                    MaterialTheme.colorScheme.primary,
+                                    TopBarStatusAction.Retry
+                                )
+
+                                ConnectionStatus.ConnectingToProxy -> Triple(
+                                    stringResource(R.string.connecting_to_proxy),
+                                    MaterialTheme.colorScheme.primary,
+                                    TopBarStatusAction.ProxySettings
+                                )
                             }
-                        )
-                    } else if (isProxyEnabled) {
-                        Text(
+
+                            TopBarStatusInfo(text = text, color = color, action = action)
+                        }
+
+                        isProxyEnabled -> TopBarStatusInfo(
                             text = stringResource(R.string.proxy_enabled),
-                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { onProxySettingsClick() }
+                            action = TopBarStatusAction.ProxySettings
                         )
+
+                        else -> null
+                    }
+
+                    AnimatedContent(
+                        targetState = statusInfo,
+                        transitionSpec = {
+                            val enter = fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = 260,
+                                    delayMillis = 40,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ) +
+                                    slideInVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 300,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        initialOffsetY = { it / 2 }
+                                    ) +
+                                    expandVertically(
+                                        animationSpec = spring(
+                                            dampingRatio = 0.92f,
+                                            stiffness = 520f
+                                        ),
+                                        expandFrom = Alignment.Top
+                                    )
+
+                            val exit = fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ) +
+                                    slideOutVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 220,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        targetOffsetY = { it / 3 }
+                                    ) +
+                                    shrinkVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 220,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        shrinkTowards = Alignment.Top
+                                    )
+
+                            enter.togetherWith(exit).using(SizeTransform(clip = false))
+                        },
+                        label = "TopBarStatusTextTransition"
+                    ) { info ->
+                        if (info != null) {
+                            Text(
+                                text = info.text,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = info.color,
+                                modifier = Modifier.clickable {
+                                    when (info.action) {
+                                        TopBarStatusAction.Retry -> onRetryConnection()
+                                        TopBarStatusAction.ProxySettings -> onProxySettingsClick()
+                                    }
+                                }
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(0.dp))
+                        }
                     }
                 }
 
@@ -206,4 +307,15 @@ fun ChatListTopBar(
             }
         }
     }
+}
+
+private data class TopBarStatusInfo(
+    val text: String,
+    val color: Color,
+    val action: TopBarStatusAction
+)
+
+private enum class TopBarStatusAction {
+    Retry,
+    ProxySettings
 }

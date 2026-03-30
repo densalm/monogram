@@ -1,29 +1,24 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -32,10 +27,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import coil3.compose.rememberAsyncImagePainter
+import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.components.chats.*
 
 @Composable
@@ -45,11 +44,13 @@ fun ChannelPhotoMessageBubble(
     isSameSenderAbove: Boolean = false,
     isSameSenderBelow: Boolean = false,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float = 18f,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
     autoDownloadRoaming: Boolean,
     onPhotoClick: (MessageModel) -> Unit,
+    onDownloadPhoto: (Int) -> Unit = {},
     onCancelDownload: (Int) -> Unit = {},
     onLongClick: (Offset) -> Unit,
     onReplyClick: (MessageModel) -> Unit = {},
@@ -62,7 +63,7 @@ fun ChannelPhotoMessageBubble(
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
 ) {
-    LocalContext.current
+    val context = LocalContext.current
     val cornerRadius = bubbleRadius.dp
     val smallCorner = (bubbleRadius / 4f).coerceAtLeast(4f).dp
     val tailCorner = 2.dp
@@ -83,17 +84,42 @@ fun ChannelPhotoMessageBubble(
     var imagePosition by remember { mutableStateOf(Offset.Zero) }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
-    val hasPath = !content.path.isNullOrBlank()
+    var stablePath by remember(msg.id) { mutableStateOf(content.path) }
+    val hasPath = !stablePath.isNullOrBlank()
+    var isAutoDownloadSuppressed by remember(msg.id) { mutableStateOf(false) }
+    var isFullImageReady by remember(msg.id) { mutableStateOf(false) }
+    val mediaAlpha by animateFloatAsState(
+        targetValue = if (hasPath && isFullImageReady) 1f else 0f,
+        animationSpec = tween(320),
+        label = "ChannelPhotoMediaAlpha"
+    )
+
+    LaunchedEffect(content.path) {
+        if (!content.path.isNullOrBlank()) {
+            stablePath = content.path
+            isAutoDownloadSuppressed = false
+            AutoDownloadSuppression.clear(content.fileId)
+        }
+    }
+
+    LaunchedEffect(hasPath) {
+        if (!hasPath) {
+            isFullImageReady = false
+        }
+    }
     val hasCaption = content.caption.isNotEmpty()
 
     LaunchedEffect(content.path, content.isDownloading, autoDownloadMobile, autoDownloadWifi, autoDownloadRoaming) {
-        if (!hasPath && !content.isDownloading) {
+        if (content.path.isNullOrBlank() && !content.isDownloading && !isAutoDownloadSuppressed && !AutoDownloadSuppression.isSuppressed(
+                content.fileId
+            )
+        ) {
             val shouldDownload = when {
                 downloadUtils.isWifiConnected() -> autoDownloadWifi
                 downloadUtils.isRoaming() -> autoDownloadRoaming
                 else -> autoDownloadMobile
             }
-            if (shouldDownload) onPhotoClick(msg)
+            if (shouldDownload) onDownloadPhoto(content.fileId)
         }
     }
 
@@ -147,73 +173,71 @@ fun ChannelPhotoMessageBubble(
                                 detectTapGestures(
                                     onTap = {
                                         if (content.isDownloading) {
+                                            isAutoDownloadSuppressed = true
+                                            AutoDownloadSuppression.suppress(content.fileId)
                                             onCancelDownload(content.fileId)
                                         } else {
-                                            onPhotoClick(msg)
+                                            isAutoDownloadSuppressed = false
+                                            AutoDownloadSuppression.clear(content.fileId)
+                                            if (hasPath) {
+                                                onPhotoClick(msg)
+                                            } else {
+                                                onDownloadPhoto(content.fileId)
+                                            }
                                         }
                                     },
                                     onLongPress = { offset -> onLongClick(imagePosition + offset) }
                                 )
                             }
                     ) {
-                    Crossfade(
-                        targetState = content.path,
-                        animationSpec = tween(300),
-                        label = "PhotoLoading"
-                    ) { path ->
-                        if (!path.isNullOrBlank()) {
-                            Image(
-                                painter = rememberAsyncImagePainter(path),
-                                contentDescription = content.caption,
-                                modifier = Modifier.fillMaxSize(),
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            MediaLoadingBackground(
+                                previewData = content.minithumbnail,
                                 contentScale = ContentScale.Fit
                             )
-                        } else {
-                            // Loading State
-                            Box(
+
+                            if (hasPath) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(stablePath)
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = content.caption,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                content.minithumbnail?.let {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(it),
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .blur(10.dp),
-                                        contentScale = ContentScale.Fit
-                                    )
+                                    .graphicsLayer { alpha = mediaAlpha },
+                                    contentScale = ContentScale.Fit,
+                                    onState = { state ->
+                                        isFullImageReady = state is AsyncImagePainter.State.Success
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .background(Color.Black.copy(alpha = 0.45f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (content.isDownloading) {
-                                        CircularProgressIndicator(
-                                            progress = { content.downloadProgress },
-                                            color = Color.White,
-                                            strokeWidth = 3.dp
-                                        )
-                                        Icon(
-                                            Icons.Default.Close,
-                                            null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.Default.Download,
-                                            null,
-                                            tint = Color.White,
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
-                                }
+                                )
                             }
+
+                            if (!hasPath || !isFullImageReady) {
+                                MediaLoadingAction(
+                                    isDownloading = content.isDownloading || hasPath,
+                                    progress = content.downloadProgress,
+                                    idleIcon = Icons.Default.Download,
+                                    idleContentDescription = "Download",
+                                    showCancelOnDownload = content.isDownloading,
+                                    onCancelClick = {
+                                        isAutoDownloadSuppressed = true
+                                        AutoDownloadSuppression.suppress(content.fileId)
+                                        onCancelDownload(content.fileId)
+                                    },
+                                    onIdleClick = {
+                                        isAutoDownloadSuppressed = false
+                                        AutoDownloadSuppression.clear(content.fileId)
+                                        if (hasPath) {
+                                            onPhotoClick(msg)
+                                        } else {
+                                            onDownloadPhoto(content.fileId)
+                                        }
+                                }
+                                )
                         }
                     }
 
@@ -253,12 +277,15 @@ fun ChannelPhotoMessageBubble(
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
+                                letterSpacing = letterSpacing.sp,
                                 lineHeight = (fontSize * 1.35f).sp
                             ),
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) revealedSpoilers.add(
-                                    index
-                                )
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
+                                    revealedSpoilers.add(index)
+                                }
                             },
                             onClick = { offset -> onLongClick(imagePosition + offset) },
                             onLongClick = { offset -> onLongClick(imagePosition + offset) }

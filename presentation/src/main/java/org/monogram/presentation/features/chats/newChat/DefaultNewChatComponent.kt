@@ -1,4 +1,4 @@
-package org.monogram.presentation.features.chats.chatList
+package org.monogram.presentation.features.chats.newChat
 
 import com.arkivanov.mvikotlin.core.instancekeeper.getStore
 import com.arkivanov.mvikotlin.extensions.coroutines.stateFlow
@@ -12,15 +12,13 @@ import org.monogram.domain.repository.ChatsListRepository
 import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
-import org.monogram.presentation.features.chats.newChat.NewChatComponent
-import org.monogram.presentation.features.chats.newChat.NewChatStore
-import org.monogram.presentation.features.chats.newChat.NewChatStoreFactory
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultNewChatComponent(
     context: AppComponentContext,
     private val onBackClicked: () -> Unit,
-    private val onChatCreated: (Long) -> Unit
+    private val onChatCreated: (Long) -> Unit,
+    private val onProfileClicked: (Long) -> Unit
 ) : NewChatComponent, AppComponentContext by context {
 
     private val userRepository: UserRepository = container.repositories.userRepository
@@ -62,6 +60,13 @@ class DefaultNewChatComponent(
 
     override fun onUserClicked(userId: Long) = store.accept(NewChatStore.Intent.UserClicked(userId))
 
+    override fun onOpenProfile(userId: Long) = store.accept(NewChatStore.Intent.OpenProfile(userId))
+
+    override fun onEditContact(userId: Long, firstName: String, lastName: String) =
+        store.accept(NewChatStore.Intent.EditContact(userId, firstName, lastName))
+
+    override fun onRemoveContact(userId: Long) = store.accept(NewChatStore.Intent.RemoveContact(userId))
+
     override fun onSearchQueryChange(query: String) = store.accept(NewChatStore.Intent.SearchQueryChange(query))
 
     override fun onCreateGroup() = store.accept(NewChatStore.Intent.CreateGroup)
@@ -83,6 +88,8 @@ class DefaultNewChatComponent(
 
     override fun onStepBack() = store.accept(NewChatStore.Intent.StepBack)
 
+    override fun onConsumeValidationError() = store.accept(NewChatStore.Intent.ConsumeValidationError)
+
     // Internal logic called by Store Executor
     internal fun handleBack() {
         onBackClicked()
@@ -91,6 +98,61 @@ class DefaultNewChatComponent(
     internal fun handleUserClicked(userId: Long) {
         if (_state.value.step == NewChatComponent.Step.CONTACTS) {
             onChatCreated(userId)
+        }
+    }
+
+    internal fun handleOpenProfile(userId: Long) {
+        if (_state.value.step == NewChatComponent.Step.CONTACTS) {
+            onProfileClicked(userId)
+        }
+    }
+
+    internal fun handleEditContact(userId: Long, firstName: String, lastName: String) {
+        if (_state.value.step != NewChatComponent.Step.CONTACTS || firstName.isBlank()) return
+
+        val currentContact = _state.value.contacts.firstOrNull { it.id == userId } ?: return
+        val normalizedLastName = lastName.trim().ifBlank { null }
+        val trimmedFirstName = firstName.trim()
+
+        scope.launch {
+            runCatching {
+                userRepository.addContact(
+                    currentContact.copy(
+                        firstName = trimmedFirstName,
+                        lastName = normalizedLastName,
+                        isContact = true
+                    )
+                )
+            }.onSuccess {
+                _state.update { current ->
+                    current.copy(
+                        contacts = current.contacts.map { user ->
+                            if (user.id == userId) {
+                                user.copy(firstName = trimmedFirstName, lastName = normalizedLastName)
+                            } else {
+                                user
+                            }
+                        },
+                        searchResults = current.searchResults.map { user ->
+                            if (user.id == userId) {
+                                user.copy(firstName = trimmedFirstName, lastName = normalizedLastName)
+                            } else {
+                                user
+                            }
+                        }
+                    )
+                }
+                loadContacts()
+            }
+        }
+    }
+
+    internal fun handleRemoveContact(userId: Long) {
+        if (_state.value.step != NewChatComponent.Step.CONTACTS) return
+
+        scope.launch {
+            userRepository.removeContact(userId)
+            loadContacts()
         }
     }
 
@@ -109,19 +171,33 @@ class DefaultNewChatComponent(
     }
 
     internal fun handleCreateGroup() {
-        _state.update { it.copy(step = NewChatComponent.Step.GROUP_INFO) }
+        _state.update {
+            it.copy(
+                step = NewChatComponent.Step.GROUP_MEMBERS,
+                selectedUserIds = emptySet(),
+                searchQuery = "",
+                searchResults = emptyList(),
+                validationError = null
+            )
+        }
     }
 
     internal fun handleCreateChannel() {
-        _state.update { it.copy(step = NewChatComponent.Step.CHANNEL_INFO) }
+        _state.update {
+            it.copy(
+                step = NewChatComponent.Step.CHANNEL_INFO,
+                selectedUserIds = emptySet(),
+                validationError = null
+            )
+        }
     }
 
     internal fun handleTitleChange(title: String) {
-        _state.update { it.copy(title = title) }
+        _state.update { it.copy(title = title, validationError = null) }
     }
 
     internal fun handleDescriptionChange(description: String) {
-        _state.update { it.copy(description = description) }
+        _state.update { it.copy(description = description, validationError = null) }
     }
 
     internal fun handlePhotoSelected(path: String?) {
@@ -145,16 +221,33 @@ class DefaultNewChatComponent(
 
     internal fun handleConfirmCreate() {
         val currentState = _state.value
+        if (currentState.isCreating) return
+
         when (currentState.step) {
             NewChatComponent.Step.GROUP_MEMBERS -> {
                 if (currentState.selectedUserIds.isNotEmpty()) {
-                    _state.update { it.copy(step = NewChatComponent.Step.GROUP_INFO) }
+                    _state.update {
+                        it.copy(
+                            step = NewChatComponent.Step.GROUP_INFO,
+                            searchQuery = "",
+                            searchResults = emptyList(),
+                            validationError = null
+                        )
+                    }
                 }
             }
 
             NewChatComponent.Step.GROUP_INFO -> {
-                if (currentState.title.isNotBlank()) {
-                    scope.launch {
+                if (currentState.title.isBlank()) {
+                    _state.update {
+                        it.copy(validationError = NewChatComponent.ValidationError.GROUP_TITLE_REQUIRED)
+                    }
+                    return
+                }
+
+                scope.launch {
+                    _state.update { it.copy(isCreating = true, validationError = null) }
+                    try {
                         val chatId = chatsListRepository.createGroup(
                             currentState.title,
                             currentState.selectedUserIds.toList(),
@@ -166,13 +259,23 @@ class DefaultNewChatComponent(
                             }
                             onChatCreated(chatId)
                         }
+                    } finally {
+                        _state.update { it.copy(isCreating = false) }
                     }
                 }
             }
 
             NewChatComponent.Step.CHANNEL_INFO -> {
-                if (currentState.title.isNotBlank()) {
-                    scope.launch {
+                if (currentState.title.isBlank()) {
+                    _state.update {
+                        it.copy(validationError = NewChatComponent.ValidationError.CHANNEL_TITLE_REQUIRED)
+                    }
+                    return
+                }
+
+                scope.launch {
+                    _state.update { it.copy(isCreating = true, validationError = null) }
+                    try {
                         val chatId = chatsListRepository.createChannel(
                             currentState.title,
                             currentState.description,
@@ -184,6 +287,8 @@ class DefaultNewChatComponent(
                             }
                             onChatCreated(chatId)
                         }
+                    } finally {
+                        _state.update { it.copy(isCreating = false) }
                     }
                 }
             }
@@ -197,13 +302,28 @@ class DefaultNewChatComponent(
             when (it.step) {
                 NewChatComponent.Step.GROUP_MEMBERS -> it.copy(
                     step = NewChatComponent.Step.CONTACTS,
-                    selectedUserIds = emptySet()
+                    selectedUserIds = emptySet(),
+                    searchQuery = "",
+                    searchResults = emptyList(),
+                    validationError = null
                 )
 
-                NewChatComponent.Step.GROUP_INFO -> it.copy(step = NewChatComponent.Step.CONTACTS)
-                NewChatComponent.Step.CHANNEL_INFO -> it.copy(step = NewChatComponent.Step.CONTACTS)
+                NewChatComponent.Step.GROUP_INFO -> it.copy(
+                    step = NewChatComponent.Step.GROUP_MEMBERS,
+                    validationError = null
+                )
+
+                NewChatComponent.Step.CHANNEL_INFO -> it.copy(
+                    step = NewChatComponent.Step.CONTACTS,
+                    validationError = null
+                )
                 else -> it
             }
         }
     }
+
+    internal fun handleConsumeValidationError() {
+        _state.update { it.copy(validationError = null) }
+    }
+
 }

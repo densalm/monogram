@@ -233,7 +233,7 @@ fun MessageOptionsMenu(
             var x = (clickOffset.x - (menuSize.width / 2)).toInt()
             val minX = containerOffset.x.toInt() + horizontalMargin
             val maxX = containerOffset.x.toInt() + containerSize.width - menuSize.width - horizontalMargin
-            x = x.coerceIn(minX, maxX)
+            x = if (maxX >= minX) x.coerceIn(minX, maxX) else minX
 
             var y = (clickOffset.y - (menuSize.height / 2)).toInt()
             val minY = maxOf(containerOffset.y.toInt() + verticalPadding, topInset + verticalPadding)
@@ -241,7 +241,7 @@ fun MessageOptionsMenu(
                 containerOffset.y.toInt() + containerSize.height - menuSize.height - verticalPadding,
                 screenHeight - bottomInset - menuSize.height - verticalPadding
             )
-            y = y.coerceIn(minY, maxY)
+            y = if (maxY >= minY) y.coerceIn(minY, maxY) else minY
 
             IntOffset(x - containerOffset.x.toInt(), y - containerOffset.y.toInt())
         }
@@ -1117,7 +1117,8 @@ private fun InternalMenuHeaderInfo(
     val readDate = if (showReadInfo)
         if (message.isOutgoing && message.readDate > 0) dateFormat.format(Date(message.readDate.toLong() * 1000)) else null
     else null
-    val views = if (showViewsInfo && message.views != null && message.views!! > 0) message.views.toString() else null
+    val viewsCount = message.viewCount ?: message.views
+    val views = if (showViewsInfo && viewsCount != null && viewsCount > 0) viewsCount.toString() else null
 
     val hasHeader = editDate != null || readDate != null || views != null
 

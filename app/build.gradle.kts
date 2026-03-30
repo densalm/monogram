@@ -1,5 +1,6 @@
 import com.android.build.VariantOutput
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
+import com.google.android.gms.oss.licenses.plugin.DependencyTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -28,7 +29,7 @@ android {
         applicationId = "org.monogram"
         minSdk = 25
         targetSdk = 36
-        versionCode = 4
+        versionCode = 5
         versionName = "1.0"
     }
 
@@ -46,7 +47,7 @@ android {
         variant.outputs.all {
             val output = this as ApkVariantOutputImpl
             val abi = output.getFilter(VariantOutput.FilterType.ABI) ?: "universal"
-            output.outputFileName = "monogram-$abi-${variant.versionName}-${variant.buildType.name}.apk"
+            output.outputFileName = "monogram-$abi-${variant.versionName}(${variant.versionCode})-${variant.buildType.name}.apk"
         }
     }
 
@@ -107,4 +108,20 @@ dependencies {
     implementation(project(":core"))
 
     baselineProfile(project(":baselineprofile"))
+}
+
+tasks.withType(DependencyTask::class.java).configureEach {
+    if (name == "debugOssDependencyTask") {
+        dependsOn("releaseOssDependencyTask")
+        doLast {
+            val releaseJson = layout.buildDirectory
+                .file("generated/third_party_licenses/release/dependencies.json")
+                .get()
+                .asFile
+            val debugJson = dependenciesJson.get().asFile
+            if (releaseJson.exists()) {
+                releaseJson.copyTo(debugJson, overwrite = true)
+            }
+        }
+    }
 }

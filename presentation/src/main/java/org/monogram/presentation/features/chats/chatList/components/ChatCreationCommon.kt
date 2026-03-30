@@ -15,9 +15,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.ItemPosition
 
 @Composable
@@ -121,23 +123,23 @@ fun AutoDeleteSelectorSheet(
 ) {
     val options = remember {
         listOf(
-            0 to "Off",
-            86400 to "1 day",
-            172800 to "2 days",
-            259200 to "3 days",
-            345600 to "4 days",
-            432000 to "5 days",
-            518400 to "6 days",
-            604800 to "1 week",
-            1209600 to "2 weeks",
-            1814400 to "3 weeks",
-            2592000 to "1 month",
-            5184000 to "2 months",
-            7776000 to "3 months",
-            10368000 to "4 months",
-            12960000 to "5 months",
-            15552000 to "6 months",
-            31536000 to "1 year"
+            0,
+            86400,
+            172800,
+            259200,
+            345600,
+            432000,
+            518400,
+            604800,
+            1209600,
+            1814400,
+            2592000,
+            5184000,
+            7776000,
+            10368000,
+            12960000,
+            15552000,
+            31536000
         )
     }
 
@@ -155,7 +157,7 @@ fun AutoDeleteSelectorSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Auto-Delete Timer",
+                text = stringResource(R.string.auto_delete_messages_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
@@ -173,7 +175,7 @@ fun AutoDeleteSelectorSheet(
                         .padding(vertical = 8.dp)
                 ) {
                     items(options.size) { index ->
-                        val (seconds, label) = options[index]
+                        val seconds = options[index]
                         val isSelected = selectedTime == seconds
 
                         Row(
@@ -184,7 +186,7 @@ fun AutoDeleteSelectorSheet(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = label,
+                                text = seconds.toAutoDeleteString(),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
@@ -193,7 +195,7 @@ fun AutoDeleteSelectorSheet(
                             if (isSelected) {
                                 Icon(
                                     imageVector = Icons.Rounded.Check,
-                                    contentDescription = "Selected",
+                                    contentDescription = stringResource(R.string.chat_settings_selected),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -211,31 +213,32 @@ fun AutoDeleteSelectorSheet(
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Close", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.close_button), fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
+@Composable
 fun Int.toAutoDeleteString(): String {
     return when (this) {
-        0 -> "Off"
-        86400 -> "1 day"
-        172800 -> "2 days"
-        259200 -> "3 days"
-        345600 -> "4 days"
-        432000 -> "5 days"
-        518400 -> "6 days"
-        604800 -> "1 week"
-        1209600 -> "2 weeks"
-        1814400 -> "3 weeks"
-        2592000 -> "1 month"
-        5184000 -> "2 months"
-        7776000 -> "3 months"
-        10368000 -> "4 months"
-        12960000 -> "5 months"
-        15552000 -> "6 months"
-        31536000 -> "1 year"
-        else -> "Off"
+        0 -> stringResource(R.string.auto_delete_off)
+        86400 -> stringResource(R.string.auto_delete_1_day)
+        172800 -> stringResource(R.string.auto_delete_2_days)
+        259200 -> stringResource(R.string.auto_delete_3_days)
+        345600 -> stringResource(R.string.auto_delete_4_days)
+        432000 -> stringResource(R.string.auto_delete_5_days)
+        518400 -> stringResource(R.string.auto_delete_6_days)
+        604800 -> stringResource(R.string.auto_delete_1_week)
+        1209600 -> stringResource(R.string.auto_delete_2_weeks)
+        1814400 -> stringResource(R.string.auto_delete_3_weeks)
+        2592000 -> stringResource(R.string.auto_delete_1_month)
+        5184000 -> stringResource(R.string.auto_delete_2_months)
+        7776000 -> stringResource(R.string.auto_delete_3_months)
+        10368000 -> stringResource(R.string.auto_delete_4_months)
+        12960000 -> stringResource(R.string.auto_delete_5_months)
+        15552000 -> stringResource(R.string.auto_delete_6_months)
+        31536000 -> stringResource(R.string.auto_delete_1_year)
+        else -> stringResource(R.string.auto_delete_off)
     }
 }

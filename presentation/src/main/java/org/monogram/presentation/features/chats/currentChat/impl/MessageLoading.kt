@@ -6,14 +6,82 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.withLock
-import org.monogram.domain.models.MessageContent
-import org.monogram.domain.models.MessageModel
-import org.monogram.domain.models.MessageSendingState
+import org.monogram.domain.models.*
 import org.monogram.domain.repository.ReadUpdate
+import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
+import java.io.File
 
 
 private const val PAGE_SIZE = 50
+private const val MAX_DOWNLOAD_RETRIES = 3
+
+private fun isUsableAvatarPath(path: String?): Boolean {
+    if (path.isNullOrBlank()) return false
+    return when {
+        path.startsWith("http", ignoreCase = true) -> true
+        path.startsWith("content:", ignoreCase = true) -> true
+        path.startsWith("file:", ignoreCase = true) -> true
+        else -> File(path).exists()
+    }
+}
+
+private fun firstUsableAvatarPath(vararg candidates: String?): String? {
+    return candidates.firstOrNull { isUsableAvatarPath(it) }
+        ?: candidates.firstOrNull { !it.isNullOrBlank() }
+}
+
+private fun mergeSenderVisuals(previous: MessageModel, incoming: MessageModel): MessageModel {
+    if (previous.senderId != incoming.senderId) return incoming
+
+    val mergedAvatar = firstUsableAvatarPath(
+        incoming.senderAvatar,
+        incoming.senderPersonalAvatar,
+        previous.senderAvatar,
+        previous.senderPersonalAvatar
+    )
+    val mergedPersonalAvatar = firstUsableAvatarPath(
+        incoming.senderPersonalAvatar,
+        incoming.senderAvatar,
+        previous.senderPersonalAvatar,
+        previous.senderAvatar
+    )
+
+    return incoming.copy(
+        senderName = incoming.senderName.ifBlank { previous.senderName },
+        senderAvatar = mergedAvatar,
+        senderPersonalAvatar = mergedPersonalAvatar,
+        senderCustomTitle = incoming.senderCustomTitle ?: previous.senderCustomTitle,
+        senderStatusEmojiPath = incoming.senderStatusEmojiPath ?: previous.senderStatusEmojiPath
+    )
+}
+
+private fun reactionsSemanticEqual(
+    current: List<MessageReactionModel>,
+    incoming: List<MessageReactionModel>
+): Boolean {
+    if (current.size != incoming.size) return false
+
+    val currentByReaction = current.associateBy { it.emoji to it.customEmojiId }
+    if (currentByReaction.size != current.size) return false
+
+    return incoming.all { reaction ->
+        val previous = currentByReaction[reaction.emoji to reaction.customEmojiId] ?: return@all false
+        previous.count == reaction.count &&
+                previous.isChosen == reaction.isChosen &&
+                previous.customEmojiPath == reaction.customEmojiPath
+    }
+}
+
+private fun DefaultChatComponent.resolveRemappedMessageId(messageId: Long): Long {
+    var current = messageId
+    repeat(4) {
+        val mapped = remappedMessageIds[current] ?: return current
+        if (mapped == current) return current
+        current = mapped
+    }
+    return current
+}
 
 private suspend fun DefaultChatComponent.updateMessagesUnsafe(
     newMessages: List<MessageModel>,
@@ -45,6 +113,14 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
     }
 
     _state.update { state ->
+        if (filteredNewMessages.isEmpty()) {
+            return@update if (replace && state.messages.any { it.sendingState is MessageSendingState.Pending }) {
+                state.copy(messages = state.messages.filter { it.sendingState is MessageSendingState.Pending })
+            } else {
+                state
+            }
+        }
+
         val currentList = if (replace) {
             state.messages.filter { it.sendingState is MessageSendingState.Pending }
         } else {
@@ -53,9 +129,21 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
 
         val isComments = state.rootMessage != null
 
-        val messageMap = currentList.associateBy { it.id }.toMutableMap()
+        val messageMap = LinkedHashMap<Long, MessageModel>(currentList.size + filteredNewMessages.size)
+        currentList.forEach { messageMap[it.id] = it }
+
+        var hasChanges = replace
         filteredNewMessages.forEach { msg ->
-            messageMap[msg.id] = msg
+            val previous = messageMap[msg.id]
+            val mergedMessage = if (previous != null) mergeSenderVisuals(previous, msg) else msg
+            val old = messageMap.put(msg.id, mergedMessage)
+            if (old != mergedMessage) {
+                hasChanges = true
+            }
+        }
+
+        if (!hasChanges) {
+            return@update state
         }
 
         val mergedMessages = messageMap.values.let {
@@ -66,7 +154,7 @@ private suspend fun DefaultChatComponent.updateMessagesUnsafe(
             }
         }
 
-        state.copy(messages = mergedMessages)
+        if (mergedMessages == state.messages) state else state.copy(messages = mergedMessages)
     }
 }
 
@@ -106,6 +194,7 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
                 val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
                     if (chat.unreadCount > 0) {
                         repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId).firstOrNull()?.id
+                            ?: lastRead.takeIf { it > 0L }
                     } else null
                 }
 
@@ -145,17 +234,45 @@ internal suspend fun DefaultChatComponent.loadComments(threadId: Long) {
 private suspend fun DefaultChatComponent.loadBottomMessages(threadId: Long?) {
     lastLoadedOlderId = 0L
     lastLoadedNewerId = 0L
-    val messages = repositoryMessage.getMessagesOlder(chatId, 0, PAGE_SIZE, threadId)
-    val isOldestLoaded = messages.size < PAGE_SIZE
+
+    var hasCachedPreview = false
+    val cachedMessages = repositoryMessage.getCachedMessages(chatId, PAGE_SIZE)
+    if (cachedMessages.isNotEmpty()) {
+        hasCachedPreview = true
+        _state.update {
+            it.copy(
+                isAtBottom = true,
+                isLatestLoaded = false,
+                isOldestLoaded = false,
+                scrollToMessageId = null
+            )
+        }
+        updateMessages(cachedMessages, replace = true)
+        refreshCachedSenderProfiles(cachedMessages)
+    }
+
+    val olderPage = repositoryMessage.getMessagesOlder(chatId, 0, PAGE_SIZE, threadId)
+    val messages = olderPage.messages
+    val isRemoteSameAsCachedPreview = hasCachedPreview && cachedMessages.isNotEmpty() &&
+            messages.size == cachedMessages.size &&
+            messages.zip(cachedMessages).all { (remote, cached) -> remote.id == cached.id }
+
+    val isOldestLoaded = if (isRemoteSameAsCachedPreview) {
+        false
+    } else {
+        olderPage.reachedOldest
+    }
+
     _state.update {
         it.copy(
             isAtBottom = true,
-            isLatestLoaded = true,
+            isLatestLoaded = !isRemoteSameAsCachedPreview,
             isOldestLoaded = isOldestLoaded,
             scrollToMessageId = null
         )
     }
-    updateMessages(messages, replace = true)
+    val shouldReplaceCachedPreview = !hasCachedPreview || messages.isNotEmpty()
+    updateMessages(messages, replace = shouldReplaceCachedPreview)
     if (!isOldestLoaded) {
         delay(100)
         loadMoreMessages()
@@ -192,7 +309,22 @@ private suspend fun DefaultChatComponent.loadAroundMessage(
 internal fun DefaultChatComponent.loadMoreMessages() {
     val state = _state.value
     val forceLoad = state.isOldestLoaded && state.messages.size < 10
+    val isComments = state.rootMessage != null
+    val visibleAnchorId = if (isComments) {
+        state.messages.firstOrNull { it.id > 0 }?.id ?: 0L
+    } else {
+        state.messages.lastOrNull { it.id > 0 }?.id ?: 0L
+    }
+    val requestedAnchorId = listOf(visibleAnchorId, lastLoadedOlderId)
+        .filter { it > 0L }
+        .minOrNull() ?: 0L
+
+    if (requestedAnchorId != 0L && requestedAnchorId == inFlightOlderAnchorId) return
     if (loadMoreJob?.isActive == true || state.isLoadingOlder || (state.isOldestLoaded && !forceLoad)) return
+
+    if (requestedAnchorId != 0L) {
+        inFlightOlderAnchorId = requestedAnchorId
+    }
 
     loadMoreJob = scope.launch {
         _state.update { it.copy(isLoadingOlder = true) }
@@ -211,6 +343,8 @@ internal fun DefaultChatComponent.loadMoreMessages() {
                 .filter { it > 0L }
                 .minOrNull() ?: 0L
 
+            inFlightOlderAnchorId = anchorId
+
             if (anchorId == 0L) {
                 _state.update { it.copy(isOldestLoaded = true) }
                 return@launch
@@ -224,7 +358,8 @@ internal fun DefaultChatComponent.loadMoreMessages() {
                 attempts++
 
                 val beforeSize = _state.value.messages.size
-                val olderMessages = repositoryMessage.getMessagesOlder(chatId, currentAnchorId, PAGE_SIZE, threadId)
+                val olderPage = repositoryMessage.getMessagesOlder(chatId, currentAnchorId, PAGE_SIZE, threadId)
+                val olderMessages = olderPage.messages
 
                 val nextOlderAnchorId = olderMessages
                     .asSequence()
@@ -241,11 +376,15 @@ internal fun DefaultChatComponent.loadMoreMessages() {
                 val afterSize = _state.value.messages.size
                 val listGrew = afterSize > beforeSize
 
-                isOldestLoaded = olderMessages.isEmpty() || !hasOlderProgress
+                isOldestLoaded = olderPage.reachedOldest || (olderPage.isRemote && !hasOlderProgress)
 
                 if (hasOlderProgress) {
                     lastLoadedOlderId = nextOlderAnchorId
                     currentAnchorId = nextOlderAnchorId
+                }
+
+                if (!olderPage.isRemote && olderMessages.isEmpty()) {
+                    break
                 }
 
                 if (isOldestLoaded || listGrew) break
@@ -256,6 +395,7 @@ internal fun DefaultChatComponent.loadMoreMessages() {
             Log.e("DefaultChatComponent", "Failed to load more messages", e)
             lastLoadedOlderId = 0L
         } finally {
+            inFlightOlderAnchorId = 0L
             _state.update { it.copy(isLoadingOlder = false) }
         }
     }
@@ -263,7 +403,18 @@ internal fun DefaultChatComponent.loadMoreMessages() {
 
 internal fun DefaultChatComponent.loadNewerMessages() {
     val state = _state.value
+    val requestedAnchorId = if (state.rootMessage != null) {
+        state.messages.lastOrNull { it.id > 0 }?.id ?: 0L
+    } else {
+        state.messages.firstOrNull { it.id > 0 }?.id ?: 0L
+    }
+
+    if (requestedAnchorId != 0L && requestedAnchorId == inFlightNewerAnchorId) return
     if (loadNewerJob?.isActive == true || state.isLoadingNewer || state.isLatestLoaded) return
+
+    if (requestedAnchorId != 0L) {
+        inFlightNewerAnchorId = requestedAnchorId
+    }
 
     loadNewerJob = scope.launch {
         _state.update { it.copy(isLoadingNewer = true) }
@@ -278,6 +429,8 @@ internal fun DefaultChatComponent.loadNewerMessages() {
             } else {
                 currentMessages.firstOrNull { it.id > 0 }?.id ?: return@launch
             }
+
+            inFlightNewerAnchorId = anchorId
 
             if (anchorId != 0L && anchorId == lastLoadedNewerId) {
                 _state.update { it.copy(isLatestLoaded = true) }
@@ -298,6 +451,7 @@ internal fun DefaultChatComponent.loadNewerMessages() {
             Log.e("DefaultChatComponent", "Failed to load newer messages", e)
             lastLoadedNewerId = 0L
         } finally {
+            inFlightNewerAnchorId = 0L
             _state.update { it.copy(isLoadingNewer = false) }
         }
     }
@@ -348,12 +502,17 @@ internal fun DefaultChatComponent.cancelAllLoadingJobs() {
     messageLoadingJob?.cancel()
     loadMoreJob?.cancel()
     loadNewerJob?.cancel()
+    inFlightOlderAnchorId = 0L
+    inFlightNewerAnchorId = 0L
 }
 
 internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.newMessageFlow
         .onEach { message ->
             if (message.chatId == chatId) {
+                if (resolveRemappedMessageId(message.id) != message.id) {
+                    return@onEach
+                }
                 val isCorrectThread =
                     _state.value.currentTopicId == null || message.threadId?.toLong() == _state.value.currentTopicId
                 if (isCorrectThread) {
@@ -371,25 +530,39 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.messageIdUpdateFlow
         .onEach { (cId, oldId, newMessage) ->
             if (cId == chatId) {
+                if (oldId != newMessage.id) {
+                    remappedMessageIds[oldId] = newMessage.id
+                } else {
+                    remappedMessageIds.remove(oldId)
+                }
                 messageMutex.withLock {
                     _state.update { state ->
-                        val currentMessages = state.messages.toMutableList()
-                        val index = currentMessages.indexOfFirst { it.id == oldId }
+                        val isCorrectThread =
+                            state.currentTopicId == null || newMessage.threadId?.toLong() == state.currentTopicId
+                        if (!isCorrectThread) {
+                            return@update state
+                        }
 
-                        if (index != -1) {
-                            currentMessages[index] = newMessage
-                        } else {
-                            val isCorrectThread =
-                                state.currentTopicId == null || newMessage.threadId?.toLong() == state.currentTopicId
-                            if (isCorrectThread && (state.isAtBottom || state.isLatestLoaded || newMessage.isOutgoing)) {
-                                if (currentMessages.none { it.id == newMessage.id }) {
-                                    currentMessages.add(newMessage)
+                        val withoutOldId = state.messages.filterNot { it.id == oldId }
+                        val canInsert = state.isAtBottom || state.isLatestLoaded || newMessage.isOutgoing
+
+                        val updatedMessages = when {
+                            withoutOldId.any { it.id == newMessage.id } -> {
+                                withoutOldId.map { existing ->
+                                    if (existing.id == newMessage.id) {
+                                        mergeSenderVisuals(existing, newMessage)
+                                    } else {
+                                        existing
+                                    }
                                 }
                             }
+
+                            canInsert -> withoutOldId + newMessage
+                            else -> withoutOldId
                         }
 
                         val isComments = state.rootMessage != null
-                        val distinctMessages = currentMessages.distinctBy { it.id }
+                        val distinctMessages = updatedMessages.distinctBy { it.id }
                         val sortedMessages = if (isComments) {
                             distinctMessages.sortedWith(compareBy<MessageModel> { it.date }.thenBy { it.id })
                         } else {
@@ -479,9 +652,90 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
         }
         .launchIn(scope)
 
+    repositoryMessage.messageDownloadCancelledFlow
+        .onEach { messageId ->
+            var cancelledFileId = 0
+            updateMessageContent(messageId) { message ->
+                val newContent = when (val content = message.content) {
+                    is MessageContent.Photo -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.Video -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.VideoNote -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.Document -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.Gif -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.Voice -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    is MessageContent.Sticker -> {
+                        cancelledFileId = content.fileId
+                        content.copy(
+                            isDownloading = false,
+                            downloadProgress = 0f,
+                            downloadError = false
+                        )
+                    }
+
+                    else -> content
+                }
+                message.copy(content = newContent)
+            }
+            AutoDownloadSuppression.suppress(cancelledFileId)
+            if (cancelledFileId != 0) {
+                mediaDownloadRetryCount.remove(cancelledFileId)
+            }
+        }
+        .launchIn(scope)
+
     repositoryMessage.messageDownloadCompletedFlow
-        .onEach { (messageId, path) ->
+        .onEach { (messageId, downloadedFileId, path) ->
             var fileIdToRetry: Int? = null
+            var mainFileId = 0
+            var mainPathUpdated = false
 
             updateMessageContent(messageId) { message ->
                 val isError = path.isEmpty()
@@ -489,38 +743,80 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
 
                 val newContent = when (val content = message.content) {
                     is MessageContent.Photo -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
+                        }
                     }
 
                     is MessageContent.Video -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            if (finalPath != null) content.copy(thumbnailPath = finalPath) else content
+                        }
                     }
 
                     is MessageContent.VideoNote -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            content
+                        }
                     }
 
                     is MessageContent.Document -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            content
+                        }
                     }
 
                     is MessageContent.Gif -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            content
+                        }
                     }
 
                     is MessageContent.Voice -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            content
+                        }
                     }
 
                     is MessageContent.Sticker -> {
-                        if (isError) fileIdToRetry = content.fileId
-                        content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        if (downloadedFileId == content.fileId) {
+                            mainFileId = content.fileId
+                            mainPathUpdated = true
+                            if (isError) fileIdToRetry = content.fileId
+                            content.copy(path = finalPath, isDownloading = false, downloadError = isError)
+                        } else {
+                            content
+                        }
                     }
 
                     else -> content
@@ -528,13 +824,48 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
                 message.copy(content = newContent)
             }
 
-            fileIdToRetry?.let { if (it != 0) onDownloadFile(it) }
+            if (path.isNotEmpty() && mainFileId != 0) {
+                AutoDownloadSuppression.clear(mainFileId)
+                mediaDownloadRetryCount.remove(mainFileId)
+            }
+
+            if (mainPathUpdated && path.isNotEmpty()) {
+                updateFullScreenImagePath(messageId, path)
+            }
+
+            if (path.isNotEmpty() && messageId in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) {
+                updateInlineResultsWithFile(messageId.toInt(), path)
+            }
+
+            fileIdToRetry?.let {
+                if (it != 0) {
+                    val suppressed = AutoDownloadSuppression.isSuppressed(it)
+                    if (!suppressed) {
+                        val attempts = (mediaDownloadRetryCount[it] ?: 0) + 1
+                        mediaDownloadRetryCount[it] = attempts
+                        if (attempts <= MAX_DOWNLOAD_RETRIES) {
+                            onDownloadFile(it)
+                        } else {
+                            AutoDownloadSuppression.suppress(it)
+                            Log.w(
+                                "DownloadDebug",
+                                "retryLimitReached: fileId=$it attempts=$attempts chatId=$chatId"
+                            )
+                        }
+                    } else {
+                        Log.d("DownloadDebug", "retrySkippedBySuppression: fileId=$it chatId=$chatId")
+                    }
+                }
+            }
         }
         .launchIn(scope)
 
     repositoryMessage.messageDeletedFlow
         .onEach { (cId, messageIds) ->
             if (cId == chatId) {
+                messageIds.forEach(reactionUpdateSuppressedUntil::remove)
+                messageIds.forEach(remappedMessageIds::remove)
+                remappedMessageIds.entries.removeIf { (_, mappedId) -> mappedId in messageIds }
                 _state.update { currentState ->
                     val currentMessages = currentState.messages.toMutableList()
                     val removed = currentMessages.removeAll { messageIds.contains(it.id) }
@@ -551,7 +882,61 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
     repositoryMessage.messageEditedFlow
         .onEach { message ->
             if (message.chatId == chatId) {
-                updateMessageContent(message.id) { message }
+                val now = System.currentTimeMillis()
+                val suppressUntil = reactionUpdateSuppressedUntil[message.id]
+                val suppressReactionUpdate = suppressUntil != null && now < suppressUntil
+
+                if (!suppressReactionUpdate && suppressUntil != null) {
+                    reactionUpdateSuppressedUntil.remove(message.id, suppressUntil)
+                }
+
+                updateMessageContent(message.id) { current ->
+                    val mediaSafeMessage = when {
+                        current.content is MessageContent.Photo && message.content is MessageContent.Photo -> {
+                            val currentPhoto = current.content as MessageContent.Photo
+                            val incomingPhoto = message.content as MessageContent.Photo
+                            if (currentPhoto.fileId == incomingPhoto.fileId) {
+                                val resolvedPath = incomingPhoto.path ?: currentPhoto.path
+                                message.copy(
+                                    content = incomingPhoto.copy(
+                                        path = resolvedPath,
+                                        thumbnailPath = incomingPhoto.thumbnailPath ?: currentPhoto.thumbnailPath
+                                    )
+                                )
+                            } else {
+                                message
+                            }
+                        }
+
+                        current.content is MessageContent.Video && message.content is MessageContent.Video -> {
+                            val currentVideo = current.content as MessageContent.Video
+                            val incomingVideo = message.content as MessageContent.Video
+                            if (currentVideo.fileId == incomingVideo.fileId) {
+                                val resolvedPath = incomingVideo.path ?: currentVideo.path
+                                message.copy(
+                                    content = incomingVideo.copy(
+                                        path = resolvedPath,
+                                        thumbnailPath = incomingVideo.thumbnailPath ?: currentVideo.thumbnailPath
+                                    )
+                                )
+                            } else {
+                                message
+                            }
+                        }
+
+                        else -> message
+                    }
+
+                    when {
+                        suppressReactionUpdate -> mediaSafeMessage.copy(reactions = current.reactions)
+                        reactionsSemanticEqual(
+                            current.reactions,
+                            mediaSafeMessage.reactions
+                        ) -> mediaSafeMessage.copy(reactions = current.reactions)
+
+                        else -> mediaSafeMessage
+                    }
+                }
             }
         }
         .launchIn(scope)
@@ -585,6 +970,98 @@ internal fun DefaultChatComponent.setupMessageCollectors() {
             }
         }
         .launchIn(scope)
+
+    observeSenderUpdates()
+}
+
+private fun DefaultChatComponent.observeSenderUpdates() {
+    repositoryMessage.senderUpdateFlow
+        .onEach { senderId ->
+            if (senderId <= 0L) return@onEach
+            val hasAffectedMessages = _state.value.messages.any { it.senderId == senderId }
+            if (!hasAffectedMessages) return@onEach
+
+            repositoryMessage.invalidateSenderCache(senderId)
+            val user = userRepository.getUser(senderId) ?: return@onEach
+            refreshMessagesForSender(senderId, user)
+        }
+        .launchIn(scope)
+}
+
+private suspend fun DefaultChatComponent.refreshCachedSenderProfiles(messages: List<MessageModel>) {
+    val senderIds = messages.asSequence()
+        .map { it.senderId }
+        .filter { it > 0L }
+        .distinct()
+        .toList()
+
+    senderIds.forEach { senderId ->
+        repositoryMessage.invalidateSenderCache(senderId)
+        val user = userRepository.getUser(senderId) ?: return@forEach
+        refreshMessagesForSender(senderId, user)
+    }
+}
+
+private fun DefaultChatComponent.refreshMessagesForSender(senderId: Long, user: UserModel) {
+    val fullName = listOfNotNull(
+        user.firstName.takeIf { it.isNotBlank() },
+        user.lastName?.takeIf { it.isNotBlank() }
+    ).joinToString(" ").ifBlank { "User" }
+
+    _state.update { currentState ->
+        val updatedMessages = currentState.messages.map { message ->
+            if (message.senderId == senderId) {
+                val resolvedAvatar = firstUsableAvatarPath(
+                    user.avatarPath,
+                    user.personalAvatarPath,
+                    message.senderAvatar,
+                    message.senderPersonalAvatar
+                )
+                val resolvedPersonalAvatar = firstUsableAvatarPath(
+                    user.personalAvatarPath,
+                    user.avatarPath,
+                    message.senderPersonalAvatar,
+                    message.senderAvatar
+                )
+
+                message.copy(
+                    senderName = fullName,
+                    senderAvatar = resolvedAvatar,
+                    senderPersonalAvatar = resolvedPersonalAvatar,
+                    isSenderVerified = user.isVerified,
+                    isSenderPremium = user.isPremium,
+                    senderStatusEmojiId = user.statusEmojiId,
+                    senderStatusEmojiPath = user.statusEmojiPath ?: message.senderStatusEmojiPath
+                )
+            } else {
+                message
+            }
+        }
+        currentState.copy(messages = updatedMessages)
+    }
+}
+
+private fun DefaultChatComponent.updateInlineResultsWithFile(fileId: Int, newPath: String) {
+    _state.update { currentState ->
+        val currentResults = currentState.inlineBotResults ?: return@update currentState
+        val updatedResults = currentResults.results.map { result ->
+            if (result.thumbFileId == fileId) result.copy(thumbUrl = newPath) else result
+        }
+        currentState.copy(inlineBotResults = currentResults.copy(results = updatedResults))
+    }
+}
+
+private fun DefaultChatComponent.updateFullScreenImagePath(messageId: Long, newPath: String) {
+    _state.update { currentState ->
+        val currentImages = currentState.fullScreenImages ?: return@update currentState
+        val index = currentState.fullScreenImageMessageIds.indexOf(messageId)
+        if (index !in currentImages.indices) {
+            return@update currentState
+        }
+
+        val updated = currentImages.toMutableList().apply { this[index] = newPath }
+        currentState.copy(fullScreenImages = updated)
+    }
 }
 
 private inline fun DefaultChatComponent.updateMessageContent(
@@ -593,12 +1070,19 @@ private inline fun DefaultChatComponent.updateMessageContent(
 ) {
     scope.launch {
         messageMutex.withLock {
+            val targetMessageId = resolveRemappedMessageId(messageId)
             _state.update { currentState ->
                 val currentMessages = currentState.messages.toMutableList()
-                val index = currentMessages.indexOfFirst { it.id == messageId }
+                val index = currentMessages.indexOfFirst { it.id == targetMessageId }
                 if (index != -1) {
-                    currentMessages[index] = transform(currentMessages[index])
-                    currentState.copy(messages = currentMessages)
+                    val currentMessage = currentMessages[index]
+                    val updatedMessage = transform(currentMessage)
+                    if (updatedMessage != currentMessage) {
+                        currentMessages[index] = updatedMessage
+                        currentState.copy(messages = currentMessages)
+                    } else {
+                        currentState
+                    }
                 } else {
                     currentState
                 }

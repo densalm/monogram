@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.ConfirmationSheet
 import org.monogram.presentation.core.util.rememberUserStatusText
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.ChatTopBar
@@ -41,6 +43,7 @@ fun ChatContentTopBar(
     component: ChatComponent,
     contentAlpha: Float,
     onBack: () -> Unit,
+    onOpenMenu: () -> Unit = {},
     onPinnedMessageClick: (MessageModel) -> Unit,
     showBack: Boolean = true
 ) {
@@ -48,11 +51,13 @@ fun ChatContentTopBar(
     val isAdBlockEnabled by component.appPreferences.isAdBlockEnabled.collectAsState()
     val isSelectionMode = state.selectedMessageIds.isNotEmpty()
     val isMainChat = state.currentTopicId == null && state.rootMessage == null
+    val canClearOrDeleteChat = (!state.isGroup && !state.isChannel) || state.isAdmin
     val otherUserId = state.otherUser?.id
     val canReportChat = state.isGroup || state.isChannel ||
             (otherUserId != null && state.currentUser?.id != otherUserId)
 
     var showDeleteSheet by remember { mutableStateOf(false) }
+    var pendingUnpinMessage by remember { mutableStateOf<MessageModel?>(null) }
 
     if (showDeleteSheet) {
         val selectedMessages = remember(state.messages, state.selectedMessageIds) {
@@ -70,6 +75,20 @@ fun ChatContentTopBar(
                 component.onDeleteSelectedMessages(revoke = revoke)
                 showDeleteSheet = false
             }
+        )
+    }
+
+    pendingUnpinMessage?.let { pinnedToUnpin ->
+        ConfirmationSheet(
+            icon = Icons.Rounded.PushPin,
+            title = stringResource(R.string.unpin_message_title),
+            description = stringResource(R.string.unpin_message_confirmation),
+            confirmText = stringResource(R.string.action_unpin),
+            onConfirm = {
+                component.onUnpinMessage(pinnedToUnpin)
+                pendingUnpinMessage = null
+            },
+            onDismiss = { pendingUnpinMessage = null }
         )
     }
 
@@ -119,7 +138,10 @@ fun ChatContentTopBar(
                         }
                         var showMenu by remember { mutableStateOf(false) }
                         Box {
-                            IconButton(onClick = { showMenu = true }) {
+                            IconButton(onClick = {
+                                onOpenMenu()
+                                showMenu = true
+                            }) {
                                 Icon(
                                     Icons.Default.MoreVert,
                                     contentDescription = stringResource(R.string.menu_more)
@@ -252,13 +274,14 @@ fun ChatContentTopBar(
                     statusText = statusText,
                     isOnline = state.isOnline,
                     isVerified = state.isVerified,
+                    isSponsor = state.isSponsor,
                     onBack = onBack,
-                    onMenu = { },
+                    onMenu = onOpenMenu,
                     onClick = { component.onProfileClicked() },
                     topicEmojiPath = topicEmojiPath,
                     isChannel = state.isChannel,
                     isWhitelistedInAdBlock = state.isWhitelistedInAdBlock,
-                    onToggleAdBlockWhitelist = if (isMainChat && state.isChannel && isAdBlockEnabled) {
+                    onToggleAdBlockWhitelist = if (isMainChat && state.isChannel && isAdBlockEnabled && !state.isInstalledFromGooglePlay) {
                         {
                             if (state.isWhitelistedInAdBlock) {
                                 component.onRemoveFromAdBlockWhitelist()
@@ -273,11 +296,14 @@ fun ChatContentTopBar(
                     searchQuery = state.searchQuery,
                     onSearchToggle = component::onSearchToggle,
                     onSearchQueryChange = component::onSearchQueryChange,
-                    onClearHistory = if (isMainChat) component::onClearHistory else null,
-                    onDeleteChat = if (isMainChat) component::onDeleteChat else null,
+                    onClearHistory = if (isMainChat && canClearOrDeleteChat) component::onClearHistory else null,
+                    onDeleteChat = if (isMainChat && canClearOrDeleteChat) component::onDeleteChat else null,
                     onReport = if (isMainChat && canReportChat) component::onReport else null,
                     onCopyLink = if (isMainChat && (state.isGroup || state.isChannel)) {
                         { component.onCopyLink(clipboardManager) }
+                    } else null,
+                    onManageMembers = if (isMainChat && state.isGroup && (state.isAdmin || state.permissions.canInviteUsers)) {
+                        { component.onProfileClicked() }
                     } else null,
                     showBack = showBack,
                     personalAvatarPath = state.chatPersonalAvatar,
@@ -296,7 +322,7 @@ fun ChatContentTopBar(
                 PinnedMessageBar(
                     message = pinned,
                     count = state.pinnedMessageCount,
-                    onClose = { component.onUnpinMessage(pinned) },
+                    onClose = { pendingUnpinMessage = pinned },
                     onClick = { onPinnedMessageClick(pinned) },
                     onShowAll = { component.onShowAllPinnedMessages() }
                 )

@@ -26,6 +26,7 @@ import org.monogram.presentation.features.chats.currentChat.components.VideoPlay
 fun ChatAlbumMessageBubble(
     messages: List<MessageModel>,
     isOutgoing: Boolean,
+    isGroup: Boolean = false,
     isSameSenderAbove: Boolean = false,
     isSameSenderBelow: Boolean = false,
     autoplayGifs: Boolean,
@@ -35,6 +36,7 @@ fun ChatAlbumMessageBubble(
     autoDownloadRoaming: Boolean = false,
     autoDownloadFiles: Boolean = false,
     onPhotoClick: (MessageModel) -> Unit,
+    onDownloadPhoto: (Int) -> Unit = {},
     onVideoClick: (MessageModel) -> Unit,
     onDocumentClick: (MessageModel) -> Unit = {},
     onAudioClick: (MessageModel) -> Unit = {},
@@ -45,6 +47,7 @@ fun ChatAlbumMessageBubble(
     toProfile: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     fontSize: Float = 16f,
+    letterSpacing: Float = 0f,
     downloadUtils: IDownloadUtils,
     videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
@@ -62,6 +65,7 @@ fun ChatAlbumMessageBubble(
             isSameSenderAbove = isSameSenderAbove,
             isSameSenderBelow = isSameSenderBelow,
             fontSize = fontSize,
+            letterSpacing = letterSpacing,
             autoDownloadFiles = autoDownloadFiles,
             autoDownloadMobile = autoDownloadMobile,
             autoDownloadWifi = autoDownloadWifi,
@@ -71,6 +75,7 @@ fun ChatAlbumMessageBubble(
             onLongClick = onLongClick,
             onReplyClick = onReplyClick,
             onReactionClick = onReactionClick,
+            isGroup = isGroup,
             toProfile = toProfile,
             modifier = modifier,
             downloadUtils = downloadUtils
@@ -85,6 +90,7 @@ fun ChatAlbumMessageBubble(
             isSameSenderAbove = isSameSenderAbove,
             isSameSenderBelow = isSameSenderBelow,
             fontSize = fontSize,
+            letterSpacing = letterSpacing,
             autoDownloadFiles = autoDownloadFiles,
             autoDownloadMobile = autoDownloadMobile,
             autoDownloadWifi = autoDownloadWifi,
@@ -94,6 +100,7 @@ fun ChatAlbumMessageBubble(
             onLongClick = onLongClick,
             onReplyClick = onReplyClick,
             onReactionClick = onReactionClick,
+            isGroup = isGroup,
             toProfile = toProfile,
             modifier = modifier,
             downloadUtils = downloadUtils
@@ -174,6 +181,7 @@ fun ChatAlbumMessageBubble(
                     autoplayGifs = autoplayGifs,
                     autoplayVideos = autoplayVideos,
                     onPhotoClick = onPhotoClick,
+                    onDownloadPhoto = onDownloadPhoto,
                     onVideoClick = onVideoClick,
                     onCancelDownload = onCancelDownload,
                     onLongClick = onLongClick,
@@ -212,11 +220,14 @@ fun ChatAlbumMessageBubble(
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
+                                letterSpacing = letterSpacing.sp,
                                 lineHeight = (fontSize * 1.375f).sp
                             ),
                             color = if (isOutgoing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
                             onSpoilerClick = { index ->
-                                if (!revealedSpoilers.contains(index)) {
+                                if (revealedSpoilers.contains(index)) {
+                                    revealedSpoilers.remove(index)
+                                } else {
                                     revealedSpoilers.add(index)
                                 }
                             },

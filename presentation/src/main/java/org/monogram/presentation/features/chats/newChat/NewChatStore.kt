@@ -7,6 +7,9 @@ interface NewChatStore : Store<NewChatStore.Intent, NewChatComponent.State, NewC
     sealed class Intent {
         object Back : Intent()
         data class UserClicked(val userId: Long) : Intent()
+        data class OpenProfile(val userId: Long) : Intent()
+        data class EditContact(val userId: Long, val firstName: String, val lastName: String) : Intent()
+        data class RemoveContact(val userId: Long) : Intent()
         data class SearchQueryChange(val query: String) : Intent()
         object CreateGroup : Intent()
         object CreateChannel : Intent()
@@ -17,6 +20,7 @@ interface NewChatStore : Store<NewChatStore.Intent, NewChatComponent.State, NewC
         data class AutoDeleteTimeChange(val seconds: Int) : Intent()
         object ConfirmCreate : Intent()
         object StepBack : Intent()
+        object ConsumeValidationError : Intent()
         data class UpdateState(val state: NewChatComponent.State) : Intent()
     }
 

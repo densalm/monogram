@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.chatContent
 
+import org.monogram.presentation.core.util.coRunCatching
 import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
@@ -41,14 +42,18 @@ fun ChatMessageOptionsMenu(
     canRestoreOriginalText: Boolean,
     onApplyTransformedText: (String) -> Unit,
     onRestoreOriginalText: () -> Unit,
+    onBlockRequest: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     val messageRepository: MessageRepository = koinInject()
     val canCheckViewersList = remember(state.isChannel, state.isGroup, state.memberCount) {
         !state.isChannel && (!state.isGroup || state.memberCount in 1 until 100)
     }
-    val shouldShowViewsInfo = remember(state.isChannel, selectedMessage.forwardInfo, selectedMessage.canGetViewers) {
-        state.isChannel && selectedMessage.forwardInfo == null && selectedMessage.canGetViewers
+    val messageViewsCount = remember(selectedMessage.viewCount, selectedMessage.views) {
+        selectedMessage.viewCount ?: selectedMessage.views
+    }
+    val shouldShowViewsInfo = remember(state.isChannel, messageViewsCount) {
+        state.isChannel && (messageViewsCount ?: 0) > 0
     }
 
     val index = groupedMessages.indexOfFirst { item ->
@@ -92,11 +97,10 @@ fun ChatMessageOptionsMenu(
         }
     }
 
-    val canShowViewersList = remember(state.memberCount, selectedMessage) {
+    val canShowViewersList = remember(state.memberCount, state.isChannel, selectedMessage) {
         state.memberCount in 1 until 100 &&
                 selectedMessage.isOutgoing &&
-                selectedMessage.forwardInfo == null &&
-                (selectedMessage.canGetReadReceipts || selectedMessage.canGetViewers)
+                (selectedMessage.canGetReadReceipts || selectedMessage.canGetViewers || !state.isChannel)
     }
 
     suspend fun reloadViewers() {
@@ -316,7 +320,7 @@ fun ChatMessageOptionsMenu(
         },
         onTelegramSummary = {
             telegramAiScope.launch {
-                runCatching {
+                coRunCatching {
                     messageRepository.summarizeMessage(
                         chatId = selectedMessage.chatId,
                         messageId = selectedMessage.id
@@ -349,7 +353,7 @@ fun ChatMessageOptionsMenu(
             telegramAiScope.launch {
                 val languageCode = state.currentUser?.languageCode?.takeIf { it.isNotBlank() }
                     ?: Locale.getDefault().language
-                runCatching {
+                coRunCatching {
                     messageRepository.translateMessage(
                         chatId = selectedMessage.chatId,
                         messageId = selectedMessage.id,
@@ -393,7 +397,7 @@ fun ChatMessageOptionsMenu(
         },
         onBlock = {
             if (selectedMessage.senderId > 0L) {
-                component.onBlockUser(selectedMessage.senderId)
+                onBlockRequest(selectedMessage.senderId)
             }
             onDismiss()
         },

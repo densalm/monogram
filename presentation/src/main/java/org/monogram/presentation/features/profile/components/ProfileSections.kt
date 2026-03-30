@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.profile.components
 
+import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,13 +11,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
-import androidx.compose.material.icons.automirrored.rounded.VolumeOff
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.*
@@ -40,6 +40,220 @@ import org.monogram.presentation.features.chats.currentChat.components.VideoPlay
 import org.monogram.presentation.features.profile.ProfileComponent
 import java.util.*
 
+@Composable
+fun ProfileInfoSectionSkeleton(
+    itemCount: Int = 4,
+    showLinkedChat: Boolean = true
+) {
+    val shimmer = rememberShimmerBrush()
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    ProfileQuickActionsSkeleton(shimmer = shimmer)
+    if (showLinkedChat) {
+        LinkedChatItemSkeleton(shimmer = shimmer)
+    }
+    SectionHeaderSkeleton(shimmer = shimmer)
+
+    repeat(itemCount) { index ->
+        val position = when {
+            itemCount == 1 -> ItemPosition.STANDALONE
+            index == 0 -> ItemPosition.TOP
+            index == itemCount - 1 -> ItemPosition.BOTTOM
+            else -> ItemPosition.MIDDLE
+        }
+        val shape = when (position) {
+            ItemPosition.TOP -> RoundedCornerShape(
+                topStart = 24.dp,
+                topEnd = 24.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 4.dp
+            )
+
+            ItemPosition.MIDDLE -> RoundedCornerShape(4.dp)
+            ItemPosition.BOTTOM -> RoundedCornerShape(
+                bottomStart = 24.dp,
+                bottomEnd = 24.dp,
+                topStart = 4.dp,
+                topEnd = 4.dp
+            )
+
+            ItemPosition.STANDALONE -> RoundedCornerShape(24.dp)
+        }
+
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = shape,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(shimmer)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier
+                            .height(18.dp)
+                            .fillMaxWidth(
+                                when (index % 3) {
+                                    0 -> 0.54f
+                                    1 -> 0.48f
+                                    else -> 0.58f
+                                }
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(shimmer)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .height(12.dp)
+                            .fillMaxWidth(
+                                when (index % 3) {
+                                    0 -> 0.86f
+                                    1 -> 0.78f
+                                    else -> 0.9f
+                                }
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(shimmer)
+                    )
+                }
+            }
+        }
+        if (index < itemCount - 1) {
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+    }
+}
+
+@Composable
+private fun ProfileQuickActionsSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        ) {
+            repeat(3) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .widthIn(max = 100.dp)
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(shimmer)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .height(11.dp)
+                            .fillMaxWidth(0.8f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(shimmer)
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+}
+
+@Composable
+private fun LinkedChatItemSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(24.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(shimmer)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .height(18.dp)
+                        .fillMaxWidth(0.58f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer)
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .height(12.dp)
+                        .fillMaxWidth(0.92f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(shimmer)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .padding(top = 4.dp)
+                    .width(88.dp)
+                    .height(28.dp)
+                    .clip(CircleShape)
+                    .background(shimmer)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+}
+
+@Composable
+private fun SectionHeaderSkeleton(shimmer: androidx.compose.ui.graphics.Brush) {
+    Box(
+        modifier = Modifier
+            .padding(start = 12.dp, top = 16.dp, bottom = 8.dp)
+            .height(20.dp)
+            .width(164.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(shimmer)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileInfoSection(
     state: ProfileComponent.State,
@@ -52,19 +266,84 @@ fun ProfileInfoSection(
     onEdit: () -> Unit = {},
     onLeave: () -> Unit = {},
     onJoin: () -> Unit = {},
-    onReport: () -> Unit = {},
     onShowLogs: () -> Unit = {},
     onShowStatistics: () -> Unit = {},
     onShowRevenueStatistics: () -> Unit = {},
     onLinkedChatClick: () -> Unit = {},
     onShowPermissions: () -> Unit = {},
     onAcceptTOS: () -> Unit = {},
+    onToggleContact: () -> Unit = {},
     onLocationClick: (Double, Double, String) -> Unit = { _, _, _ -> }
 ) {
     val user = state.user
     val chat = state.chat
     val fullInfo = state.fullInfo
     val context = LocalContext.current
+    var isSponsorSheetVisible by remember { mutableStateOf(false) }
+
+    if (isSponsorSheetVisible) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { isSponsorSheetVisible = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 48.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = Color(0xFFFF6D66)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.support_monogram_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.sponsor_sheet_description),
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_VIEW, "https://boosty.to/monogram".toUri()),
+                                null
+                            )
+                        )
+                        isSponsorSheetVisible = false
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(stringResource(R.string.action_support_boosty))
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                TextButton(
+                    onClick = { isSponsorSheetVisible = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.action_maybe_later))
+                }
+            }
+        }
+    }
 
     val isGroupOrChannel = chat?.isGroup == true || chat?.isChannel == true
     val isCurrentUser = user != null && state.currentUser?.id == user.id
@@ -80,12 +359,9 @@ fun ProfileInfoSection(
             isGroupOrChannel = isGroupOrChannel,
             isCurrentUser = isCurrentUser,
             onSendMessage = onSendMessage,
-            onToggleMute = onToggleMute,
             onLeave = onLeave,
             onJoin = onJoin,
-            onReport = onReport,
-            onShowQRCode = onShowQRCode,
-            onEdit = onEdit
+            onShowQRCode = onShowQRCode
         )
     }
 
@@ -99,6 +375,19 @@ fun ProfileInfoSection(
     }
 
     val items = mutableListOf<@Composable (ItemPosition) -> Unit>()
+
+    if (user?.isSponsor == true) {
+        items.add { pos ->
+            SettingsTile(
+                icon = Icons.Rounded.Favorite,
+                title = stringResource(R.string.sponsor_profile_title),
+                subtitle = stringResource(R.string.sponsor_profile_subtitle),
+                iconColor = Color(0xFFFF6D66),
+                position = pos,
+                onClick = { isSponsorSheetVisible = true }
+            )
+        }
+    }
 
     if (!isCurrentUser && !isGroupOrChannel && (state.personalAvatarPath != null || chat?.personalAvatarPath != null)) {
         items.add { pos ->
@@ -165,20 +454,35 @@ fun ProfileInfoSection(
                 collectibleUsernames = collectibleUsernames,
                 disabledUsernames = disabledUsernames,
                 clipboardManager = clipboardManager,
+                isGroupOrChannel = isGroupOrChannel,
                 position = pos
             )
         }
     } else {
-        val displayLink = user?.username ?: chat?.username ?: state.publicLink
+        val displayLink = if (isGroupOrChannel) {
+            state.publicLink ?: chat?.username
+        } else {
+            user?.username ?: chat?.username ?: state.publicLink
+        }
         if (!displayLink.isNullOrEmpty()) {
             items.add { pos ->
                 val isLink = displayLink.startsWith("http", ignoreCase = true) ||
                         displayLink.startsWith("t.me", ignoreCase = true)
-                val finalTitle = if (isLink) displayLink else "@$displayLink"
-                val icon = if (isLink) Icons.Rounded.Link else Icons.Rounded.AlternateEmail
-                val subtitleText =
-                    if (isLink || isGroupOrChannel) stringResource(R.string.link_label)
-                    else stringResource(R.string.username_label)
+                val isPrivateInviteLink = isGroupOrChannel && isLink && (
+                        displayLink.contains("t.me/+", ignoreCase = true) ||
+                                displayLink.contains("joinchat", ignoreCase = true)
+                        )
+                val finalTitle = when {
+                    isGroupOrChannel && !isLink -> "https://t.me/$displayLink"
+                    isLink -> displayLink
+                    else -> "@$displayLink"
+                }
+                val icon = if (isGroupOrChannel || isLink) Icons.Rounded.Link else Icons.Rounded.AlternateEmail
+                val subtitleText = when {
+                    isPrivateInviteLink -> stringResource(R.string.invite_link_label)
+                    isGroupOrChannel || isLink -> stringResource(R.string.link_label)
+                    else -> stringResource(R.string.username_label)
+                }
 
                 SettingsTile(
                     icon = icon,
@@ -215,8 +519,8 @@ fun ProfileInfoSection(
     }
 
     user?.phoneNumber?.takeIf { it.isNotEmpty() }?.let { phone ->
-        val formattedPhone = CountryManager.formatPhone(context, phone)
-        val country = CountryManager.getCountryForPhone(context, phone)
+        val formattedPhone = CountryManager.formatPhone(phone)
+        val country = CountryManager.getCountryForPhone(phone)
         val operator = OperatorManager.detectOperator(phone, country?.iso)
         items.add { pos ->
             SettingsTile(
@@ -345,12 +649,12 @@ fun ProfileInfoSection(
         }
     }
 
-    if (!isGroupOrChannel && !isCurrentUser && user != null && user.type != UserTypeEnum.BOT && user.isMutualContact) {
+    if (!isGroupOrChannel && !isCurrentUser && user != null && user.type != UserTypeEnum.BOT) {
         val savedByYou = user.isContact
         items.add { pos ->
             SettingsTile(
                 icon = Icons.Rounded.PersonAdd,
-                title = stringResource(R.string.contact_added_you_yes),
+                title = if (savedByYou) stringResource(R.string.action_remove_contact) else stringResource(R.string.action_add_contact),
                 subtitle = if (savedByYou) {
                     stringResource(R.string.contact_saved_by_you)
                 } else {
@@ -358,7 +662,7 @@ fun ProfileInfoSection(
                 },
                 iconColor = Color(0xFF5C6BC0),
                 position = pos,
-                onClick = { }
+                onClick = onToggleContact
             )
         }
     }
@@ -554,33 +858,20 @@ private fun ProfileQuickActions(
     isGroupOrChannel: Boolean,
     isCurrentUser: Boolean,
     onSendMessage: () -> Unit,
-    onToggleMute: () -> Unit,
     onLeave: () -> Unit,
     onJoin: () -> Unit,
-    onReport: () -> Unit,
-    onShowQRCode: () -> Unit,
-    onEdit: () -> Unit
+    onShowQRCode: () -> Unit
 ) {
     val chat = state.chat
-    val user = state.user
-    
+
     val items = mutableListOf<@Composable (Modifier) -> Unit>()
 
     if (!isCurrentUser) {
         items.add { mod ->
             QuickActionItem(
-                Icons.AutoMirrored.Filled.Chat, stringResource(R.string.action_message),
+                if (chat?.isChannel == true) Icons.AutoMirrored.Rounded.OpenInNew else Icons.AutoMirrored.Filled.Chat,
+                if (chat?.isChannel == true) stringResource(R.string.action_open) else stringResource(R.string.action_message),
                 onClick = onSendMessage,
-                modifier = mod
-            )
-        }
-
-        val isMuted = chat?.isMuted == true
-        items.add { mod ->
-            QuickActionItem(
-                if (isMuted) Icons.AutoMirrored.Rounded.VolumeUp else Icons.AutoMirrored.Rounded.VolumeOff,
-                if (isMuted) stringResource(R.string.menu_unmute) else stringResource(R.string.menu_mute),
-                onClick = onToggleMute,
                 modifier = mod
             )
         }
@@ -598,43 +889,23 @@ private fun ProfileQuickActions(
         } else {
             items.add { mod ->
                 QuickActionItem(
-                    Icons.AutoMirrored.Rounded.Login, stringResource(R.string.action_join_chat),
+                    Icons.AutoMirrored.Rounded.Login,
+                    stringResource(R.string.action_join_chat),
                     onClick = onJoin,
                     modifier = mod
                 )
             }
         }
+    }
+
+    if (!isCurrentUser) {
         items.add { mod ->
             QuickActionItem(
-                Icons.Rounded.Report, stringResource(R.string.action_report),
-                onClick = onReport,
+                Icons.Default.QrCode,
+                stringResource(R.string.action_qr_code),
+                onClick = onShowQRCode,
                 modifier = mod
             )
-        }
-    } else {
-        val username = user?.username ?: chat?.username
-        if (!username.isNullOrEmpty()) {
-            items.add { mod ->
-                QuickActionItem(
-                    Icons.Default.QrCode, stringResource(R.string.action_qr_code),
-                    onClick = onShowQRCode,
-                    modifier = mod
-                )
-            }
-        }
-        
-        if (!isCurrentUser) {
-            val isContact = user?.isContact == true
-            if (isContact) {
-                items.add { mod ->
-                    QuickActionItem(
-                        Icons.Default.Edit,
-                        stringResource(R.string.menu_edit),
-                        onClick = onEdit,
-                        modifier = mod
-                    )
-                }
-            }
         }
     }
 
@@ -1078,6 +1349,7 @@ private fun UsernamesTile(
     collectibleUsernames: List<String>,
     disabledUsernames: List<String>,
     clipboardManager: ClipboardManager,
+    isGroupOrChannel: Boolean,
     position: ItemPosition
 ) {
     val allUsernames = (activeUsernames + collectibleUsernames + disabledUsernames).distinct()
@@ -1147,7 +1419,7 @@ private fun UsernamesTile(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = stringResource(R.string.username_label),
+                    text = if (isGroupOrChannel) stringResource(R.string.link_label) else stringResource(R.string.username_label),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )

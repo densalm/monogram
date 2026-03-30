@@ -21,14 +21,45 @@ interface ChatComponent {
     val repositoryMessage: MessageRepository
     val downloadUtils: IDownloadUtils
 
-    fun onSendMessage(text: String, entities: List<MessageEntity> = emptyList())
+    fun onSendMessage(
+        text: String,
+        entities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
     fun onSendSticker(stickerPath: String)
-    fun onSendPhoto(photoPath: String, caption: String = "")
-    fun onSendVideo(videoPath: String, caption: String = "")
+    fun onSendPhoto(
+        photoPath: String,
+        caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
+    fun onSendVideo(
+        videoPath: String,
+        caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
     fun onSendGif(gif: GifModel)
-    fun onSendGifFile(path: String, caption: String = "")
-    fun onSendAlbum(paths: List<String>, caption: String = "")
+    fun onSendGifFile(
+        path: String,
+        caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
+    fun onSendAlbum(
+        paths: List<String>,
+        caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
     fun onSendVoice(path: String, duration: Int, waveform: ByteArray)
+    fun onRefreshScheduledMessages()
+    fun onSendScheduledNow(message: MessageModel)
     fun loadMore()
     fun loadNewer()
     fun onBackClicked()
@@ -94,7 +125,13 @@ interface ChatComponent {
     fun onOpenWebView(url: String)
     fun onDismissWebView()
 
-    fun onOpenImages(images: List<String>, captions: List<String?>, startIndex: Int, messageId: Long? = null)
+    fun onOpenImages(
+        images: List<String>,
+        captions: List<String?>,
+        startIndex: Int,
+        messageId: Long? = null,
+        messageIds: List<Long> = emptyList()
+    )
     fun onDismissImages()
 
     fun onOpenVideo(path: String? = null, messageId: Long? = null, caption: String? = null)
@@ -156,6 +193,7 @@ interface ChatComponent {
         val isChannel: Boolean = false,
         val isOnline: Boolean = false,
         val isVerified: Boolean = false,
+        val isSponsor: Boolean = false,
         val canWrite: Boolean = false,
         val isAdmin: Boolean = false,
         val permissions: ChatPermissionsModel = ChatPermissionsModel(),
@@ -187,6 +225,7 @@ interface ChatComponent {
         val isLatestLoaded: Boolean = true,
         val isOldestLoaded: Boolean = false,
         val fontSize: Float = 16f,
+        val letterSpacing: Float = 0f,
         val bubbleRadius: Float = 18f,
         val wallpaper: String? = null,
         val wallpaperModel: WallpaperModel? = null,
@@ -228,6 +267,7 @@ interface ChatComponent {
         val miniAppTOSName: String? = null,
         val webViewUrl: String? = null,
         val fullScreenImages: List<String>? = null,
+        val fullScreenImageMessageIds: List<Long> = emptyList(),
         val fullScreenCaptions: List<String?> = emptyList(),
         val fullScreenStartIndex: Int = 0,
         val fullScreenVideoMessageId: Long? = null,
@@ -255,6 +295,7 @@ interface ChatComponent {
         val currentInlineQuery: String? = null,
         val isInlineBotLoading: Boolean = false,
         val isInstalledFromGooglePlay: Boolean = true,
-        val attachMenuBots: List<AttachMenuBotModel> = emptyList()
+        val attachMenuBots: List<AttachMenuBotModel> = emptyList(),
+        val scheduledMessages: List<MessageModel> = emptyList()
     )
 }

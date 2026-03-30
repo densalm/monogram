@@ -11,6 +11,7 @@ data class ChatEntity(
     val avatarPath: String?,
     val lastMessageText: String,
     val lastMessageTime: String,
+    val lastMessageDate: Long = 0L,
     val order: Long,
     val isPinned: Boolean,
     val isMuted: Boolean,
@@ -53,6 +54,7 @@ data class ChatEntity(
     val typingAction: String? = null,
     val draftMessage: String? = null,
     val isVerified: Boolean = false,
+    val isSponsor: Boolean = false,
     val viewAsTopics: Boolean = false,
     val isForum: Boolean = false,
     val isBot: Boolean = false,
@@ -75,5 +77,7 @@ data class ChatEntity(
     val permissionCanInviteUsers: Boolean = false,
     val permissionCanPinMessages: Boolean = false,
     val permissionCanCreateTopics: Boolean = false,
+    val lastMessageContentType: String = "text",
+    val lastMessageSenderName: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

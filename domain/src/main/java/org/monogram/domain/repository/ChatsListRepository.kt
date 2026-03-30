@@ -9,10 +9,22 @@ data class SearchMessagesResult(
     val nextOffset: String
 )
 
+data class FolderChatsUpdate(
+    val folderId: Int,
+    val chats: List<ChatModel>
+)
+
+data class FolderLoadingUpdate(
+    val folderId: Int,
+    val isLoading: Boolean
+)
+
 interface ChatsListRepository {
     val chatListFlow: StateFlow<List<ChatModel>>
+    val folderChatsFlow: Flow<FolderChatsUpdate>
     val foldersFlow: StateFlow<List<FolderModel>>
     val isLoadingFlow: StateFlow<Boolean>
+    val folderLoadingFlow: Flow<FolderLoadingUpdate>
     val connectionStateFlow: StateFlow<ConnectionStatus>
     val isArchivePinned: StateFlow<Boolean>
     val isArchiveAlwaysVisible: StateFlow<Boolean>
@@ -29,6 +41,8 @@ interface ChatsListRepository {
     suspend fun searchMessages(query: String, offset: String = "", limit: Int = 50): SearchMessagesResult
     fun toggleMuteChats(chatIds: Set<Long>, mute: Boolean)
     fun toggleArchiveChats(chatIds: Set<Long>, archive: Boolean)
+    fun togglePinChats(chatIds: Set<Long>, pin: Boolean, folderId: Int)
+    fun toggleReadChats(chatIds: Set<Long>, markAsUnread: Boolean)
     fun deleteChats(chatIds: Set<Long>)
     fun leaveChat(chatId: Long)
     fun setArchivePinned(pinned: Boolean)

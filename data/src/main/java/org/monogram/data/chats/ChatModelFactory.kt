@@ -1,14 +1,20 @@
 package org.monogram.data.chats
 
+import org.monogram.data.core.coRunCatching
 import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.mapper.ChatMapper
+import org.monogram.data.mapper.isForcedVerifiedChat
+import org.monogram.data.mapper.isForcedVerifiedUser
+import org.monogram.data.mapper.isSponsoredUser
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.UsernamesModel
 import org.monogram.domain.repository.AppPreferencesProvider
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class ChatModelFactory(
     private val gateway: TelegramGateway,
@@ -23,6 +29,7 @@ class ChatModelFactory(
     private val fetchUser: (Long) -> Unit
 ) {
     private val scope = scopeProvider.appScope
+    private val missingUserFullInfoUntilMs = ConcurrentHashMap<Long, Long>()
 
     fun mapChatToModel(chat: TdApi.Chat, order: Long, isPinned: Boolean): ChatModel {
         val cachedCounts = parseCachedCounts(chat.clientData)
@@ -34,11 +41,12 @@ class ChatModelFactory(
         var onlineCount = cache.onlineMemberCount[chat.id] ?: cachedCounts?.second ?: 0
         var isOnline = false
         var userStatus = ""
-        var isVerified = false
+        var isVerified = isForcedVerifiedChat(chat.id)
         var isForum = false
         var isBot = false
         var isMember = true
         var isAdmin = false
+        var isSponsor = false
         var username: String? = null
         var usernames: UsernamesModel? = null
         var description: String? = null
@@ -65,7 +73,7 @@ class ChatModelFactory(
                 cache.basicGroupFullInfoCache[type.basicGroupId]?.let { fullInfo ->
                     description = fullInfo.description
                     inviteLink = fullInfo.inviteLink?.inviteLink
-                    personalAvatarPath = resolvePhotoPath(fullInfo.photo, chat.id)
+                    personalAvatarPath = null
                 } ?: lazyLoad(cache.pendingBasicGroupFullInfo, type.basicGroupId) {
                     if (type.basicGroupId == 0L) return@lazyLoad
                     val result = gateway.execute(TdApi.GetBasicGroupFullInfo(type.basicGroupId))
@@ -80,7 +88,7 @@ class ChatModelFactory(
                 val supergroup = cache.supergroups[type.supergroupId]
                 supergroup?.let {
                     memberCount = it.memberCount
-                    isVerified = it.verificationStatus?.isVerified ?: false
+                    isVerified = (it.verificationStatus?.isVerified ?: false) || isForcedVerifiedChat(chat.id)
                     isForum = it.isForum
                     isMember = it.status !is TdApi.ChatMemberStatusLeft
                     isAdmin = it.status is TdApi.ChatMemberStatusAdministrator ||
@@ -103,7 +111,7 @@ class ChatModelFactory(
                     cache.supergroupFullInfoCache[type.supergroupId]?.let { fullInfo ->
                         description = fullInfo.description
                         inviteLink = fullInfo.inviteLink?.inviteLink
-                        personalAvatarPath = resolvePhotoPath(fullInfo.photo, chat.id)
+                        personalAvatarPath = null
                     } ?: lazyLoad(cache.pendingSupergroupFullInfo, type.supergroupId) {
                         if (type.supergroupId == 0L) return@lazyLoad
                         val result = gateway.execute(TdApi.GetSupergroupFullInfo(type.supergroupId))
@@ -119,7 +127,8 @@ class ChatModelFactory(
                     isOnline = !isBot && user.status is TdApi.UserStatusOnline
                     if (isOnline) onlineCount = 1
                     userStatus = chatMapper.formatUserStatus(user.status, isBot)
-                    isVerified = user.verificationStatus?.isVerified ?: false
+                    isVerified = (user.verificationStatus?.isVerified ?: false) || isForcedVerifiedUser(user.id)
+                    isSponsor = isSponsoredUser(user.id)
                     username = user.usernames?.activeUsernames?.firstOrNull()
                     usernames = user.usernames?.toDomain()
                     if (smallPhoto == null) {
@@ -130,12 +139,21 @@ class ChatModelFactory(
 
                 cache.userFullInfoCache[type.userId]?.let { fullInfo ->
                     description = fullInfo.bio?.text
-                    personalAvatarPath = resolvePhotoPath(fullInfo.photo, chat.id)
-                } ?: lazyLoad(cache.pendingUserFullInfo, type.userId) {
-                    if (type.userId == 0L) return@lazyLoad
-                    val result = gateway.execute(TdApi.GetUserFullInfo(type.userId))
-                    cache.userFullInfoCache[type.userId] = result
-                    triggerUpdate(chat.id)
+                    personalAvatarPath = resolvePhotoPath(fullInfo.personalPhoto, chat.id)
+                } ?: run {
+                    if (!isUserFullInfoTemporarilyMissing(type.userId)) {
+                        lazyLoad(cache.pendingUserFullInfo, type.userId) {
+                            if (type.userId == 0L) return@lazyLoad
+                            val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
+                            if (result != null) {
+                                cache.userFullInfoCache[type.userId] = result
+                                missingUserFullInfoUntilMs.remove(type.userId)
+                                triggerUpdate(chat.id)
+                            } else {
+                                rememberMissingUserFullInfo(type.userId)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -204,6 +222,7 @@ class ChatModelFactory(
             isOnline = isOnline,
             userStatus = userStatus,
             isVerified = isVerified,
+            isSponsor = isSponsor,
             isForum = isForum,
             isBot = isBot,
             memberCount = memberCount,
@@ -213,6 +232,7 @@ class ChatModelFactory(
             lastMessageText = txt,
             lastMessageEntities = entities,
             lastMessageTime = time,
+            lastMessageDate = chat.lastMessage?.date?.toLong() ?: 0L,
             isMuted = isMuted,
             isAdmin = isAdmin,
             isMember = isMember,
@@ -228,20 +248,45 @@ class ChatModelFactory(
     private fun <K> lazyLoad(pendingSet: MutableSet<K>, key: K, block: suspend () -> Unit) {
         if (pendingSet.add(key)) {
             scope.launch(dispatchers.io) {
-                runCatching { block() }
+                coRunCatching { block() }
                 pendingSet.remove(key)
             }
         }
     }
 
+    private fun isUserFullInfoTemporarilyMissing(userId: Long): Boolean {
+        if (userId <= 0L) return true
+        val until = missingUserFullInfoUntilMs[userId] ?: return false
+        if (until > System.currentTimeMillis()) return true
+        missingUserFullInfoUntilMs.remove(userId, until)
+        return false
+    }
+
+    private fun rememberMissingUserFullInfo(userId: Long) {
+        if (userId <= 0L) return
+        missingUserFullInfoUntilMs[userId] = System.currentTimeMillis() + USER_FULL_INFO_RETRY_TTL_MS
+    }
+
     private fun resolvePhotoPath(photoFile: TdApi.File?, chatId: Long): String? {
         if (photoFile == null) return null
-        fileManager.registerChatPhoto(photoFile.id, chatId)
-        val path = photoFile.local.path.ifEmpty { fileManager.getFilePath(photoFile.id) ?: "" }
-        return path.ifEmpty {
-            fileManager.downloadFile(photoFile.id, 24, offset = 0, limit = 0, synchronous = false)
-            null
+        if (photoFile.id != 0) {
+            fileManager.registerChatPhoto(photoFile.id, chatId)
         }
+
+        val localPath = photoFile.local.path
+        if (isValidPath(localPath)) {
+            return localPath
+        }
+
+        val cachedPath = photoFile.id.takeIf { it != 0 }?.let { fileManager.getFilePath(it) }
+        if (isValidPath(cachedPath)) {
+            return cachedPath
+        }
+
+        if (photoFile.id != 0) {
+            fileManager.downloadFile(photoFile.id, 24, offset = 0, limit = 0, synchronous = false)
+        }
+        return null
     }
 
     private fun resolvePhotoPath(chatPhoto: TdApi.ChatPhoto?, chatId: Long): String? {
@@ -262,5 +307,13 @@ class ChatModelFactory(
         val onlineCount = Regex("""oc:(\d+)""").find(clientData)?.groupValues?.getOrNull(1)?.toIntOrNull()
         if (memberCount == null && onlineCount == null) return null
         return (memberCount ?: 0) to (onlineCount ?: 0)
+    }
+
+    private fun isValidPath(path: String?): Boolean {
+        return !path.isNullOrBlank() && File(path).exists()
+    }
+
+    companion object {
+        private const val USER_FULL_INFO_RETRY_TTL_MS = 5 * 60 * 1000L
     }
 }

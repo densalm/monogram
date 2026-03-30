@@ -8,10 +8,13 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
+import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.cache.ChatLocalDataSource
+import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.MessageRemoteDataSource
 import org.monogram.data.gateway.TelegramGateway
+import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.map
 import org.monogram.data.mapper.toDomain
@@ -20,10 +23,7 @@ import org.monogram.domain.models.webapp.InstantViewModel
 import org.monogram.domain.models.webapp.InvoiceModel
 import org.monogram.domain.models.webapp.ThemeParams
 import org.monogram.domain.models.webapp.WebAppInfoModel
-import org.monogram.domain.repository.InlineBotResultsModel
-import org.monogram.domain.repository.MessageRepository
-import org.monogram.domain.repository.ProfileMediaFilter
-import org.monogram.domain.repository.SearchChatMessagesResult
+import org.monogram.domain.repository.*
 import java.io.File
 
 class MessageRepositoryImpl(
@@ -35,14 +35,18 @@ class MessageRepositoryImpl(
     private val fileDataSource: FileDataSource,
     private val dispatcherProvider: DispatcherProvider,
     scopeProvider: ScopeProvider,
-    private val chatLocalDataSource: ChatLocalDataSource
+    private val chatLocalDataSource: ChatLocalDataSource,
+    private val userLocalDataSource: UserLocalDataSource,
+    private val fileUpdateHandler: FileUpdateHandler
 ) : MessageRepository {
     private val scope = scopeProvider.appScope
 
     override val newMessageFlow = messageRemoteDataSource.newMessageFlow
+    override val senderUpdateFlow = messageMapper.senderUpdateFlow
     override val messageEditedFlow = messageRemoteDataSource.messageEditedFlow
     override val messageUploadProgressFlow = messageRemoteDataSource.messageUploadProgressFlow
     override val messageDownloadProgressFlow = messageRemoteDataSource.messageDownloadProgressFlow
+    override val messageDownloadCancelledFlow = messageRemoteDataSource.messageDownloadCancelledFlow
     override val messageReadFlow = messageRemoteDataSource.messageReadFlow
     override val messageDownloadCompletedFlow = messageRemoteDataSource.messageDownloadCompletedFlow
     override val messageDeletedFlow = messageRemoteDataSource.messageDeletedFlow
@@ -55,8 +59,57 @@ class MessageRepositoryImpl(
             try {
                 gateway.updates.collect { update ->
                     messageRemoteDataSource.handleUpdate(update)
-                    if (update is TdApi.UpdateNewMessage) {
-                        chatLocalDataSource.insertMessage(messageMapper.mapToEntity(update.message))
+                    when (update) {
+                        is TdApi.UpdateNewMessage -> {
+                            val entity = messageMapper.mapToEntity(update.message, ::resolveSenderName)
+                            chatLocalDataSource.insertMessage(entity)
+                        }
+
+                        is TdApi.UpdateMessageContent -> {
+                            val extracted = messageMapper.extractCachedContent(update.newContent)
+                            chatLocalDataSource.updateMessageContent(
+                                messageId = update.messageId,
+                                content = extracted.text,
+                                contentType = extracted.type,
+                                contentMeta = extracted.meta,
+                                mediaFileId = extracted.fileId,
+                                mediaPath = extracted.path,
+                                editDate = 0
+                            )
+                        }
+
+                        is TdApi.UpdateMessageEdited -> {
+                            val updated = messageRemoteDataSource.getMessage(update.chatId, update.messageId)
+                            if (updated != null) {
+                                chatLocalDataSource.insertMessage(
+                                    messageMapper.mapToEntity(
+                                        updated,
+                                        ::resolveSenderName
+                                    )
+                                )
+                            }
+                        }
+
+                        is TdApi.UpdateMessageInteractionInfo -> {
+                            chatLocalDataSource.updateInteractionInfo(
+                                messageId = update.messageId,
+                                viewCount = update.interactionInfo?.viewCount ?: 0,
+                                forwardCount = update.interactionInfo?.forwardCount ?: 0,
+                                replyCount = update.interactionInfo?.replyInfo?.replyCount ?: 0
+                            )
+                        }
+
+                        is TdApi.UpdateChatReadInbox -> {
+                            chatLocalDataSource.markAsRead(update.chatId, update.lastReadInboxMessageId)
+                        }
+
+                        is TdApi.UpdateDeleteMessages -> {
+                            if (update.isPermanent) {
+                                update.messageIds.forEach { messageId ->
+                                    chatLocalDataSource.deleteMessage(messageId)
+                                }
+                            }
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -65,8 +118,17 @@ class MessageRepositoryImpl(
         }
 
         scope.launch(dispatcherProvider.io) {
-            val oneMonthAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-            chatLocalDataSource.deleteExpired(oneMonthAgo)
+            val ninetyDaysAgo = System.currentTimeMillis() - (90L * 24 * 60 * 60 * 1000)
+            chatLocalDataSource.deleteExpired(ninetyDaysAgo)
+        }
+
+        scope.launch {
+            fileUpdateHandler.fileDownloadCompleted.collect { (fileIdLong, path) ->
+                val fileId = fileIdLong.toInt()
+                if (fileId != 0 && path.isNotBlank()) {
+                    chatLocalDataSource.updateMediaPath(fileId, path)
+                }
+            }
         }
     }
 
@@ -101,43 +163,124 @@ class MessageRepositoryImpl(
         text: String,
         replyToMsgId: Long?,
         entities: List<MessageEntity>,
-        threadId: Long?
+        threadId: Long?,
+        sendOptions: MessageSendOptions
     ) {
-        messageRemoteDataSource.sendMessage(chatId, text, replyToMsgId, entities, threadId)
+        messageRemoteDataSource.sendMessage(chatId, text, replyToMsgId, entities, threadId, sendOptions)
     }
 
     override suspend fun sendSticker(chatId: Long, stickerPath: String, replyToMsgId: Long?, threadId: Long?) {
         messageRemoteDataSource.sendSticker(chatId, stickerPath, replyToMsgId, threadId)
     }
 
-    override suspend fun sendPhoto(chatId: Long, photoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendPhoto(chatId, photoPath, caption, replyToMsgId, threadId)
+    override suspend fun sendPhoto(
+        chatId: Long,
+        photoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendPhoto(
+            chatId = chatId,
+            photoPath = photoPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendVideo(chatId: Long, videoPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendVideo(chatId, videoPath, caption, replyToMsgId, threadId)
+    override suspend fun sendVideo(
+        chatId: Long,
+        videoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendVideo(
+            chatId = chatId,
+            videoPath = videoPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
     override suspend fun sendDocument(
         chatId: Long,
         documentPath: String,
         caption: String,
+        captionEntities: List<MessageEntity>,
         replyToMsgId: Long?,
-        threadId: Long?
+        threadId: Long?,
+        sendOptions: MessageSendOptions
     ) {
-        messageRemoteDataSource.sendDocument(chatId, documentPath, caption, replyToMsgId, threadId)
+        messageRemoteDataSource.sendDocument(
+            chatId = chatId,
+            documentPath = documentPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendGif(chatId: Long, gifId: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendGif(chatId, gifId, replyToMsgId, threadId)
+    override suspend fun sendGif(
+        chatId: Long,
+        gifId: String,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendGif(chatId, gifId, replyToMsgId, threadId, sendOptions)
     }
 
-    override suspend fun sendGifFile(chatId: Long, gifPath: String, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendGifFile(chatId, gifPath, caption, replyToMsgId, threadId)
+    override suspend fun sendGifFile(
+        chatId: Long,
+        gifPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendGifFile(
+            chatId = chatId,
+            gifPath = gifPath,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
-    override suspend fun sendAlbum(chatId: Long, paths: List<String>, caption: String, replyToMsgId: Long?, threadId: Long?) {
-        messageRemoteDataSource.sendAlbum(chatId, paths, caption, replyToMsgId, threadId)
+    override suspend fun sendAlbum(
+        chatId: Long,
+        paths: List<String>,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        replyToMsgId: Long?,
+        threadId: Long?,
+        sendOptions: MessageSendOptions
+    ) {
+        messageRemoteDataSource.sendAlbum(
+            chatId = chatId,
+            paths = paths,
+            caption = caption,
+            captionEntities = captionEntities,
+            replyToMsgId = replyToMsgId,
+            threadId = threadId,
+            sendOptions = sendOptions
+        )
     }
 
     override suspend fun sendVideoNote(chatId: Long, videoPath: String, duration: Int, length: Int) {
@@ -179,18 +322,38 @@ class MessageRepositoryImpl(
         fromMessageId: Long,
         limit: Int,
         threadId: Long?
-    ): List<MessageModel> =
+    ): OlderMessagesPage =
         withContext(dispatcherProvider.io) {
-            val remoteMessages = messageRemoteDataSource.getMessagesOlder(chatId, fromMessageId, limit, threadId)
-
-            scope.launch(dispatcherProvider.io) {
-                remoteMessages.forEach { model ->
-                    messageRemoteDataSource.getMessage(chatId, model.id)?.let {
-                        chatLocalDataSource.insertMessage(messageMapper.mapToEntity(it))
-                    }
-                }
+            val cached = if (fromMessageId == 0L) {
+                val cachedEntities = chatLocalDataSource.getLatestMessages(chatId, limit)
+                mapLocalMessages(cachedEntities)
+            } else {
+                emptyList()
             }
-            remoteMessages
+
+            try {
+                val remotePage = messageRemoteDataSource.getMessagesOlder(chatId, fromMessageId, limit, threadId)
+                persistRemoteMessages(chatId, remotePage.messages)
+                remotePage
+            } catch (e: Exception) {
+                val fallbackMessages = if (cached.isNotEmpty()) {
+                    cached
+                } else {
+                    val local = chatLocalDataSource.getMessagesOlder(chatId, fromMessageId, limit)
+                    mapLocalMessages(local)
+                }
+                OlderMessagesPage(
+                    messages = fallbackMessages,
+                    reachedOldest = false,
+                    isRemote = false
+                )
+            }
+        }
+
+    override suspend fun getCachedMessages(chatId: Long, limit: Int): List<MessageModel> =
+        withContext(dispatcherProvider.io) {
+            val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+            mapLocalMessages(local)
         }
 
     override suspend fun getMessagesNewer(
@@ -200,17 +363,14 @@ class MessageRepositoryImpl(
         threadId: Long?
     ): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            val remoteMessages = messageRemoteDataSource.getMessagesNewer(chatId, fromMessageId, limit, threadId)
-
-            scope.launch(dispatcherProvider.io) {
-                remoteMessages.forEach { model ->
-                    messageRemoteDataSource.getMessage(chatId, model.id)?.let {
-                        chatLocalDataSource.insertMessage(messageMapper.mapToEntity(it))
-                    }
-                }
+            try {
+                val remoteMessages = messageRemoteDataSource.getMessagesNewer(chatId, fromMessageId, limit, threadId)
+                persistRemoteMessages(chatId, remoteMessages)
+                remoteMessages
+            } catch (e: Exception) {
+                chatLocalDataSource.getMessagesNewer(chatId, fromMessageId, limit)
+                    .let { mapLocalMessages(it) }
             }
-
-            remoteMessages
         }
 
     override suspend fun getMessagesAround(
@@ -220,22 +380,20 @@ class MessageRepositoryImpl(
         threadId: Long?
     ): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            val remoteMessages = messageRemoteDataSource.getMessagesAround(chatId, messageId, limit, threadId)
-
-            scope.launch(dispatcherProvider.io) {
-                remoteMessages.forEach { model ->
-                    messageRemoteDataSource.getMessage(chatId, model.id)?.let {
-                        chatLocalDataSource.insertMessage(messageMapper.mapToEntity(it))
-                    }
-                }
+            try {
+                val remoteMessages = messageRemoteDataSource.getMessagesAround(chatId, messageId, limit, threadId)
+                persistRemoteMessages(chatId, remoteMessages)
+                remoteMessages
+            } catch (e: Exception) {
+                val local = chatLocalDataSource.getLatestMessages(chatId, limit)
+                mapLocalMessages(local)
             }
-            remoteMessages
         }
 
     @Deprecated("Use getMessagesOlder instead")
     override suspend fun getMessages(chatId: Long, fromMessageId: Long, limit: Int): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            getMessagesOlder(chatId, fromMessageId, limit)
+            getMessagesOlder(chatId, fromMessageId, limit).messages
         }
 
     override suspend fun getChatDraft(chatId: Long, threadId: Long?): String? =
@@ -263,13 +421,11 @@ class MessageRepositoryImpl(
         } else {
             null
         }
-        draft?.let {
-            scope.launch {
-                messageRemoteDataSource.saveChatDraft(chatId, it, replyToMsgId, threadId)
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.saveChatDraft(chatId, draft, replyToMsgId, threadId)
 
-                cache.updateChat(chatId) { chat ->
-                    chat.draftMessage = it
-                }
+            cache.updateChat(chatId) { chat ->
+                chat.draftMessage = draft
             }
         }
     }
@@ -297,10 +453,25 @@ class MessageRepositoryImpl(
             messageRemoteDataSource.getPinnedMessageCount(chatId, threadId)
         }
 
+    override suspend fun getScheduledMessages(chatId: Long): List<MessageModel> =
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.getScheduledMessages(chatId)
+        }
+
+    override suspend fun sendScheduledNow(chatId: Long, messageId: Long) {
+        withContext(dispatcherProvider.io) {
+            messageRemoteDataSource.sendScheduledNow(chatId, messageId)
+        }
+    }
+
     override fun downloadFile(fileId: Int, priority: Int, offset: Long, limit: Long, synchronous: Boolean) {
         scope.launch {
             fileDataSource.downloadFile(fileId, priority, offset, limit, synchronous)
         }
+    }
+
+    override fun invalidateSenderCache(userId: Long) {
+        messageMapper.invalidateSenderCache(userId)
     }
 
     override suspend fun cancelDownloadFile(fileId: Int) {
@@ -466,7 +637,7 @@ class MessageRepositoryImpl(
     }
 
     override suspend fun getFilePath(fileId: Int): String? {
-        val result = gateway.execute(TdApi.GetFile(fileId))
+        val result = coRunCatching { gateway.execute(TdApi.GetFile(fileId)) }.getOrNull()
         return if (result is TdApi.File) {
             result.local.path.ifEmpty { null }
         } else {
@@ -511,7 +682,7 @@ class MessageRepositoryImpl(
             result.messages.mapNotNull { msg ->
                 cache.putMessage(msg)
                 triggerFileDownload(msg)
-                runCatching {
+                coRunCatching {
                     messageMapper.mapMessageToModel(msg)
                 }.getOrNull()
             }
@@ -521,21 +692,41 @@ class MessageRepositoryImpl(
     }
 
     private suspend fun triggerFileDownload(msg: TdApi.Message) {
-        val file: TdApi.File? = when (val content = msg.content) {
+        val lowQualityFile = when (val content = msg.content) {
             is TdApi.MessagePhoto -> {
-                content.photo.sizes.firstOrNull()?.photo
+                content.photo.sizes.find { it.type == "m" }?.photo
+                    ?: content.photo.sizes.find { it.type == "s" }?.photo
+                    ?: content.photo.sizes.firstOrNull()?.photo
             }
-            is TdApi.MessageVideo -> {
-                content.video.thumbnail?.file
-            }
-            is TdApi.MessageDocument -> {
-                content.document.thumbnail?.file
-            }
+
+            is TdApi.MessageVideo -> content.video.thumbnail?.file
+            is TdApi.MessageDocument -> content.document.thumbnail?.file
             is TdApi.MessageAnimation -> content.animation.thumbnail?.file
             else -> null
         }
+
+        if (lowQualityFile != null && lowQualityFile.local.path.isEmpty()) {
+            fileDataSource.downloadFile(lowQualityFile.id, 32, 0, 0, false)
+        }
+
+        triggerFullQualityDownload(msg)
+    }
+
+    private suspend fun triggerFullQualityDownload(msg: TdApi.Message) {
+        val file = when (val content = msg.content) {
+            is TdApi.MessagePhoto -> {
+                content.photo.sizes.find { it.type == "x" }?.photo
+                    ?: content.photo.sizes.find { it.type == "m" }?.photo
+                    ?: content.photo.sizes.lastOrNull()?.photo
+            }
+
+            is TdApi.MessageVideo -> content.video.video
+            is TdApi.MessageAnimation -> content.animation.animation
+            else -> null
+        }
+
         if (file != null && file.local.path.isEmpty()) {
-            fileDataSource.downloadFile(file.id, 32, 0, 0, false)
+            fileDataSource.downloadFile(file.id, 16, 0, 0, false)
         }
     }
 
@@ -960,7 +1151,7 @@ class MessageRepositoryImpl(
         }
 
     override suspend fun getFileInfo(fileId: Int): FileModel? {
-        val result = gateway.execute(TdApi.GetFile(fileId))
+        val result = coRunCatching { gateway.execute(TdApi.GetFile(fileId)) }.getOrNull()
         if (result is TdApi.File) {
             val model = FileModel(
                 id = result.id,
@@ -976,12 +1167,24 @@ class MessageRepositoryImpl(
     }
 
     override suspend fun getHighResFileId(chatId: Long, messageId: Long): Int? {
-        val result = gateway.execute(TdApi.GetMessage(chatId, messageId))
-        if (result is TdApi.Message && result.content is TdApi.MessagePhoto) {
-            val photo = (result.content as TdApi.MessagePhoto).photo
-            return photo.sizes.lastOrNull()?.photo?.id
-        } else {
-            return null
+        return try {
+            val result = gateway.execute(TdApi.GetMessage(chatId, messageId))
+            if (result is TdApi.Message && result.content is TdApi.MessagePhoto) {
+                val photo = (result.content as TdApi.MessagePhoto).photo
+                val bestSize = photo.sizes.maxByOrNull { it.width.toLong() * it.height.toLong() }
+                    ?: photo.sizes.lastOrNull()
+                val fileId = bestSize?.photo?.id ?: return null
+                messageRemoteDataSource.registerFileForMessage(fileId, chatId, messageId)
+                fileId
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(
+                "MessageRepositoryImpl",
+                "Failed to resolve high-res file id for chatId=$chatId, messageId=$messageId: ${e.message}"
+            )
+            null
         }
     }
 
@@ -997,5 +1200,108 @@ class MessageRepositoryImpl(
         scope.launch(dispatcherProvider.io) {
             chatLocalDataSource.clearAll()
         }
+    }
+
+    private fun persistRemoteMessages(chatId: Long, remoteMessages: List<MessageModel>) {
+        scope.launch(dispatcherProvider.io) {
+            val entities = remoteMessages.mapNotNull { model ->
+                messageRemoteDataSource.getMessage(chatId, model.id)?.let { message ->
+                    messageMapper.mapToEntity(message, ::resolveSenderName)
+                }
+            }
+            if (entities.isNotEmpty()) {
+                chatLocalDataSource.insertMessages(entities)
+            }
+        }
+    }
+
+    private fun resolveSenderName(senderId: Long): String? {
+        val user = cache.getUser(senderId)
+        if (user != null) {
+            return listOfNotNull(user.firstName.takeIf { it.isNotBlank() }, user.lastName?.takeIf { it.isNotBlank() })
+                .joinToString(" ")
+                .ifBlank { null }
+        }
+        return cache.getChat(senderId)?.title
+    }
+
+    private suspend fun mapLocalMessages(
+        entities: List<org.monogram.data.db.model.MessageEntity>
+    ): List<MessageModel> {
+        prewarmCachedSenders(entities)
+        return entities.map { entity ->
+            val model = messageMapper.mapEntityToModel(entity)
+            enrichSenderFromCache(model)
+        }
+    }
+
+    private suspend fun prewarmCachedSenders(
+        entities: List<org.monogram.data.db.model.MessageEntity>
+    ) {
+        val senderIds = entities.asSequence()
+            .map { it.senderId }
+            .filter { it > 0L }
+            .distinct()
+            .toList()
+
+        senderIds.forEach { senderId ->
+            if (cache.getUser(senderId) != null) return@forEach
+            val localUser = coRunCatching { userLocalDataSource.getUser(senderId) }.getOrNull() ?: return@forEach
+            cache.putUser(localUser)
+        }
+    }
+
+    private fun enrichSenderFromCache(model: MessageModel): MessageModel {
+        val senderId = model.senderId
+        if (senderId <= 0L) return model
+
+        val cachedUser = cache.getUser(senderId)
+        if (cachedUser != null) {
+            val resolvedName = listOfNotNull(
+                cachedUser.firstName.takeIf { it.isNotBlank() },
+                cachedUser.lastName?.takeIf { it.isNotBlank() }
+            ).joinToString(" ").ifBlank { model.senderName }
+
+            val resolvedAvatar = resolveFilePath(cachedUser.profilePhoto?.small)
+            if (resolvedAvatar == null) {
+                cachedUser.profilePhoto?.small?.id?.takeIf { it != 0 }?.let { avatarFileId ->
+                    messageRemoteDataSource.enqueueDownload(avatarFileId, priority = 16)
+                }
+            }
+            val emojiId = when (val type = cachedUser.emojiStatus?.type) {
+                is TdApi.EmojiStatusTypeCustomEmoji -> type.customEmojiId
+                is TdApi.EmojiStatusTypeUpgradedGift -> type.modelCustomEmojiId
+                else -> model.senderStatusEmojiId
+            }
+
+            return model.copy(
+                senderName = resolvedName,
+                senderAvatar = resolvedAvatar ?: model.senderAvatar,
+                isSenderVerified = cachedUser.verificationStatus?.isVerified ?: model.isSenderVerified,
+                isSenderPremium = cachedUser.isPremium || model.isSenderPremium,
+                senderStatusEmojiId = emojiId
+            )
+        }
+
+        val cachedChat = cache.getChat(senderId)
+        if (cachedChat != null) {
+            val resolvedName = cachedChat.title.takeIf { it.isNotBlank() } ?: model.senderName
+            val resolvedAvatar = resolveFilePath(cachedChat.photo?.small)
+            return model.copy(
+                senderName = resolvedName,
+                senderAvatar = resolvedAvatar ?: model.senderAvatar
+            )
+        }
+
+        return model
+    }
+
+    private fun resolveFilePath(file: TdApi.File?): String? {
+        if (file == null) return null
+        val directPath = file.local.path.takeIf { it.isNotBlank() && File(it).exists() }
+        if (directPath != null) return directPath
+
+        val cachedPath = cache.fileCache[file.id]?.local?.path
+        return cachedPath?.takeIf { it.isNotBlank() && File(it).exists() }
     }
 }

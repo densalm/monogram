@@ -42,19 +42,25 @@ fun ProfileTopBar(
     userModel: UserModel?,
     chatModel: ChatModel?,
     isVerified: Boolean,
+    isSponsor: Boolean,
     canSearch: Boolean = false,
     canShare: Boolean = false,
     canEdit: Boolean = false,
+    canEditContact: Boolean = false,
+    canReport: Boolean = false,
     canBlock: Boolean = false,
+    isBlocked: Boolean = false,
     canDelete: Boolean = false,
     onSearch: () -> Unit = {},
     onShare: () -> Unit = {},
     onEdit: () -> Unit = {},
+    onEditContact: () -> Unit = {},
+    onReport: () -> Unit = {},
     onBlock: () -> Unit = {},
     onDelete: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
-    val hasMenuActions = canShare || canEdit || canBlock || canDelete
+    val hasMenuActions = canShare || canEdit || canEditContact || canReport || canBlock || canDelete
 
     val iconTint = lerp(
         start = MaterialTheme.colorScheme.onSurface,
@@ -91,6 +97,15 @@ fun ProfileTopBar(
                             contentDescription = stringResource(R.string.cd_verified),
                             modifier = Modifier.size(22.dp),
                             tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (isSponsor) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Favorite,
+                            contentDescription = stringResource(R.string.cd_sponsor),
+                            modifier = Modifier.size(22.dp),
+                            tint = Color(0xFFE53935)
                         )
                     }
 
@@ -218,10 +233,32 @@ fun ProfileTopBar(
                                     }
                                 )
                             }
+                            if (canEditContact) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Edit,
+                                    title = stringResource(R.string.contact_menu_edit_name),
+                                    onClick = {
+                                        showMenu = false
+                                        onEditContact()
+                                    }
+                                )
+                            }
+                            if (canReport) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Report,
+                                    title = stringResource(R.string.menu_report),
+                                    onClick = {
+                                        showMenu = false
+                                        onReport()
+                                    }
+                                )
+                            }
                             if (canBlock && userModel != null) {
                                 MenuOptionRow(
-                                    icon = Icons.Rounded.Block,
-                                    title = stringResource(R.string.menu_block_user),
+                                    icon = if (isBlocked) Icons.Rounded.LockOpen else Icons.Rounded.Block,
+                                    title = if (isBlocked) stringResource(R.string.privacy_unblock_action) else stringResource(
+                                        R.string.menu_block_user
+                                    ),
                                     textColor = MaterialTheme.colorScheme.error,
                                     iconTint = MaterialTheme.colorScheme.error,
                                     onClick = {

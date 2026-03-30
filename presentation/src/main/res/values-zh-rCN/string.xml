@@ -82,6 +82,7 @@
     <string name="verification_delivery_telegram">我们已通过 Telegram 发送验证码到您的其他设备。</string>
     <string name="verification_delivery_sms">我们已通过短信发送验证码。</string>
     <string name="verification_delivery_call">我们正在拨打您的电话以告知验证码。</string>
+    <string name="verification_delivery_email">我们已将验证码发送至 %1$s。</string>
     <string name="verification_delivery_default">我们已发送验证码。</string>
     <string name="confirm_button">确认</string>
     <string name="resend_code_timer">%1$s 后重新发送</string>
@@ -114,7 +115,6 @@
     <string name="search_section_global">全局搜索</string>
     <string name="search_section_messages">消息</string>
     <string name="action_show_more">显示更多</string>
-    <string name="cd_chat_list">会话列表</string>
     <string name="search_conversations_placeholder">搜索会话…</string>
     <string name="waiting_for_network">等待网络连接…</string>
     <string name="connecting">正在连接…</string>
@@ -257,6 +257,7 @@
     <string name="menu_edit">编辑</string>
     <string name="menu_block_user">屏蔽用户</string>
     <string name="menu_leave">退出</string>
+    <string name="action_open">打开</string>
     <string name="action_message">发消息</string>
     <string name="action_join_chat">加入</string>
     <string name="action_report">举报</string>
@@ -272,6 +273,7 @@
     <string name="bot_permissions_subtitle">管理此机器人的权限</string>
     <string name="username_label">用户名</string>
     <string name="link_label">链接</string>
+    <string name="invite_link_label">邀请链接</string>
     <string name="bot_info_label">机器人信息</string>
     <string name="description_label">描述</string>
     <string name="bio_label">简介</string>
@@ -321,6 +323,9 @@
     <string name="qr_code_title">二维码</string>
     <string name="action_share">分享</string>
     <string name="support_monogram_description">MonoGram 是一个免费且开源的项目。您的支持有助于我们维持项目并开发新功能。</string>
+    <string name="sponsor_sheet_description">带爱心的赞助者徽章可通过 Advanced 支持等级获得，或通过等值于 150 卢布（约
+        $1.96）的支持获得。
+    </string>
     <string name="action_support_boosty">在 Boosty 上支持</string>
     <string name="action_maybe_later">稍后再说</string>
     <string name="cd_edit_profile">编辑个人资料</string>
@@ -353,9 +358,15 @@
     <string name="telegram_premium_title">Telegram Premium</string>
     <string name="telegram_premium_subtitle">解锁专属功能</string>
     <string name="support_monogram_subtitle_settings">帮助我们开发项目</string>
+    <string name="sponsor_profile_title">支持了 MonoGram</string>
+    <string name="sponsor_profile_subtitle">该用户正在支持项目，帮助我们持续改进</string>
     <string name="about_subtitle_settings">MonoGram 版本和信息</string>
     <string name="debug_title">调试</string>
     <string name="debug_subtitle">调试选项</string>
+    <string name="debug_sponsor_sheet_title">显示赞助者弹窗</string>
+    <string name="debug_sponsor_sheet_subtitle">打开赞助者信息底部弹窗</string>
+    <string name="debug_force_sponsor_sync_title">强制同步赞助者</string>
+    <string name="debug_force_sponsor_sync_subtitle">立即从频道拉取赞助者 ID</string>
     <string name="log_out_title">退出登录</string>
     <string name="log_out_subtitle">断开账号连接</string>
 
@@ -460,7 +471,7 @@
     <string name="connected_directly_subtitle">直接连接</string>
     <string name="switch_to_direct_subtitle">切换到直接连接</string>
     <string name="telega_proxy_header">Telega Proxy</string>
-    <string name="telega_proxy_subtitle">由社区提供的代理。风险自负。更多信息: t.me/telegaru</string>
+    <string name="telega_proxy_subtitle">Telega Proxy 曾被曝光存在流量拦截风险。MTProto 可保护消息数据不被中间人拦截，但仍请自行评估风险后使用。更多信息: t.me/telegaru</string>
     <string name="enable_telega_proxy_title">启用 Telega Proxy</string>
     <string name="enable_telega_proxy_subtitle">自动获取并切换到最佳代理</string>
     <string name="refresh_list_title">刷新列表</string>
@@ -468,6 +479,10 @@
     <string name="your_proxies_header">您的代理</string>
     <string name="clear_offline_cd">清除离线</string>
     <string name="remove_all_cd">全部移除</string>
+    <string name="clear_offline_title">删除离线代理</string>
+    <string name="clear_offline_confirmation">此操作将删除当前所有离线代理。是否继续？</string>
+    <string name="remove_all_proxies_title">删除所有代理</string>
+    <string name="remove_all_proxies_confirmation">此操作将从应用中删除所有已配置的代理。是否继续？</string>
     <string name="no_proxies_label">未添加代理</string>
     <string name="delete_proxy_title">删除代理</string>
     <string name="delete_proxy_confirmation_format">您确定要删除代理 %1$s 吗？</string>
@@ -479,6 +494,8 @@
     <string name="username_optional_placeholder">用户名（选填）</string>
     <string name="password_optional_placeholder">密码（选填）</string>
     <string name="save_changes_button">保存修改</string>
+    <string name="test_proxy_button">测试</string>
+    <string name="test_proxy_result">测试结果</string>
     <string name="action_delete">删除</string>
     <string name="proxy_checking">检查中...</string>
     <string name="proxy_offline">离线</string>
@@ -536,6 +553,7 @@
     <string name="chat_settings_header">会话设置</string>
     <string name="appearance_header">外观</string>
     <string name="message_text_size_title">消息文字大小</string>
+    <string name="message_letter_spacing_title">字元間距</string>
     <string name="bubble_rounding_title">气泡圆角</string>
     <string name="reset_button">重置</string>
     <string name="chat_wallpaper_header">会话壁纸</string>
@@ -608,10 +626,6 @@
     <string name="storage_usage_subtitle">管理您的本地缓存</string>
     <string name="network_usage_title">网络使用情况</string>
     <string name="network_usage_subtitle">查看已发送和已接收的数据量</string>
-    <string name="database_header">数据库</string>
-    <string name="database_size_title">数据库大小</string>
-    <string name="clear_database_title">清除数据库</string>
-    <string name="clear_database_subtitle">删除所有缓存的会话和消息</string>
     <string name="automatic_media_download_header">自动媒体下载</string>
     <string name="when_using_mobile_data_title">使用移动数据时</string>
     <string name="when_connected_on_wifi_title">使用 Wi-Fi 时</string>
@@ -813,7 +827,10 @@
     <string name="new_channel_title">新建频道</string>
     <string name="contacts_count_format">%1$d 个联系人</string>
     <string name="members_limit_format">%1$d / 200000</string>
+    <string name="selected_members_count">已选择 %1$d 个</string>
     <string name="search_contacts_hint">搜索联系人…</string>
+    <string name="no_contacts_found">未找到联系人</string>
+    <string name="no_search_results_format">未找到 "%1$s" 的结果</string>
     <string name="sorted_by_last_seen">按最后上线时间排序</string>
     <string name="new_group_action">新建群组</string>
     <string name="new_channel_action">新建频道</string>
@@ -823,10 +840,37 @@
     <string name="channel_name_placeholder">频道名称</string>
     <string name="description_optional_placeholder">描述（选填）</string>
     <string name="auto_delete_messages_title">自动删除消息</string>
+    <string name="auto_delete_off">关闭</string>
+    <string name="auto_delete_1_day">1 天</string>
+    <string name="auto_delete_2_days">2 天</string>
+    <string name="auto_delete_3_days">3 天</string>
+    <string name="auto_delete_4_days">4 天</string>
+    <string name="auto_delete_5_days">5 天</string>
+    <string name="auto_delete_6_days">6 天</string>
+    <string name="auto_delete_1_week">1 周</string>
+    <string name="auto_delete_2_weeks">2 周</string>
+    <string name="auto_delete_3_weeks">3 周</string>
+    <string name="auto_delete_1_month">1 个月</string>
+    <string name="auto_delete_2_months">2 个月</string>
+    <string name="auto_delete_3_months">3 个月</string>
+    <string name="auto_delete_4_months">4 个月</string>
+    <string name="auto_delete_5_months">5 个月</string>
+    <string name="auto_delete_6_months">6 个月</string>
+    <string name="auto_delete_1_year">1 年</string>
     <string name="channel_join_info">您可以为频道提供可选描述。任何拥有链接的人都可以加入您的频道。</string>
     <string name="group_description_hint">为您的新群组提供名称和可选照片。</string>
     <string name="group_details_header">群组详情</string>
     <string name="group_name_placeholder">群组名称</string>
+    <string name="group_name_required">请输入群组名称</string>
+    <string name="channel_name_required">请输入频道名称</string>
+    <string name="contact_menu_open_profile">查看资料</string>
+    <string name="contact_menu_edit_name">编辑名称</string>
+    <string name="contact_menu_remove">删除联系人</string>
+    <string name="edit_contact_title">编辑联系人</string>
+    <string name="first_name_label">名</string>
+    <string name="last_name_label">姓</string>
+    <string name="remove_contact_title">删除联系人？</string>
+    <string name="remove_contact_confirmation">您确定要将 %1$s 从联系人中移除吗？</string>
     <string name="group_auto_delete_info">在一定时间后自动删除该群组中发送的新消息。</string>
     <string name="add_photo_cd">添加照片</string>
     <string name="change_photo_cd">更改照片</string>
@@ -908,15 +952,121 @@
     <string name="action_send_items_count">发送 %1$d 个项目</string>
     <string name="action_send_media">发送媒体</string>
     <string name="action_cancel">取消</string>
+    <string name="action_copy">复制</string>
+    <string name="action_paste">粘贴</string>
+    <string name="action_cut">剪切</string>
+    <string name="action_select_all">全选</string>
+    <string name="action_apply">应用</string>
+    <string name="action_done">完成</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_open_fullscreen_editor">全屏编辑器</string>
+    <string name="fullscreen_editor_title">编辑器</string>
+    <string name="action_send_silent">静默发送</string>
+    <string name="action_schedule_message">定时发送消息</string>
+    <string name="action_scheduled_messages">定时消息</string>
+    <string name="action_scheduled_messages_count">定时消息（%1$d）</string>
+    <string name="scheduled_messages_empty">暂无定时消息</string>
+    <string name="scheduled_messages_summary_count">定时总数：%1$d</string>
+    <string name="scheduled_messages_summary_next">下次发送：%1$s</string>
+    <string name="scheduled_messages_summary_editable">可编辑：%1$d</string>
+    <string name="scheduled_message_id">ID：%1$d</string>
+    <string name="action_edit">编辑</string>
+    <string name="action_send_now">发送</string>
+    <string name="action_delete_message">删除</string>
+
+    <string name="rich_text_bold">加粗</string>
+    <string name="rich_text_italic">斜体</string>
+    <string name="rich_text_underline">下划线</string>
+    <string name="rich_text_strikethrough">删除线</string>
+    <string name="rich_text_spoiler">剧透</string>
+    <string name="rich_text_code">代码</string>
+    <string name="rich_text_pre">等宽</string>
+    <string name="rich_text_link">链接</string>
+    <string name="rich_text_mention">提及</string>
+    <string name="rich_text_emoji">表情</string>
+    <string name="rich_text_clear">清除</string>
+    <string name="rich_text_link_title">添加链接</string>
+    <string name="rich_text_link_hint">URL</string>
+    <string name="rich_text_code_language_title">代码语言</string>
+    <string name="rich_text_code_language_hint">语言（例如 kotlin）</string>
+
+    <string name="fullscreen_editor_meta">%1$d 个字符 • %2$d 个格式块</string>
+    <string name="fullscreen_editor_blocks">%1$d 个格式块</string>
+    <string name="fullscreen_editor_hint">选中文本以应用类似 Telegram 的富文本格式</string>
+    <string name="message_length_counter">%1$d/%2$d</string>
 
     <!-- Bot -->
     <string name="bot_commands">指令</string>
 
+    <!-- Chat Typing -->
+    <string name="typing_typing">正在输入</string>
+    <string name="typing_recording_video">正在录制视频</string>
+    <string name="typing_recording_voice">正在录制语音消息</string>
+    <string name="typing_uploading_photo">正在发送照片</string>
+    <string name="typing_uploading_video">正在发送视频</string>
+    <string name="typing_uploading_document">正在发送文件</string>
+    <string name="typing_choosing_sticker">正在选择贴纸</string>
+    <string name="typing_playing_game">正在玩游戏</string>
+    <string name="typing_someone">有人</string>
+    <string name="typing_and">和</string>
+    <string name="typing_and_more">以及另外 %d 人</string>
+    <string name="typing_multi_typing">正在输入</string>
+    <plurals name="typing_multi_people">
+        <item quantity="one">%d 人正在输入</item>
+        <item quantity="other">%d 人正在输入</item>
+    </plurals>
+
+    <!-- Storage Mapper -->
+    <string name="storage_photos">照片</string>
+    <string name="storage_videos">视频</string>
+    <string name="storage_documents">文档</string>
+    <string name="storage_stickers">贴纸</string>
+    <string name="storage_music">音乐</string>
+    <string name="storage_voice_messages">语音消息</string>
+    <string name="storage_video_messages">视频消息</string>
+    <string name="storage_other_files">其他文件</string>
+    <string name="storage_other_cache">其他 / 缓存</string>
+    <string name="storage_chat_format">会话 %d</string>
+
+    <!-- Network Mapper -->
+    <string name="network_calls">通话</string>
+
+    <!-- Notification Service -->
+    <string name="notification_service_waiting">正在等待新消息</string>
+    <string name="notification_service_stop">停止</string>
+    <string name="notification_service_channel_name">后台服务</string>
+    <string name="notification_service_channel_description">关于应用在后台运行的通知</string>
+
     <!-- Chat Mapper / Media Types -->
-    <string name="chat_mapper_photo">图片</string>
-    <string name="chat_mapper_video">视频</string>
-    <string name="chat_mapper_voice">语音消息</string>
+    <string name="chat_mapper_photo">📷 照片</string>
+    <string name="chat_mapper_video">📹 视频</string>
+    <string name="chat_mapper_voice">🎤 语音消息</string>
+    <string name="chat_mapper_sticker">🧩 贴纸</string>
+    <string name="chat_mapper_document">📎 文档</string>
+    <string name="chat_mapper_audio">🎵 音频</string>
+    <string name="chat_mapper_gif">GIF</string>
+    <string name="chat_mapper_video_note">🎬 视频消息</string>
+    <string name="chat_mapper_contact">👤 联系人</string>
+    <string name="chat_mapper_poll">📊 投票</string>
+    <string name="chat_mapper_location">📍 位置</string>
+    <string name="chat_mapper_call">📞 通话</string>
+    <string name="chat_mapper_game">🎮 游戏</string>
+    <string name="chat_mapper_invoice">💳 账单</string>
+    <string name="chat_mapper_story">📚 故事</string>
+    <string name="chat_mapper_pinned">📌 已置顶消息</string>
     <string name="chat_mapper_message">消息</string>
+    <string name="chat_mapper_bot">机器人</string>
+    <string name="chat_mapper_online">在线</string>
+    <string name="chat_mapper_offline">离线</string>
+    <string name="chat_mapper_seen_just_now">刚刚在线</string>
+    <string name="chat_mapper_seen_minutes_ago">%d 分钟前在线</string>
+    <string name="chat_mapper_seen_minutes_ago_plural">%d 分钟前在线</string>
+    <string name="chat_mapper_seen_at">在 %s 在线</string>
+    <string name="chat_mapper_seen_yesterday">昨天 %s 在线</string>
+    <string name="chat_mapper_seen_date">在 %s 在线</string>
+    <string name="chat_mapper_seen_recently">最近在线</string>
+    <string name="chat_mapper_seen_week">一周内在线</string>
+    <string name="chat_mapper_seen_month">一个月内在线</string>
 
     <!-- Pinned Messages -->
     <string name="pinned_messages">置顶消息</string>
@@ -1148,6 +1298,7 @@
     <string name="viewer_seek_forward_format">+%1$ds</string>
     <string name="viewer_thumbnail_cd">缩略图 %1$d</string>
     <string name="viewer_page_indicator">%1$d / %2$d</string>
+    <string name="viewer_loading_original">正在加载原图...</string>
 
     <!-- Selection: Viewer Actions -->
     <string name="action_download">下载</string>
@@ -1639,4 +1790,52 @@
 
     <string name="chat_theme_editor_preset_nord_name">北境</string>
     <string name="chat_theme_editor_preset_nord_description">冷调北欧蓝色风格，整体观感沉稳且专业。</string>
+    <!-- Circular recorder -->
+    <string name="recorder_permissions_required">需要相机和麦克风权限</string>
+    <string name="recorder_processing">处理中...</string>
+    <string name="recorder_processing_error">处理错误: %1$s</string>
+    <string name="recorder_close_cd">关闭录制器</string>
+    <string name="recorder_switch_cd">切换摄像头</string>
+    <string name="recorder_done_cd">完成录制</string>
+    <string name="recorder_rec_label">录制中</string>
+    <string name="recorder_ready_label">就绪</string>
+    <string name="recorder_time_format">时长: %1$s</string>
+    <string name="recorder_zoom_format">变焦: %1$.1fx (范围 %2$.1fx - %3$.1fx)</string>
+    <string name="recorder_cancel">取消</string>
+
+    <string name="clear_history_title">清除历史记录？</string>
+    <string name="clear_history_confirmation">您确定要清除聊天记录吗？此操作无法撤销。</string>
+    <string name="action_clear_history">清除历史记录</string>
+    <string name="delete_chat_title">删除聊天？</string>
+    <string name="delete_chat_confirmation">您确定要删除此聊天吗？此操作无法撤销。</string>
+    <string name="action_delete_chat">删除聊天</string>
+    <string name="leave_chat_title">退出聊天？</string>
+    <string name="leave_chat_confirmation">您确定要退出此聊天吗？</string>
+    <string name="action_leave">退出</string>
+    <string name="delete_channel_title">删除频道？</string>
+    <string name="delete_group_title">删除群组？</string>
+    <string name="delete_channel_confirmation">您确定要删除此频道吗？所有消息和媒体将丢失。</string>
+    <string name="delete_group_confirmation">您确定要删除此群组吗？所有消息和媒体将丢失。</string>
+    <string name="delete_chats_title">删除 %1$d 个聊天？</string>
+    <string name="delete_chats_confirmation">您确定要删除所选聊天吗？</string>
+    <string name="action_delete_chats">删除聊天</string>
+    <string name="block_user_title">屏蔽用户？</string>
+    <string name="block_user_confirmation">您确定要屏蔽此用户吗？该用户将无法向您发送消息。</string>
+    <string name="action_block">屏蔽</string>
+    <string name="unblock_user_title">解除屏蔽用户？</string>
+    <string name="unblock_user_confirmation">您确定要解除屏蔽此用户吗？对方将可以再次向您发送消息。</string>
+    <string name="unpin_message_title">取消置顶消息？</string>
+    <string name="unpin_message_confirmation">您确定要取消置顶此消息吗？</string>
+    <string name="action_unpin">取消置顶</string>
+    <string name="clear_recent_stickers_confirmation">您确定要清除最近使用的贴纸吗？</string>
+    <string name="action_clear_recent_stickers">清除贴纸</string>
+    <string name="clear_recent_emojis_confirmation">您确定要清除最近使用的表情吗？</string>
+    <string name="action_clear_recent_emojis">清除表情</string>
+    <string name="action_add_contact">添加到联系人</string>
+    <string name="action_remove_contact">从联系人中移除</string>
+    <string name="action_mark_as_read">标为已读</string>
+    <string name="action_mark_as_unread">标为未读</string>
+    <string name="folder_tab_edit">编辑</string>
+    <string name="folder_tab_reorder">排序</string>
+    <string name="folder_tab_delete">删除</string>
 </resources>

@@ -21,13 +21,13 @@ import org.monogram.domain.models.ProxyTypeModel
 import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.features.auth.DefaultAuthComponent
 import org.monogram.presentation.features.chats.chatList.DefaultChatListComponent
-import org.monogram.presentation.features.chats.chatList.DefaultNewChatComponent
 import org.monogram.presentation.features.chats.currentChat.DefaultChatComponent
 import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
-import org.monogram.presentation.settings.folders.DefaultFoldersComponent
+import org.monogram.presentation.features.chats.newChat.DefaultNewChatComponent
 import org.monogram.presentation.features.profile.DefaultProfileComponent
 import org.monogram.presentation.features.profile.admin.*
 import org.monogram.presentation.features.profile.logs.DefaultProfileLogsComponent
@@ -38,6 +38,7 @@ import org.monogram.presentation.settings.adblock.DefaultAdBlockComponent
 import org.monogram.presentation.settings.chatSettings.DefaultChatSettingsComponent
 import org.monogram.presentation.settings.dataStorage.DefaultDataStorageComponent
 import org.monogram.presentation.settings.debug.DefaultDebugComponent
+import org.monogram.presentation.settings.folders.DefaultFoldersComponent
 import org.monogram.presentation.settings.networkUsage.DefaultNetworkUsageComponent
 import org.monogram.presentation.settings.notifications.DefaultNotificationsComponent
 import org.monogram.presentation.settings.powersaving.DefaultPowerSavingComponent
@@ -232,7 +233,7 @@ class DefaultRootComponent(
 
     override fun handleLink(link: String) {
         scope.launch {
-            runCatching {
+            coRunCatching {
                 linkHandlerRepository.handleLink(link)
             }.onSuccess { action ->
                 processLinkAction(action, link)
@@ -440,6 +441,7 @@ class DefaultRootComponent(
                     },
                     isForwarding = config.forwardingMessageIds != null,
                     onNewChatClick = { navigation.bringToFront(Config.NewChat) },
+                    onEditFoldersClick = { navigation.bringToFront(Config.Folders) },
                     activeChatId = activeChatId
                 )
             )
@@ -450,6 +452,9 @@ class DefaultRootComponent(
                     onChatCreated = { chatId ->
                         navigation.pop()
                         navigateToChat(chatId)
+                    },
+                    onProfileClicked = { userId ->
+                        navigation.bringToFront(Config.Profile(chatId = userId))
                     }
                 )
             )

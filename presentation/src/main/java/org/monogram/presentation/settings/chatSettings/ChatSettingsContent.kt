@@ -14,17 +14,15 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.StickyNote2
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -33,15 +31,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.ConfirmationSheet
+import org.monogram.presentation.core.ui.ItemPosition
+import org.monogram.presentation.core.ui.SettingsSwitchTile
+import org.monogram.presentation.core.ui.SettingsTile
 import org.monogram.presentation.core.util.EmojiStyle
 import org.monogram.presentation.core.util.NightMode
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
 import org.monogram.presentation.settings.chatSettings.components.ChatListPreview
 import org.monogram.presentation.settings.chatSettings.components.ChatSettingsPreview
 import org.monogram.presentation.settings.chatSettings.components.WallpaperItem
-import org.monogram.presentation.core.ui.ItemPosition
-import org.monogram.presentation.core.ui.SettingsSwitchTile
-import org.monogram.presentation.core.ui.SettingsTile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +58,8 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
     var showThemeEditor by remember { mutableStateOf(false) }
+    var showClearRecentStickersSheet by remember { mutableStateOf(false) }
+    var showClearRecentEmojisSheet by remember { mutableStateOf(false) }
 
     if (showThemeEditor) {
         ChatThemeEditorScreen(
@@ -70,6 +71,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
     }
 
     Scaffold(
+        modifier = Modifier.semantics { contentDescription = "ChatSettingsContent" },
         topBar = {
             TopAppBar(
                 title = {
@@ -111,6 +113,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                     wallpaper = state.wallpaper,
                     availableWallpapers = state.availableWallpapers,
                     fontSize = state.fontSize,
+                    letterSpacing = state.letterSpacing,
                     bubbleRadius = state.bubbleRadius,
                     isBlurred = state.isWallpaperBlurred,
                     isMoving = state.isWallpaperMoving,
@@ -158,6 +161,40 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        AppearanceSliderItem(
+                            title = stringResource(R.string.message_letter_spacing_title),
+                            value = state.letterSpacing,
+                            onValueChange = component::onLetterSpacingChanged,
+                            valueRange = -2f..2f,
+                            steps = 20,
+                            onReset = { component.onLetterSpacingChanged(0f) },
+                            valueSuffix = "sp",
+                            startIcon = {
+                                Text(
+                                    text = "AB",
+                                    letterSpacing = (-1f).sp,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            endIcon = {
+                                Text(
+                                    text = "AB",
+                                    letterSpacing = 2f.sp,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            },
+                            displayedDecimalPlaces = 2
                         )
 
                         HorizontalDivider(
@@ -796,7 +833,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                     subtitle = stringResource(R.string.clear_recent_stickers_subtitle),
                     iconColor = purpleColor,
                     position = ItemPosition.TOP,
-                    onClick = component::onClearRecentStickers
+                    onClick = { showClearRecentStickersSheet = true }
                 )
                 SettingsTile(
                     icon = Icons.Rounded.EmojiEmotions,
@@ -804,10 +841,38 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                     subtitle = stringResource(R.string.clear_recent_emojis_subtitle),
                     iconColor = tealColor,
                     position = ItemPosition.BOTTOM,
-                    onClick = component::onClearRecentEmojis
+                    onClick = { showClearRecentEmojisSheet = true }
                 )
             }
         }
+    }
+
+    if (showClearRecentStickersSheet) {
+        ConfirmationSheet(
+            icon = Icons.Rounded.Delete,
+            title = stringResource(R.string.clear_recent_stickers_title),
+            description = stringResource(R.string.clear_recent_stickers_confirmation),
+            confirmText = stringResource(R.string.action_clear_recent_stickers),
+            onConfirm = {
+                component.onClearRecentStickers()
+                showClearRecentStickersSheet = false
+            },
+            onDismiss = { showClearRecentStickersSheet = false }
+        )
+    }
+
+    if (showClearRecentEmojisSheet) {
+        ConfirmationSheet(
+            icon = Icons.Rounded.Delete,
+            title = stringResource(R.string.clear_recent_emojis_title),
+            description = stringResource(R.string.clear_recent_emojis_confirmation),
+            confirmText = stringResource(R.string.action_clear_recent_emojis),
+            onConfirm = {
+                component.onClearRecentEmojis()
+                showClearRecentEmojisSheet = false
+            },
+            onDismiss = { showClearRecentEmojisSheet = false }
+        )
     }
 
     if (state.emojiPackToRemove != null) {
@@ -939,6 +1004,7 @@ private fun AppearanceSliderItem(
     valueSuffix: String,
     startIcon: @Composable () -> Unit,
     endIcon: @Composable () -> Unit,
+    displayedDecimalPlaces: Int? = 0
 ) {
     Column {
         Row(
@@ -959,7 +1025,7 @@ private fun AppearanceSliderItem(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = "${value.toInt()} $valueSuffix",
+                        text = "${"%.${displayedDecimalPlaces}f".format(value)} $valueSuffix",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),

@@ -47,6 +47,7 @@ import kotlinx.coroutines.isActive
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.getMimeType
+import org.monogram.presentation.features.stickers.ui.view.shimmerEffect
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -56,6 +57,8 @@ fun VideoNoteBubble(
     content: MessageContent.VideoNote,
     msg: MessageModel,
     isOutgoing: Boolean,
+    onVideoClick: (MessageModel) -> Unit,
+    onCancelDownload: (Int) -> Unit = {},
     onLongClick: (Offset) -> Unit,
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
@@ -116,6 +119,21 @@ fun VideoNoteBubble(
                     .matchParentSize()
                     .clip(CircleShape)
                     .background(Color.Black)
+                    .onGloballyPositioned { notePosition = it.positionInWindow() }
+                    .pointerInput(content.path, content.isDownloading, hasError) {
+                        detectTapGestures(
+                            onTap = {
+                                if (content.path != null && !hasError) {
+                                    isMuted = !isMuted
+                                } else if (content.isDownloading) {
+                                    onCancelDownload(content.fileId)
+                                } else {
+                                    onVideoClick(msg)
+                                }
+                            },
+                            onLongPress = { offset -> onLongClick(notePosition + offset) }
+                        )
+                    }
             ) {
                 if (content.path != null && File(content.path).exists() && !hasError) {
                     val exoPlayer = remember {
@@ -176,15 +194,7 @@ fun VideoNoteBubble(
                     }
 
                     Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .onGloballyPositioned { notePosition = it.positionInWindow() }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = { isMuted = !isMuted },
-                                    onLongPress = { offset -> onLongClick(notePosition + offset) }
-                                )
-                            }
+                        modifier = Modifier.matchParentSize()
                     ) {
                         AndroidView(
                             factory = { ctx ->
@@ -208,7 +218,12 @@ fun VideoNoteBubble(
                             contentScale = ContentScale.Crop
                         )
                     } else {
-                        Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .shimmerEffect(),
+                            contentAlignment = Alignment.Center
+                        ) {
                             if (content.isDownloading) {
                                 CircularProgressIndicator(
                                     progress = { content.downloadProgress },

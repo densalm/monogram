@@ -53,6 +53,8 @@ import org.monogram.presentation.features.stickers.ui.menu.MenuOptionRow
 @Composable
 fun ImagePage(
     path: String,
+    isDownloading: Boolean,
+    downloadProgress: Float,
     zoomState: ZoomState,
     rootState: DismissRootState,
     screenHeightPx: Float,
@@ -92,6 +94,8 @@ fun ImagePage(
     ) {
         ZoomableImage(
             data = path,
+            isDownloading = isDownloading,
+            downloadProgress = downloadProgress,
             zoomState = zoomState,
             pageIndex = pageIndex,
             pagerIndex = pagerIndex
@@ -335,7 +339,7 @@ fun ThumbnailStrip(
     ) {
         itemsIndexed(
             images,
-            key = { _, item -> item.hashCode() }
+            key = { index, _ -> "thumb_$index" }
         ) { index, image ->
             val isSelected = pagerState.currentPage == index
 
@@ -409,6 +413,8 @@ fun PageIndicator(modifier: Modifier = Modifier, current: Int, total: Int) {
 @Composable
 fun ZoomableImage(
     data: Any,
+    isDownloading: Boolean,
+    downloadProgress: Float,
     zoomState: ZoomState,
     pageIndex: Int,
     pagerIndex: Int
@@ -471,12 +477,33 @@ fun ZoomableImage(
             }
         )
 
-        if (isHighResLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(48.dp),
-                color = Color.White,
-                strokeWidth = 3.dp
-            )
+        if (isHighResLoading || isDownloading) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(48.dp),
+                    color = Color.White,
+                    strokeWidth = 3.dp,
+                    progress = {
+                        if (isDownloading && downloadProgress in 0f..1f) {
+                            downloadProgress
+                        } else {
+                            0f
+                        }
+                    }
+                )
+                Text(
+                    text = if (isDownloading) {
+                        stringResource(R.string.viewer_loading_original)
+                    } else {
+                        stringResource(R.string.loading_text)
+                    },
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }

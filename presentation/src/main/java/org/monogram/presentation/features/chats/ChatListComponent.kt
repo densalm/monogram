@@ -28,11 +28,16 @@ interface ChatListComponent {
     fun onRemoveSearchHistoryItem(chatId: Long)
     fun onMuteSelected(mute: Boolean)
     fun onArchiveSelected(archive: Boolean)
+    fun onPinSelected()
+    fun onToggleReadSelected()
     fun onDeleteSelected()
     fun onArchivePinToggle()
     fun onConfirmForwarding()
     fun onNewChatClicked()
     fun onProxySettingsClicked()
+    fun onEditFoldersClicked()
+    fun onDeleteFolder(folderId: Int)
+    fun onEditFolder(folderId: Int)
 
     fun onOpenInstantView(url: String)
     fun onDismissInstantView()
@@ -48,8 +53,6 @@ interface ChatListComponent {
     fun handleBack(): Boolean
 
     fun updateScrollPosition(folderId: Int, index: Int, offset: Int)
-
-    fun onResume()
 
     data class State(
         val chatsByFolder: Map<Int, List<ChatModel>> = emptyMap(),

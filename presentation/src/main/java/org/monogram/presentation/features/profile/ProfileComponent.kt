@@ -27,6 +27,10 @@ interface ProfileComponent {
     fun onShowQRCode()
     fun onDismissQRCode()
     fun onSendMessage()
+    fun onToggleBlockUser()
+    fun onDeleteChat()
+    fun onEditContact(firstName: String, lastName: String)
+    fun onToggleContact()
     fun onLeave()
     fun onJoinChat()
     fun onReport(reason: String)
@@ -96,10 +100,12 @@ interface ProfileComponent {
         val fullScreenVideoPath: String? = null,
         val fullScreenVideoCaption: String? = null,
         val isViewingProfilePhotos: Boolean = false,
+        val isProfilePhotoHdLoading: Boolean = false,
 
         val miniAppUrl: String? = null,
         val miniAppName: String? = null,
         val currentUser: UserModel? = null,
+        val isBlocked: Boolean = false,
         val botWebAppUrl: String? = null,
         val botWebAppName: String? = null,
 

@@ -24,16 +24,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.ui.SettingsItem
+import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 
 @Composable
 fun NewGroupContent(
     title: String,
+    description: String,
     photoPath: String?,
     autoDeleteTime: Int,
     onTitleChange: (String) -> Unit,
+    onDescriptionChange: (String) -> Unit,
     onPhotoClick: () -> Unit,
     onAutoDeleteTimeChange: (Int) -> Unit,
     videoPlayerPool: VideoPlayerPool,
@@ -79,14 +81,11 @@ fun NewGroupContent(
             onValueChange = onTitleChange,
             placeholder = stringResource(R.string.group_name_placeholder),
             icon = Icons.Rounded.Groups,
-            position = ItemPosition.STANDALONE,
+            position = ItemPosition.TOP,
             singleLine = true,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Done
-            ),
-            keyboardActions = KeyboardActions(
-                onDone = { focusManager.clearFocus() }
+                imeAction = ImeAction.Next
             ),
             trailingIcon = {
                 if (title.isNotEmpty()) {
@@ -95,6 +94,23 @@ fun NewGroupContent(
                     }
                 }
             }
+        )
+
+        SettingsTextField(
+            value = description,
+            onValueChange = onDescriptionChange,
+            placeholder = stringResource(R.string.description_optional_placeholder),
+            icon = Icons.Rounded.Description,
+            position = ItemPosition.BOTTOM,
+            minLines = 2,
+            maxLines = 4,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(
+                onDone = { focusManager.clearFocus() }
+            )
         )
 
         SectionHeader(stringResource(R.string.settings_section_header))

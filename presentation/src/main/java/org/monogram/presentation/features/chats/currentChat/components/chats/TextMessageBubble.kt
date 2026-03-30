@@ -31,6 +31,7 @@ fun TextMessageBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     isGroup: Boolean = false,
     bubbleRadius: Float = 18f,
     showLinkPreviews: Boolean = true,
@@ -86,7 +87,7 @@ fun TextMessageBubble(
                     .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp)
                     .animateContentSize()
             ) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(msg, toProfile = toProfile)
                 }
 
@@ -134,6 +135,7 @@ fun TextMessageBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = finalFontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (finalFontSize * 1.1f).sp
                         ),
                         modifier = Modifier.padding(bottom = 2.dp),

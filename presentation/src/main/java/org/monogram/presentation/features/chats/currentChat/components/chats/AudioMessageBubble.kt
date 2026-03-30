@@ -34,6 +34,7 @@ fun AudioMessageBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
@@ -44,6 +45,7 @@ fun AudioMessageBubble(
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onClick: (Offset) -> Unit = {},
+    isGroup: Boolean = false,
     toProfile: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
@@ -112,7 +114,7 @@ fun AudioMessageBubble(
                     .width(IntrinsicSize.Max)
                     .widthIn(min = 184.dp, max = 300.dp)
             ) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(msg, toProfile = toProfile)
                 }
 
@@ -135,6 +137,7 @@ fun AudioMessageBubble(
                     content = content,
                     msg = msg,
                     fontSize = fontSize,
+                    letterSpacing = letterSpacing,
                     onAudioClick = onAudioClick,
                     onCancelDownload = onCancelDownload
                 )
@@ -153,12 +156,15 @@ fun AudioMessageBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },
@@ -191,6 +197,7 @@ fun AudioRow(
     content: MessageContent.Audio,
     msg: MessageModel,
     fontSize: Float,
+    letterSpacing: Float,
     onAudioClick: (MessageModel) -> Unit,
     onCancelDownload: (Int) -> Unit
 ) {
@@ -248,6 +255,7 @@ fun AudioRow(
                 text = content.title.ifEmpty { content.fileName.ifEmpty { "Audio" } },
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = fontSize.sp,
+                    letterSpacing = letterSpacing.sp,
                     fontWeight = FontWeight.Bold
                 ),
                 maxLines = 1,
@@ -271,6 +279,7 @@ fun AudioAlbumBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
@@ -280,6 +289,7 @@ fun AudioAlbumBubble(
     onLongClick: (Offset) -> Unit,
     onReplyClick: (MessageModel) -> Unit,
     onReactionClick: (String) -> Unit,
+    isGroup: Boolean = false,
     toProfile: (Long) -> Unit,
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
@@ -325,7 +335,7 @@ fun AudioAlbumBubble(
                     .width(IntrinsicSize.Max)
                     .widthIn(min = 200.dp, max = 300.dp)
             ) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(lastMsg, toProfile = toProfile)
                 }
 
@@ -346,6 +356,7 @@ fun AudioAlbumBubble(
                         content = content,
                         msg = msg,
                         fontSize = fontSize,
+                        letterSpacing = letterSpacing,
                         onAudioClick = onAudioClick,
                         onCancelDownload = onCancelDownload
                     )
@@ -370,12 +381,15 @@ fun AudioAlbumBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },
@@ -409,6 +423,7 @@ fun ChannelAudioAlbumBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
@@ -483,6 +498,7 @@ fun ChannelAudioAlbumBubble(
                         content = content,
                         msg = msg,
                         fontSize = fontSize,
+                        letterSpacing = letterSpacing,
                         onAudioClick = onAudioClick,
                         onCancelDownload = onCancelDownload
                     )
@@ -507,12 +523,15 @@ fun ChannelAudioAlbumBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },

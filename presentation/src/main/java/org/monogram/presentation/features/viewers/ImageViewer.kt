@@ -16,6 +16,8 @@ fun ImageViewer(
     onCopyText: ((String) -> Unit)? = null,
     onVideoClick: ((String) -> Unit)? = null,
     captions: List<String?> = emptyList(),
+    imageDownloadingStates: List<Boolean> = emptyList(),
+    imageDownloadProgressStates: List<Float> = emptyList(),
     downloadUtils: IDownloadUtils,
     showImageNumber: Boolean = true
 ) {
@@ -30,6 +32,8 @@ fun ImageViewer(
         onCopyLink = onCopyLink,
         onCopyText = onCopyText,
         captions = captions,
+        imageDownloadingStates = imageDownloadingStates,
+        imageDownloadProgressStates = imageDownloadProgressStates,
         downloadUtils = downloadUtils,
         showImageNumber = showImageNumber
     )

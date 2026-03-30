@@ -23,12 +23,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.AvatarForChat
+import org.monogram.presentation.core.ui.ConfirmationSheet
 import org.monogram.presentation.core.ui.TypingDots
 import org.monogram.presentation.features.stickers.ui.menu.MenuOptionRow
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
@@ -45,6 +48,7 @@ fun ChatTopBar(
     videoPlayerPool: VideoPlayerPool,
     isOnline: Boolean = false,
     isVerified: Boolean = false,
+    isSponsor: Boolean = false,
     onBack: () -> Unit,
     onMenu: () -> Unit,
     onClick: () -> Unit = {},
@@ -62,10 +66,13 @@ fun ChatTopBar(
     onDeleteChat: (() -> Unit)? = null,
     onReport: (() -> Unit)? = null,
     onCopyLink: (() -> Unit)? = null,
+    onManageMembers: (() -> Unit)? = null,
     showBack: Boolean = true,
     personalAvatarPath: String? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showClearHistorySheet by remember { mutableStateOf(false) }
+    var showDeleteChatSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxWidth()) {
         AnimatedContent(
@@ -119,6 +126,7 @@ fun ChatTopBar(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .clickable(onClick = onClick)
+                                    .semantics { contentDescription = "ChatHeaderButton" }
                                     .padding(6.dp)
 
                             ) {
@@ -164,6 +172,15 @@ fun ChatTopBar(
                                                 contentDescription = stringResource(R.string.cd_verified),
                                                 modifier = Modifier.size(18.dp),
                                                 tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        if (isSponsor) {
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Icon(
+                                                imageVector = Icons.Rounded.Favorite,
+                                                contentDescription = stringResource(R.string.cd_sponsor),
+                                                modifier = Modifier.size(18.dp),
+                                                tint = Color(0xFFE53935)
                                             )
                                         }
                                         if (emojiStatusPath != null) {
@@ -224,7 +241,10 @@ fun ChatTopBar(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showMenu = true }) {
+                        IconButton(onClick = {
+                            onMenu()
+                            showMenu = true
+                        }) {
                             Icon(Icons.Default.MoreVert, contentDescription = null)
                         }
                     },
@@ -311,13 +331,23 @@ fun ChatTopBar(
                                     }
                                 )
                             }
+                            if (onManageMembers != null) {
+                                MenuOptionRow(
+                                    icon = Icons.Rounded.Groups,
+                                    title = stringResource(R.string.members),
+                                    onClick = {
+                                        showMenu = false
+                                        onManageMembers()
+                                    }
+                                )
+                            }
                             if (onClearHistory != null) {
                                 MenuOptionRow(
                                     icon = Icons.Rounded.CleaningServices,
                                     title = stringResource(R.string.menu_clear_history),
                                     onClick = {
                                         showMenu = false
-                                        onClearHistory()
+                                        showClearHistorySheet = true
                                     }
                                 )
                             }
@@ -329,7 +359,7 @@ fun ChatTopBar(
                                     iconTint = MaterialTheme.colorScheme.error,
                                     onClick = {
                                         showMenu = false
-                                        onDeleteChat()
+                                        showDeleteChatSheet = true
                                     }
                                 )
                             }
@@ -347,6 +377,34 @@ fun ChatTopBar(
                     }
                 }
             }
+        }
+
+        if (showClearHistorySheet && onClearHistory != null) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.CleaningServices,
+                title = stringResource(R.string.clear_history_title),
+                description = stringResource(R.string.clear_history_confirmation),
+                confirmText = stringResource(R.string.action_clear_history),
+                onConfirm = {
+                    onClearHistory()
+                    showClearHistorySheet = false
+                },
+                onDismiss = { showClearHistorySheet = false }
+            )
+        }
+
+        if (showDeleteChatSheet && onDeleteChat != null) {
+            ConfirmationSheet(
+                icon = Icons.Rounded.Delete,
+                title = stringResource(R.string.delete_chat_title),
+                description = stringResource(R.string.delete_chat_confirmation),
+                confirmText = stringResource(R.string.action_delete_chat),
+                onConfirm = {
+                    onDeleteChat()
+                    showDeleteChatSheet = false
+                },
+                onDismiss = { showDeleteChatSheet = false }
+            )
         }
     }
 }

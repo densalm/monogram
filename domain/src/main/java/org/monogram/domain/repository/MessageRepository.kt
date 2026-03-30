@@ -27,18 +27,26 @@ data class SearchChatMessagesResult(
     val nextFromMessageId: Long
 )
 
+data class OlderMessagesPage(
+    val messages: List<MessageModel>,
+    val reachedOldest: Boolean,
+    val isRemote: Boolean
+)
+
 interface MessageRepository {
     val newMessageFlow: Flow<MessageModel>
+    val senderUpdateFlow: Flow<Long>
     val messageReadFlow: Flow<ReadUpdate>
     val messageUploadProgressFlow: Flow<Pair<Long, Float>>
     val messageDownloadProgressFlow: Flow<Pair<Long, Float>>
-    val messageDownloadCompletedFlow: Flow<Pair<Long, String>>
+    val messageDownloadCancelledFlow: Flow<Long>
+    val messageDownloadCompletedFlow: Flow<Triple<Long, Int, String>>
     val messageDeletedFlow: Flow<Pair<Long, List<Long>>>
     val messageEditedFlow: Flow<MessageModel>
     val messageIdUpdateFlow: Flow<Triple<Long, Long, MessageModel>>
     val pinnedMessageFlow: Flow<Long>
     val mediaUpdateFlow: Flow<Unit>
-   suspend fun getHighResFileId(chatId: Long, messageId: Long): Int?
+    suspend fun getHighResFileId(chatId: Long, messageId: Long): Int?
     suspend fun getFileInfo(fileId: Int): FileModel?
     suspend fun getProfileMedia(
         chatId: Long,
@@ -57,7 +65,9 @@ interface MessageRepository {
         fromMessageId: Long,
         limit: Int,
         threadId: Long? = null
-    ): List<MessageModel>
+    ): OlderMessagesPage
+
+    suspend fun getCachedMessages(chatId: Long, limit: Int): List<MessageModel>
 
     suspend fun getMessagesNewer(
         chatId: Long,
@@ -76,7 +86,8 @@ interface MessageRepository {
         text: String,
         replyToMsgId: Long? = null,
         entities: List<MessageEntity> = emptyList(),
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
 
     suspend fun sendSticker(chatId: Long, stickerPath: String, replyToMsgId: Long? = null, threadId: Long? = null)
@@ -84,33 +95,48 @@ interface MessageRepository {
         chatId: Long,
         photoPath: String,
         caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
         replyToMsgId: Long? = null,
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
 
     suspend fun sendVideo(
         chatId: Long,
         videoPath: String,
         caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
         replyToMsgId: Long? = null,
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
 
     suspend fun sendDocument(
         chatId: Long,
         documentPath: String,
         caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
         replyToMsgId: Long? = null,
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
 
-    suspend fun sendGif(chatId: Long, gifId: String, replyToMsgId: Long? = null, threadId: Long? = null)
+    suspend fun sendGif(
+        chatId: Long,
+        gifId: String,
+        replyToMsgId: Long? = null,
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
+    )
+
     suspend fun sendGifFile(
         chatId: Long,
         gifPath: String,
         caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
         replyToMsgId: Long? = null,
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
 
     suspend fun sendChatAction(chatId: Long, action: ChatAction, threadId: Long? = null)
@@ -178,9 +204,14 @@ interface MessageRepository {
         chatId: Long,
         paths: List<String>,
         caption: String = "",
+        captionEntities: List<MessageEntity> = emptyList(),
         replyToMsgId: Long? = null,
-        threadId: Long? = null
+        threadId: Long? = null,
+        sendOptions: MessageSendOptions = MessageSendOptions()
     )
+
+    suspend fun getScheduledMessages(chatId: Long): List<MessageModel>
+    suspend fun sendScheduledNow(chatId: Long, messageId: Long)
 
     suspend fun forwardMessage(toChatId: Long, fromChatId: Long, messageId: Long)
     suspend fun deleteMessage(chatId: Long, messageIds: List<Long>, revoke: Boolean = false)
@@ -202,6 +233,7 @@ interface MessageRepository {
         limit: Long = 0,
         synchronous: Boolean = false
     )
+    fun invalidateSenderCache(userId: Long)
     suspend fun cancelDownloadFile(fileId: Int)
     suspend fun joinChat(chatId: Long)
     suspend fun restrictChatMember(chatId: Long, userId: Long, permissions: ChatPermissionsModel, untilDate: Int = 0)

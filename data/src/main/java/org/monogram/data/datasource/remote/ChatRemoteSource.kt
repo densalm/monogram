@@ -23,12 +23,15 @@ interface ChatRemoteSource {
     suspend fun deleteFolder(folderId: Int)
     suspend fun muteChat(chatId: Long, muteFor: Int)
     suspend fun archiveChat(chatId: Long, archive: Boolean)
+    suspend fun toggleChatIsPinned(chatList: TdApi.ChatList, chatId: Long, isPinned: Boolean)
+    suspend fun toggleChatIsMarkedAsUnread(chatId: Long, isMarkedAsUnread: Boolean)
     suspend fun deleteChat(chatId: Long)
     suspend fun leaveChat(chatId: Long)
     suspend fun clearChatHistory(chatId: Long, revoke: Boolean)
     suspend fun reportChat(chatId: Long, reason: String, messageIds: List<Long>)
     suspend fun getMyUserId(): Long
-    suspend fun setNetworkType()
+    suspend fun setNetworkType(): Boolean
+    suspend fun getConnectionState(): TdApi.ConnectionState?
     suspend fun getForumTopics(
         chatId: Long,
         query: String,

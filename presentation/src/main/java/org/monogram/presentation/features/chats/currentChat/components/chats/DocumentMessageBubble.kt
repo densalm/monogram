@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelCommentsButton
 
 @Composable
@@ -34,6 +35,7 @@ fun DocumentMessageBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
@@ -44,6 +46,7 @@ fun DocumentMessageBubble(
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onClick: (Offset) -> Unit = {},
+    isGroup: Boolean = false,
     toProfile: (Long) -> Unit = {},
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
@@ -51,6 +54,8 @@ fun DocumentMessageBubble(
     val cornerRadius = 18.dp
     val smallCorner = 4.dp
     val tailCorner = 2.dp
+
+    var isAutoDownloadSuppressed by remember(msg.id) { mutableStateOf(false) }
 
     LaunchedEffect(
         content.path,
@@ -60,6 +65,11 @@ fun DocumentMessageBubble(
         autoDownloadWifi,
         autoDownloadRoaming
     ) {
+        if (!content.path.isNullOrBlank()) {
+            isAutoDownloadSuppressed = false
+            AutoDownloadSuppression.clear(content.fileId)
+        }
+
         val shouldDownload = if (autoDownloadFiles) {
             when {
                 downloadUtils.isRoaming() -> autoDownloadRoaming
@@ -70,7 +80,10 @@ fun DocumentMessageBubble(
             false
         }
 
-        if (shouldDownload && content.path == null && !content.isDownloading) {
+        if (shouldDownload && content.path == null && !content.isDownloading && !isAutoDownloadSuppressed && !AutoDownloadSuppression.isSuppressed(
+                content.fileId
+            )
+        ) {
             onDocumentClick(msg)
         }
     }
@@ -112,7 +125,7 @@ fun DocumentMessageBubble(
                     .width(IntrinsicSize.Max)
                     .widthIn(min = 184.dp, max = 300.dp)
             ) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(msg, toProfile = toProfile)
                 }
 
@@ -135,9 +148,18 @@ fun DocumentMessageBubble(
                     content = content,
                     msg = msg,
                     fontSize = fontSize,
+                    letterSpacing = letterSpacing,
                     timeColor = timeColor,
-                    onDocumentClick = onDocumentClick,
-                    onCancelDownload = onCancelDownload
+                    onDocumentClick = {
+                        isAutoDownloadSuppressed = false
+                        AutoDownloadSuppression.clear(content.fileId)
+                        onDocumentClick(it)
+                    },
+                    onCancelDownload = {
+                        isAutoDownloadSuppressed = true
+                        AutoDownloadSuppression.suppress(content.fileId)
+                        onCancelDownload(it)
+                    }
                 )
 
                 if (content.caption.isNotEmpty()) {
@@ -154,12 +176,15 @@ fun DocumentMessageBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },
@@ -192,6 +217,7 @@ fun DocumentRow(
     content: MessageContent.Document,
     msg: MessageModel,
     fontSize: Float,
+    letterSpacing: Float,
     timeColor: Color,
     onDocumentClick: (MessageModel) -> Unit,
     onCancelDownload: (Int) -> Unit
@@ -201,7 +227,6 @@ fun DocumentRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 4.dp)
-            .clickable { onDocumentClick(msg) }
     ) {
         Box(
             modifier = Modifier
@@ -210,8 +235,10 @@ fun DocumentRow(
                 .background(MaterialTheme.colorScheme.primary)
                 .clickable {
                     if (content.isDownloading) {
+                        AutoDownloadSuppression.suppress(content.fileId)
                         onCancelDownload(content.fileId)
                     } else {
+                        AutoDownloadSuppression.clear(content.fileId)
                         onDocumentClick(msg)
                     }
                 },
@@ -249,7 +276,10 @@ fun DocumentRow(
         ) {
             Text(
                 text = content.fileName.ifEmpty { "Document" },
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = fontSize.sp),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = fontSize.sp,
+                    letterSpacing = letterSpacing.sp,
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -269,6 +299,7 @@ fun DocumentAlbumBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
@@ -278,6 +309,7 @@ fun DocumentAlbumBubble(
     onLongClick: (Offset) -> Unit,
     onReplyClick: (MessageModel) -> Unit,
     onReactionClick: (String) -> Unit,
+    isGroup: Boolean = false,
     toProfile: (Long) -> Unit,
     modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils
@@ -323,7 +355,7 @@ fun DocumentAlbumBubble(
                     .width(IntrinsicSize.Max)
                     .widthIn(min = 200.dp, max = 300.dp)
             ) {
-                if (!isOutgoing && !isSameSenderAbove) {
+                if (isGroup && !isOutgoing && !isSameSenderAbove) {
                     MessageSenderName(lastMsg, toProfile = toProfile)
                 }
 
@@ -344,6 +376,7 @@ fun DocumentAlbumBubble(
                         content = content,
                         msg = msg,
                         fontSize = fontSize,
+                        letterSpacing = letterSpacing,
                         timeColor = timeColor,
                         onDocumentClick = onDocumentClick,
                         onCancelDownload = onCancelDownload
@@ -369,12 +402,15 @@ fun DocumentAlbumBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },
@@ -408,6 +444,7 @@ fun ChannelDocumentAlbumBubble(
     isSameSenderAbove: Boolean,
     isSameSenderBelow: Boolean,
     fontSize: Float,
+    letterSpacing: Float,
     bubbleRadius: Float,
     autoDownloadFiles: Boolean,
     autoDownloadMobile: Boolean,
@@ -482,6 +519,7 @@ fun ChannelDocumentAlbumBubble(
                         content = content,
                         msg = msg,
                         fontSize = fontSize,
+                        letterSpacing = letterSpacing,
                         timeColor = timeColor,
                         onDocumentClick = onDocumentClick,
                         onCancelDownload = onCancelDownload
@@ -507,12 +545,15 @@ fun ChannelDocumentAlbumBubble(
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
+                            letterSpacing = letterSpacing.sp,
                             lineHeight = (fontSize * 1.375f).sp
                         ),
                         modifier = Modifier.padding(vertical = 4.dp),
                         entities = content.entities,
                         onSpoilerClick = { index ->
-                            if (!revealedSpoilers.contains(index)) {
+                            if (revealedSpoilers.contains(index)) {
+                                revealedSpoilers.remove(index)
+                            } else {
                                 revealedSpoilers.add(index)
                             }
                         },

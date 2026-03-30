@@ -3,7 +3,10 @@ package org.monogram.presentation.features.chats.chatList
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.runtime.*
@@ -27,7 +32,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -36,7 +43,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -47,10 +53,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.window.core.layout.WindowWidthSizeClass
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -60,6 +62,7 @@ import org.monogram.domain.models.ChatType
 import org.monogram.domain.repository.ConnectionStatus
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
+import org.monogram.presentation.core.ui.ConfirmationSheet
 import org.monogram.presentation.features.chats.ChatListComponent
 import org.monogram.presentation.features.chats.chatList.components.*
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
@@ -79,6 +82,13 @@ fun ChatListContent(component: ChatListComponent) {
 
     var showAccountMenu by remember { mutableStateOf(false) }
     var showStatusMenu by remember { mutableStateOf(false) }
+    var showDeleteChatsSheet by remember { mutableStateOf(false) }
+    var statusAnchorBounds by remember { mutableStateOf<Rect?>(null) }
+    val statusMenuTransitionState = remember { MutableTransitionState(false) }
+
+    LaunchedEffect(showStatusMenu) {
+        statusMenuTransitionState.targetState = showStatusMenu
+    }
 
     val isPermissionRequested by component.appPreferences.isPermissionRequested.collectAsState()
     var showPermissionRequest by remember { mutableStateOf(!isPermissionRequested) }
@@ -94,19 +104,6 @@ fun ChatListContent(component: ChatListComponent) {
             showStatusMenu = false
         } else {
             component.handleBack()
-        }
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                component.onResume()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -395,54 +392,6 @@ fun ChatListContent(component: ChatListComponent) {
         )
     }
 
-    if (showStatusMenu) {
-        Popup(
-            onDismissRequest = { showStatusMenu = false },
-            properties = PopupProperties(focusable = true)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { showStatusMenu = false }
-            ) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 56.dp)
-                        .heightIn(max = 520.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .align(Alignment.TopCenter)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { },
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    tonalElevation = 8.dp,
-                    shadowElevation = 8.dp
-                ) {
-                    EmojisGrid(
-                        onEmojiSelected = { _, sticker ->
-                            val customEmojiId = sticker?.customEmojiId
-                            if (sticker != null && customEmojiId != null) {
-                                if (!sticker.path.isNullOrBlank()) {
-                                    cachedStatusEmojiPath = sticker.path
-                                }
-                                component.onSetEmojiStatus(customEmojiId, sticker.path)
-                                showStatusMenu = false
-                            }
-                        },
-                        contentPadding = PaddingValues(bottom = 12.dp)
-                    )
-                }
-            }
-        }
-    }
-
     if (showPermissionRequest) {
         PermissionRequestSheet(onDismiss = {
             showPermissionRequest = false
@@ -451,6 +400,7 @@ fun ChatListContent(component: ChatListComponent) {
     }
 
     val scrollStates = remember { mutableMapOf<Int, LazyListState>() }
+    val firstFolderTransitionCompleted = remember { mutableStateMapOf<Int, Boolean>() }
 
     val context = LocalContext.current
     val emojiStyle by component.appPreferences.emojiStyle.collectAsState()
@@ -460,6 +410,11 @@ fun ChatListContent(component: ChatListComponent) {
 
     val onChatClicked = remember(component) { { id: Long -> component.onChatClicked(id) } }
     val onChatLongClicked = remember(component) { { id: Long -> component.onChatLongClicked(id) } }
+    val statusMenuScrimAlpha by animateFloatAsState(
+        targetValue = if (statusMenuTransitionState.targetState) 0.18f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "ChatListStatusMenuScrimAlpha"
+    )
 
     Scaffold(
         containerColor = if (isTablet) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerLow,
@@ -472,14 +427,24 @@ fun ChatListContent(component: ChatListComponent) {
                     transitionSpec = { fadeIn() togetherWith fadeOut() }
                 ) { isSelectionMode ->
                     if (isSelectionMode) {
+                        val selectedChats = state.chats.filter { state.selectedChatIds.contains(it.id) }
+                        val canMarkUnread = selectedChats.any { !it.isMarkedAsUnread }
+                        val allPinned = selectedChats.isNotEmpty() && selectedChats.all { it.isPinned }
+                        val allMuted = selectedChats.isNotEmpty() && selectedChats.all { it.isMuted }
+                        val isInArchive = state.selectedFolderId == -2
+
                         SelectionTopBar(
                             selectedCount = state.selectedChatIds.size,
+                            isInArchive = isInArchive,
+                            allPinned = allPinned,
+                            allMuted = allMuted,
                             onClearSelection = { component.clearSelection() },
-                            onPinClick = { },
-                            onMuteClick = { component.onMuteSelected(true) },
-                            onArchiveClick = { component.onArchiveSelected(true) },
-                            onDeleteClick = { component.onDeleteSelected() },
-                            onMoreClick = { }
+                            onPinClick = { component.onPinSelected() },
+                            onMuteClick = { component.onMuteSelected(!allMuted) },
+                            onArchiveClick = { component.onArchiveSelected(!isInArchive) },
+                            onDeleteClick = { showDeleteChatsSheet = true },
+                            onToggleReadClick = { component.onToggleReadSelected() },
+                            canMarkUnread = canMarkUnread
                         )
                     } else {
                         if (state.isForwarding) {
@@ -534,6 +499,14 @@ fun ChatListContent(component: ChatListComponent) {
                                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.cd_back))
                                     }
                                 },
+                                actions = {
+                                    IconButton(onClick = { component.onSearchToggle() }) {
+                                        Icon(
+                                            Icons.Rounded.Search,
+                                            contentDescription = stringResource(R.string.action_search)
+                                        )
+                                    }
+                                },
                                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
                             )
                         } else {
@@ -547,7 +520,10 @@ fun ChatListContent(component: ChatListComponent) {
                                 searchQuery = state.searchQuery,
                                 onSearchQueryChange = component::onSearchQueryChange,
                                 onSearchToggle = component::onSearchToggle,
-                                onStatusClick = { showStatusMenu = true },
+                                onStatusClick = { anchorBounds ->
+                                    statusAnchorBounds = anchorBounds ?: statusAnchorBounds
+                                    showStatusMenu = true
+                                },
                                 onMenuClick = { showAccountMenu = true },
                                 videoPlayerPool = component.videoPlayerPool
                             )
@@ -659,7 +635,11 @@ fun ChatListContent(component: ChatListComponent) {
                                                 pagerState.animateScrollToPage(index)
                                             }
                                         }
-                                    }
+                                    },
+                                    onEditClick = { component.onEditFoldersClicked() },
+                                    onEditFolderClick = { folder -> component.onEditFolder(folder.id) },
+                                    onDeleteFolderClick = { folder -> component.onDeleteFolder(folder.id) },
+                                    onReorderFoldersClick = { component.onEditFoldersClicked() }
                                 )
                             }
                         }
@@ -743,6 +723,10 @@ fun ChatListContent(component: ChatListComponent) {
                 val isArchivedView = state.selectedFolderId == -2 && !state.isSearchActive
                 val archivedChats = if (isArchivedView) state.chatsByFolder[-2] ?: emptyList() else emptyList()
                 val isArchivedLoading = if (isArchivedView) state.isLoadingByFolder[-2] ?: false else false
+                val hasArchivedLoadState = if (isArchivedView) state.isLoadingByFolder.containsKey(-2) else false
+                val showArchivedShimmer =
+                    isArchivedView && archivedChats.isEmpty() && (isArchivedLoading || !hasArchivedLoadState)
+                val shouldAnimateFirstArchiveTransition = firstFolderTransitionCompleted[-2] != true
 
                 LaunchedEffect(isArchivedView, archivedChats.size, isArchivedLoading, scrollState) {
                     if (!isArchivedView || isArchivedLoading || archivedChats.isEmpty()) {
@@ -761,14 +745,21 @@ fun ChatListContent(component: ChatListComponent) {
                         }
                 }
 
-                LazyColumn(
-                    state = scrollState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .semantics { contentDescription = context.getString(R.string.cd_chat_list) },
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
-                ) {
-                    if (state.isSearchActive) {
+                LaunchedEffect(isArchivedView, hasArchivedLoadState, showArchivedShimmer) {
+                    if (isArchivedView && shouldAnimateFirstArchiveTransition && hasArchivedLoadState && !showArchivedShimmer) {
+                        firstFolderTransitionCompleted[-2] = true
+                    }
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = scrollState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .semantics { contentDescription = "ChatList" },
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp),
+                    ) {
+                        if (state.isSearchActive) {
                         if (state.searchQuery.isEmpty() && state.searchHistory.isNotEmpty()) {
                             val recentUsers =
                                 state.searchHistory.filter { (it.type == ChatType.PRIVATE || it.type == ChatType.SECRET) && !it.isBot }
@@ -804,7 +795,7 @@ fun ChatListContent(component: ChatListComponent) {
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
-                                        itemsIndexed(items = recentUsers, key = { _, chat -> chat.id }) { _, chat ->
+                                        itemsIndexed(items = recentUsers, key = { index, chat -> "recent_user_${chat.id}_$index" }) { _, chat ->
                                             Column(
                                                 modifier = Modifier
                                                     .width(64.dp)
@@ -884,7 +875,7 @@ fun ChatListContent(component: ChatListComponent) {
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
-                            itemsIndexed(items = state.searchResults, key = { _, chat -> chat.id }) { _, chat ->
+                            itemsIndexed(items = state.searchResults, key = { index, chat -> "search_${chat.id}_$index" }) { _, chat ->
                                 ChatListItem(
                                     modifier = Modifier.animateItem(),
                                     chat = chat,
@@ -993,34 +984,39 @@ fun ChatListContent(component: ChatListComponent) {
                                 }
                             }
                         }
-                    } else {
-                        if (archivedChats.isEmpty() && !isArchivedLoading) {
-                            item {
-                                EmptyStateView(modifier = Modifier.fillParentMaxSize())
+                        } else {
+                            if (archivedChats.isEmpty() && hasArchivedLoadState && !isArchivedLoading) {
+                                item {
+                                    EmptyStateView(modifier = Modifier.fillParentMaxSize())
+                                }
+                            }
+
+                            itemsIndexed(items = archivedChats, key = { _, chat -> chat.id }) { _, chat ->
+                                ChatListItem(
+                                    modifier = Modifier.animateItem(),
+                                    chat = chat,
+                                    currentUserId = state.currentUser?.id,
+                                    isSelected = state.selectedChatIds.contains(chat.id),
+                                    onClick = { onChatClicked(chat.id) },
+                                    onLongClick = { onChatLongClicked(chat.id) },
+                                    isTabletSelected = isTablet && state.activeChatId == chat.id,
+                                    emojiFontFamily = emojiFontFamily,
+                                    messageLines = messageLines,
+                                    showPhotos = showPhotos,
+                                    videoPlayerPool = component.videoPlayerPool
+                                )
                             }
                         }
+                    }
 
-                        itemsIndexed(items = archivedChats, key = { _, chat -> chat.id }) { _, chat ->
-                            ChatListItem(
-                                modifier = Modifier.animateItem(),
-                                chat = chat,
-                                currentUserId = state.currentUser?.id,
-                                isSelected = state.selectedChatIds.contains(chat.id),
-                                onClick = { onChatClicked(chat.id) },
-                                onLongClick = { onChatLongClicked(chat.id) },
-                                isTabletSelected = isTablet && state.activeChatId == chat.id,
-                                emojiFontFamily = emojiFontFamily,
-                                messageLines = messageLines,
-                                showPhotos = showPhotos,
-                                videoPlayerPool = component.videoPlayerPool
-                            )
-                        }
-
-                        if (archivedChats.isEmpty() && isArchivedLoading) {
-                            item {
-                                Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                                    CircularProgressIndicator()
-                                }
+                    if (isArchivedView) {
+                        Crossfade(
+                            targetState = showArchivedShimmer,
+                            animationSpec = if (shouldAnimateFirstArchiveTransition) tween(360) else tween(0),
+                            label = "ArchiveChatsCrossfade"
+                        ) { showShimmer ->
+                            if (showShimmer) {
+                                ChatListShimmer(itemCount = 8)
                             }
                         }
                     }
@@ -1031,10 +1027,17 @@ fun ChatListContent(component: ChatListComponent) {
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1
                 ) { page ->
-                    val folder = state.folders.getOrNull(page)
-                    val folderId = folder?.id ?: -1
+                    val folderId = state.folders.getOrNull(page)?.id
+                        ?: state.folders.firstOrNull { it.id == state.selectedFolderId }?.id
+                    if (folderId == null) {
+                        Box(modifier = Modifier.fillMaxSize())
+                        return@HorizontalPager
+                    }
                     val folderChats = state.chatsByFolder[folderId] ?: emptyList()
                     val isFolderLoading = state.isLoadingByFolder[folderId] ?: false
+                    val hasFolderLoadState = state.isLoadingByFolder.containsKey(folderId)
+                    val showFolderShimmer = folderChats.isEmpty() && (isFolderLoading || !hasFolderLoadState)
+                    val shouldAnimateFirstFolderTransition = firstFolderTransitionCompleted[folderId] != true
 
                     val scrollState = rememberLazyListState(
                         initialFirstVisibleItemIndex = state.scrollPositions[folderId]?.first ?: 0,
@@ -1078,6 +1081,12 @@ fun ChatListContent(component: ChatListComponent) {
                         }
                     }
 
+                    LaunchedEffect(folderId, hasFolderLoadState, showFolderShimmer) {
+                        if (shouldAnimateFirstFolderTransition && hasFolderLoadState && !showFolderShimmer) {
+                            firstFolderTransitionCompleted[folderId] = true
+                        }
+                    }
+
                     DisposableEffect(Unit) {
                         onDispose {
                             component.updateScrollPosition(folderId, scrollState.firstVisibleItemIndex, scrollState.firstVisibleItemScrollOffset)
@@ -1085,43 +1094,148 @@ fun ChatListContent(component: ChatListComponent) {
                     }
 
                     Box(modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            state = scrollState,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .semantics { contentDescription = context.getString(R.string.cd_chat_list) },
-                            contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp)
-                        ) {
-                            if (folderChats.isEmpty() && !isFolderLoading) {
-                                item {
-                                    EmptyStateView(modifier = Modifier.fillParentMaxSize())
+                        Crossfade(
+                            targetState = showFolderShimmer,
+                            animationSpec = if (shouldAnimateFirstFolderTransition) tween(360) else tween(0),
+                            label = "FolderChatsCrossfade"
+                        ) { showShimmer ->
+                            if (showShimmer) {
+                                ChatListShimmer()
+                            } else {
+                                LazyColumn(
+                                    state = scrollState,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .semantics { contentDescription = "ChatList" },
+                                    contentPadding = PaddingValues(top = 12.dp, bottom = 88.dp)
+                                ) {
+                                    if (folderChats.isEmpty() && hasFolderLoadState && !isFolderLoading) {
+                                        item {
+                                            EmptyStateView(modifier = Modifier.fillParentMaxSize())
+                                        }
+                                    }
+
+                                    itemsIndexed(
+                                        items = folderChats,
+                                        key = { _, chat -> chat.id }
+                                    ) { _, chat ->
+                                        ChatListItem(
+                                            modifier = Modifier.animateItem(),
+                                            chat = chat,
+                                            currentUserId = state.currentUser?.id,
+                                            isSelected = state.selectedChatIds.contains(chat.id),
+                                            onClick = { onChatClicked(chat.id) },
+                                            onLongClick = { onChatLongClicked(chat.id) },
+                                            isTabletSelected = isTablet && state.activeChatId == chat.id,
+                                            videoPlayerPool = component.videoPlayerPool,
+                                            emojiFontFamily = emojiFontFamily,
+                                            messageLines = messageLines,
+                                            showPhotos = showPhotos
+                                        )
+                                    }
                                 }
                             }
-
-                            itemsIndexed(
-                                items = folderChats,
-                                key = { _, chat -> chat.id }
-                            ) { _, chat ->
-                                ChatListItem(
-                                    modifier = Modifier.animateItem(),
-                                    chat = chat,
-                                    currentUserId = state.currentUser?.id,
-                                    isSelected = state.selectedChatIds.contains(chat.id),
-                                    onClick = { onChatClicked(chat.id) },
-                                    onLongClick = { onChatLongClicked(chat.id) },
-                                    isTabletSelected = isTablet && state.activeChatId == chat.id,
-                                    videoPlayerPool = component.videoPlayerPool,
-                                    emojiFontFamily = emojiFontFamily,
-                                    messageLines = messageLines,
-                                    showPhotos = showPhotos
-                                )
-                            }
-                        }
-
-                        if (folderChats.isEmpty() && isFolderLoading) {
-                            CircularProgressIndicator(Modifier.align(Alignment.Center))
                         }
                     }
+                }
+            }
+        }
+    }
+
+    if (statusMenuTransitionState.currentState || statusMenuTransitionState.targetState) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = statusMenuScrimAlpha))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { showStatusMenu = false }
+        ) {
+            val menuHorizontalPadding = 16.dp
+            val menuAnchorOverlap = 12.dp
+            val menuBottomMargin = 8.dp
+            val menuWidth = (maxWidth - menuHorizontalPadding * 2).coerceAtLeast(280.dp)
+            val menuHeightLimit = 520.dp
+
+            val rootWidthPx = constraints.maxWidth.coerceAtLeast(1)
+            val rootHeightPx = constraints.maxHeight.coerceAtLeast(1)
+            val menuWidthPx = with(density) { menuWidth.roundToPx() }
+            val horizontalPaddingPx = with(density) { menuHorizontalPadding.roundToPx() }
+            val anchorOverlapPx = with(density) { menuAnchorOverlap.roundToPx() }
+            val menuBottomMarginPx = with(density) { menuBottomMargin.roundToPx() }
+            val minMenuVisibleHeightPx = with(density) { 220.dp.roundToPx() }
+
+            val statusBarTopPx = WindowInsets.statusBars.getTop(density)
+            val navigationBarBottomPx = WindowInsets.navigationBars.getBottom(density)
+            val minTopPx = statusBarTopPx + with(density) { 8.dp.roundToPx() }
+            val fallbackTopPx = statusBarTopPx + with(density) { 56.dp.roundToPx() }
+
+            val desiredTopPx = statusAnchorBounds
+                ?.let { it.bottom.roundToInt() - anchorOverlapPx }
+                ?: fallbackTopPx
+            val desiredLeftPx = statusAnchorBounds
+                ?.let { ((it.left + it.right) / 2f - menuWidthPx / 2f).roundToInt() }
+                ?: horizontalPaddingPx
+
+            val maxLeftPx = (rootWidthPx - menuWidthPx - horizontalPaddingPx).coerceAtLeast(horizontalPaddingPx)
+            val clampedLeftPx = desiredLeftPx.coerceIn(horizontalPaddingPx, maxLeftPx)
+
+            val maxTopPx = (
+                    rootHeightPx - navigationBarBottomPx - menuBottomMarginPx - minMenuVisibleHeightPx
+                    ).coerceAtLeast(minTopPx)
+            val clampedTopPx = desiredTopPx.coerceIn(minTopPx, maxTopPx)
+
+            val maxMenuHeightPx = (
+                    rootHeightPx - clampedTopPx - navigationBarBottomPx - menuBottomMarginPx
+                    ).coerceAtLeast(minMenuVisibleHeightPx)
+            val maxMenuHeightDp = with(density) { maxMenuHeightPx.toDp() }.coerceAtMost(menuHeightLimit)
+
+            AnimatedVisibility(
+                visibleState = statusMenuTransitionState,
+                enter = fadeIn(animationSpec = tween(180)) +
+                        slideInVertically(animationSpec = tween(260)) { -it / 5 } +
+                        scaleIn(
+                            animationSpec = tween(260),
+                            initialScale = 0.94f,
+                            transformOrigin = TransformOrigin(0.85f, 0f)
+                        ),
+                exit = fadeOut(animationSpec = tween(130)) +
+                        slideOutVertically(animationSpec = tween(170)) { -it / 6 } +
+                        scaleOut(
+                            animationSpec = tween(170),
+                            targetScale = 0.97f,
+                            transformOrigin = TransformOrigin(0.85f, 0f)
+                        ),
+                modifier = Modifier.offset { IntOffset(clampedLeftPx, clampedTopPx) }
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .width(menuWidth)
+                        .heightIn(max = maxMenuHeightDp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { },
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 12.dp
+                ) {
+                    EmojisGrid(
+                        onEmojiSelected = { _, sticker ->
+                            val customEmojiId = sticker?.customEmojiId
+                            if (sticker != null && customEmojiId != null) {
+                                if (!sticker.path.isNullOrBlank()) {
+                                    cachedStatusEmojiPath = sticker.path
+                                }
+                                component.onSetEmojiStatus(customEmojiId, sticker.path)
+                                showStatusMenu = false
+                            }
+                        },
+                        emojiOnlyMode = true,
+                        contentPadding = PaddingValues(bottom = 12.dp)
+                    )
                 }
             }
         }
@@ -1164,5 +1278,19 @@ fun ChatListContent(component: ChatListComponent) {
                 onDismiss = { component.onDismissWebApp() }
             )
         }
+    }
+
+    if (showDeleteChatsSheet) {
+        ConfirmationSheet(
+            icon = Icons.Rounded.Delete,
+            title = stringResource(R.string.delete_chats_title, state.selectedChatIds.size),
+            description = stringResource(R.string.delete_chats_confirmation),
+            confirmText = stringResource(R.string.action_delete_chats),
+            onConfirm = {
+                component.onDeleteSelected()
+                showDeleteChatsSheet = false
+            },
+            onDismiss = { showDeleteChatsSheet = false }
+        )
     }
 }

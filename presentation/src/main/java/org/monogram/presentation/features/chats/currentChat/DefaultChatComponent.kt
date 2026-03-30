@@ -23,6 +23,7 @@ import org.monogram.presentation.features.chats.currentChat.impl.*
 import org.monogram.presentation.root.AppComponentContext
 import org.monogram.presentation.settings.storage.CacheController
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 class DefaultChatComponent(
     context: AppComponentContext,
@@ -57,16 +58,23 @@ class DefaultChatComponent(
     var loadMoreJob: Job? = null
     var loadNewerJob: Job? = null
     var inlineBotJob: Job? = null
+    var draftSaveJob: Job? = null
     private var autoLoadJob: Job? = null
     private var mentionJob: Job? = null
+    internal val reactionUpdateSuppressedUntil = ConcurrentHashMap<Long, Long>()
+    internal val remappedMessageIds = ConcurrentHashMap<Long, Long>()
+    internal val mediaDownloadRetryCount = ConcurrentHashMap<Int, Int>()
 
     internal var lastLoadedOlderId: Long = 0L
     internal var lastLoadedNewerId: Long = 0L
+    internal var inFlightOlderAnchorId: Long = 0L
+    internal var inFlightNewerAnchorId: Long = 0L
 
     internal val _state = MutableStateFlow(
         ChatComponent.State(
             chatId = chatId,
             fontSize = appPreferences.fontSize.value,
+            letterSpacing = appPreferences.letterSpacing.value,
             bubbleRadius = appPreferences.bubbleRadius.value,
             wallpaper = appPreferences.wallpaper.value,
             isWallpaperBlurred = appPreferences.isWallpaperBlurred.value,
@@ -147,7 +155,6 @@ class DefaultChatComponent(
         setupPinnedMessageCollector()
         observeUserUpdates()
         observeCurrentUser()
-        observeFileDownloads()
         cacheProvider.attachBots
             .onEach { bots ->
                 _state.update {
@@ -181,6 +188,7 @@ class DefaultChatComponent(
                 loadChatInfo()
                 loadDraft()
                 loadPinnedMessage()
+                loadScheduledMessages()
                 loadMembers()
             }
         }
@@ -191,7 +199,13 @@ class DefaultChatComponent(
         autoLoadJob = scope.launch {
             while (isActive) {
                 val currentState = _state.value
-                if (initialMessageId == null && currentState.messages.size <= 1 && !currentState.isLoading && !currentState.isLoadingOlder) {
+                if (
+                    initialMessageId == null &&
+                    currentState.messages.isEmpty() &&
+                    !currentState.isLoading &&
+                    !currentState.isLoadingOlder &&
+                    !currentState.isLoadingNewer
+                ) {
                     Log.d("DefaultChatComponent", "Auto-loading messages...")
                     loadMessages()
                 }
@@ -202,13 +216,15 @@ class DefaultChatComponent(
 
     private fun handleResume(initialMessageId: Long?) {
         val currentState = _state.value
+        if (currentState.isLoading || currentState.isLoadingOlder || currentState.isLoadingNewer) return
+
         if (!currentState.viewAsTopics) {
             if (initialMessageId != null) {
                 scrollToMessage(initialMessageId)
             } else if (currentState.messages.isEmpty()) {
                 loadMessages()
             }
-        } else if (currentState.messages.size <= 1 && currentState.currentTopicId == null) {
+        } else if (currentState.messages.isEmpty() && currentState.currentTopicId == null) {
             loadMessages()
         }
     }
@@ -237,69 +253,50 @@ class DefaultChatComponent(
             .launchIn(scope)
     }
 
-    private fun observeFileDownloads() {
-        repositoryMessage.messageDownloadCompletedFlow
-            .onEach { (fileId, path) ->
-                if (path.isNotEmpty()) {
-                    updateMessagesWithFile(fileId.toInt(), path)
-                    updateInlineResultsWithFile(fileId.toInt(), path)
-                }
-            }
-            .launchIn(scope)
-    }
-
-    private fun updateInlineResultsWithFile(fileId: Int, newPath: String) {
-        _state.update { currentState ->
-            val currentResults = currentState.inlineBotResults ?: return@update currentState
-            val updatedResults = currentResults.results.map { result ->
-                if (result.thumbFileId == fileId) result.copy(thumbUrl = newPath) else result
-            }
-            currentState.copy(inlineBotResults = currentResults.copy(results = updatedResults))
-        }
-    }
-
-    private fun updateMessagesWithFile(fileId: Int, newPath: String) {
-        _state.update { currentState ->
-            val updatedMessages = currentState.messages.map { msg ->
-                updateMessagePathIfNeeded(msg, fileId, newPath)
-            }
-            currentState.copy(messages = updatedMessages)
-        }
-    }
-
-    private fun updateMessagePathIfNeeded(msg: MessageModel, targetFileId: Int, newPath: String): MessageModel {
-        return when (val content = msg.content) {
-            is MessageContent.Photo -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Video -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Document -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Audio -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Sticker -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Voice -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.VideoNote -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            is MessageContent.Gif -> if (content.fileId == targetFileId) msg.copy(content = content.copy(path = newPath, isDownloading = false, downloadProgress = 1f)) else msg
-            else -> msg
-        }
-    }
-
-    override fun onSendMessage(text: String, entities: List<MessageEntity>) =
-        store.accept(ChatStore.Intent.SendMessage(text, entities))
+    override fun onSendMessage(
+        text: String,
+        entities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendMessage(text, entities, sendOptions))
 
     override fun onSendSticker(stickerPath: String) = store.accept(ChatStore.Intent.SendSticker(stickerPath))
-    override fun onSendPhoto(photoPath: String, caption: String) =
-        store.accept(ChatStore.Intent.SendPhoto(photoPath, caption))
+    override fun onSendPhoto(
+        photoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendPhoto(photoPath, caption, captionEntities, sendOptions))
 
-    override fun onSendVideo(videoPath: String, caption: String) =
-        store.accept(ChatStore.Intent.SendVideo(videoPath, caption))
+    override fun onSendVideo(
+        videoPath: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendVideo(videoPath, caption, captionEntities, sendOptions))
 
     override fun onSendGif(gif: GifModel) = store.accept(ChatStore.Intent.SendGif(gif))
-    override fun onSendGifFile(path: String, caption: String) =
-        store.accept(ChatStore.Intent.SendGifFile(path, caption))
+    override fun onSendGifFile(
+        path: String,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendGifFile(path, caption, captionEntities, sendOptions))
 
-    override fun onSendAlbum(paths: List<String>, caption: String) =
-        store.accept(ChatStore.Intent.SendAlbum(paths, caption))
+    override fun onSendAlbum(
+        paths: List<String>,
+        caption: String,
+        captionEntities: List<MessageEntity>,
+        sendOptions: MessageSendOptions
+    ) = store.accept(ChatStore.Intent.SendAlbum(paths, caption, captionEntities, sendOptions))
 
     override fun onSendVoice(path: String, duration: Int, waveform: ByteArray) =
         store.accept(ChatStore.Intent.SendVoice(path, duration, waveform))
+
+    override fun onRefreshScheduledMessages() =
+        store.accept(ChatStore.Intent.RefreshScheduledMessages)
+
+    override fun onSendScheduledNow(message: MessageModel) =
+        store.accept(ChatStore.Intent.SendScheduledNow(message))
 
     override fun onVideoRecorded(file: File) = store.accept(ChatStore.Intent.VideoRecorded(file))
 
@@ -350,11 +347,17 @@ class DefaultChatComponent(
 
     override fun onScrollToBottom() = store.accept(ChatStore.Intent.ScrollToBottom)
 
-    override fun onDownloadFile(fileId: Int) = store.accept(ChatStore.Intent.DownloadFile(fileId))
+    override fun onDownloadFile(fileId: Int) {
+        AutoDownloadSuppression.clear(fileId)
+        store.accept(ChatStore.Intent.DownloadFile(fileId))
+    }
 
     override fun onDownloadHighRes(messageId: Long) = store.accept(ChatStore.Intent.DownloadHighRes(messageId))
 
-    override fun onCancelDownloadFile(fileId: Int) = store.accept(ChatStore.Intent.CancelDownloadFile(fileId))
+    override fun onCancelDownloadFile(fileId: Int) {
+        AutoDownloadSuppression.suppress(fileId)
+        store.accept(ChatStore.Intent.CancelDownloadFile(fileId))
+    }
 
     override fun updateScrollPosition(messageId: Long) {
         if (_state.value.currentTopicId == null) {
@@ -425,8 +428,14 @@ class DefaultChatComponent(
 
     override fun onDismissWebView() = store.accept(ChatStore.Intent.DismissWebView)
 
-    override fun onOpenImages(images: List<String>, captions: List<String?>, startIndex: Int, messageId: Long?) =
-        store.accept(ChatStore.Intent.OpenImages(images, captions, startIndex, messageId))
+    override fun onOpenImages(
+        images: List<String>,
+        captions: List<String?>,
+        startIndex: Int,
+        messageId: Long?,
+        messageIds: List<Long>
+    ) =
+        store.accept(ChatStore.Intent.OpenImages(images, captions, startIndex, messageId, messageIds))
 
     override fun onDismissImages() = store.accept(ChatStore.Intent.DismissImages)
 

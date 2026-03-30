@@ -33,11 +33,10 @@ import com.arkivanov.decompose.router.stack.ChildStack
 import org.monogram.domain.models.ProxyTypeModel
 import org.monogram.presentation.features.auth.AuthContent
 import org.monogram.presentation.features.chats.chatList.ChatListContent
-import org.monogram.presentation.features.chats.chatList.NewChatContent
 import org.monogram.presentation.features.chats.chatList.components.AvatarTopAppBar
 import org.monogram.presentation.features.chats.currentChat.ChatContent
 import org.monogram.presentation.features.chats.currentChat.components.StickerSetSheet
-import org.monogram.presentation.settings.folders.FoldersContent
+import org.monogram.presentation.features.chats.newChat.NewChatContent
 import org.monogram.presentation.features.profile.ProfileContent
 import org.monogram.presentation.features.profile.admin.AdminManageContent
 import org.monogram.presentation.features.profile.admin.ChatEditContent
@@ -53,6 +52,7 @@ import org.monogram.presentation.settings.adblock.AdBlockContent
 import org.monogram.presentation.settings.chatSettings.ChatSettingsContent
 import org.monogram.presentation.settings.dataStorage.DataStorageContent
 import org.monogram.presentation.settings.debug.DebugContent
+import org.monogram.presentation.settings.folders.FoldersContent
 import org.monogram.presentation.settings.networkUsage.NetworkUsageContent
 import org.monogram.presentation.settings.notifications.NotificationsContent
 import org.monogram.presentation.settings.powersaving.PowerSavingContent

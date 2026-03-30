@@ -25,7 +25,9 @@ class RoomUserLocalDataSource(
 
     override suspend fun putUser(user: TdApi.User) {
         users[user.id] = user
-        userDao.insertUser(user.toEntity())
+        val personalAvatarPath = fullInfos[user.id]?.extractPersonalAvatarPath()
+            ?: userFullInfoDao.getUserFullInfo(user.id)?.personalPhotoPath?.ifBlank { null }
+        userDao.insertUser(user.toEntity(personalAvatarPath))
     }
 
     override suspend fun getUserFullInfo(userId: Long): TdApi.UserFullInfo? {
@@ -38,6 +40,14 @@ class RoomUserLocalDataSource(
     override suspend fun putUserFullInfo(userId: Long, info: TdApi.UserFullInfo) {
         fullInfos[userId] = info
         userFullInfoDao.insertUserFullInfo(info.toEntity(userId))
+        val personalAvatarPath = info.extractPersonalAvatarPath()
+        if (!personalAvatarPath.isNullOrBlank()) {
+            userDao.getUser(userId)?.let { existing ->
+                if (existing.personalAvatarPath != personalAvatarPath) {
+                    userDao.insertUser(existing.copy(personalAvatarPath = personalAvatarPath))
+                }
+            }
+        }
     }
 
     override suspend fun getAllUsers(): Collection<TdApi.User> {
@@ -72,18 +82,62 @@ class RoomUserLocalDataSource(
         userFullInfoDao.clearAll()
     }
 
-    private fun TdApi.User.toEntity(): UserEntity {
+    private fun TdApi.User.toEntity(personalAvatarPath: String?): UserEntity {
+        val usernamesData = buildString {
+            append(usernames?.activeUsernames?.joinToString("|").orEmpty())
+            append('\n')
+            append(usernames?.disabledUsernames?.joinToString("|").orEmpty())
+            append('\n')
+            append(usernames?.editableUsername.orEmpty())
+            append('\n')
+            append(usernames?.collectibleUsernames?.joinToString("|").orEmpty())
+        }
+
+        val statusType = when (status) {
+            is TdApi.UserStatusOnline -> "ONLINE"
+            is TdApi.UserStatusRecently -> "RECENTLY"
+            is TdApi.UserStatusLastWeek -> "LAST_WEEK"
+            is TdApi.UserStatusLastMonth -> "LAST_MONTH"
+            else -> "OFFLINE"
+        }
+
+        val statusEmojiId = when (val type = emojiStatus?.type) {
+            is TdApi.EmojiStatusTypeCustomEmoji -> type.customEmojiId
+            is TdApi.EmojiStatusTypeUpgradedGift -> type.modelCustomEmojiId
+            else -> 0L
+        }
+
         return UserEntity(
             id = id,
             firstName = firstName,
             lastName = lastName.ifEmpty { null },
             phoneNumber = phoneNumber.ifEmpty { null },
-            avatarPath = profilePhoto?.small?.local?.path?.ifEmpty { null },
+            avatarPath = profilePhoto?.big?.local?.path?.ifEmpty { null }
+                ?: profilePhoto?.small?.local?.path?.ifEmpty { null },
+            personalAvatarPath = personalAvatarPath,
             isPremium = isPremium,
             isVerified = verificationStatus?.isVerified ?: false,
+            isSupport = isSupport,
+            isContact = isContact,
+            isMutualContact = isMutualContact,
+            isCloseFriend = isCloseFriend,
+            haveAccess = haveAccess,
             username = usernames?.activeUsernames?.firstOrNull(),
+            usernamesData = usernamesData,
+            statusType = statusType,
+            accentColorId = accentColorId,
+            profileAccentColorId = profileAccentColorId,
+            statusEmojiId = statusEmojiId,
+            languageCode = languageCode.ifEmpty { null },
             lastSeen = (status as? TdApi.UserStatusOffline)?.wasOnline?.toLong() ?: 0L,
             createdAt = System.currentTimeMillis()
         )
+    }
+
+    private fun TdApi.UserFullInfo.extractPersonalAvatarPath(): String? {
+        val bestPhotoSize = personalPhoto?.sizes?.maxByOrNull { it.width.toLong() * it.height.toLong() }
+            ?: personalPhoto?.sizes?.lastOrNull()
+        return personalPhoto?.animation?.file?.local?.path?.ifEmpty { null }
+            ?: bestPhotoSize?.photo?.local?.path?.ifEmpty { null }
     }
 }

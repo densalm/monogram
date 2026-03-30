@@ -26,14 +26,40 @@ class ChatStoreFactory(
         override fun executeIntent(intent: Intent) {
             when (intent) {
                 is Intent.UpdateState -> dispatch(Message.UpdateState(intent.state))
-                is Intent.SendMessage -> component.handleSendMessage(intent.text, intent.entities)
+                is Intent.SendMessage -> component.handleSendMessage(intent.text, intent.entities, intent.sendOptions)
                 is Intent.SendSticker -> component.handleSendSticker(intent.stickerPath)
-                is Intent.SendPhoto -> component.handleSendPhoto(intent.photoPath, intent.caption)
-                is Intent.SendVideo -> component.handleSendVideo(intent.videoPath, intent.caption)
+                is Intent.SendPhoto -> component.handleSendPhoto(
+                    photoPath = intent.photoPath,
+                    caption = intent.caption,
+                    captionEntities = intent.captionEntities,
+                    sendOptions = intent.sendOptions
+                )
+
+                is Intent.SendVideo -> component.handleSendVideo(
+                    videoPath = intent.videoPath,
+                    caption = intent.caption,
+                    captionEntities = intent.captionEntities,
+                    sendOptions = intent.sendOptions
+                )
+
                 is Intent.SendGif -> component.handleSendGif(intent.gif)
-                is Intent.SendGifFile -> component.handleSendGifFile(intent.path, intent.caption)
-                is Intent.SendAlbum -> component.handleSendAlbum(intent.paths, intent.caption)
+                is Intent.SendGifFile -> component.handleSendGifFile(
+                    path = intent.path,
+                    caption = intent.caption,
+                    captionEntities = intent.captionEntities,
+                    sendOptions = intent.sendOptions
+                )
+
+                is Intent.SendAlbum -> component.handleSendAlbum(
+                    paths = intent.paths,
+                    caption = intent.caption,
+                    captionEntities = intent.captionEntities,
+                    sendOptions = intent.sendOptions
+                )
+
                 is Intent.SendVoice -> component.handleSendVoice(intent.path, intent.duration, intent.waveform)
+                is Intent.RefreshScheduledMessages -> component.loadScheduledMessages()
+                is Intent.SendScheduledNow -> component.handleSendScheduledNow(intent.message)
                 is Intent.LoadMore -> component.loadMoreMessages()
                 is Intent.LoadNewer -> component.loadNewerMessages()
                 is Intent.BackClicked -> publish(Label.Back)
@@ -125,6 +151,7 @@ class ChatStoreFactory(
                 is Intent.OpenImages -> component._state.update {
                     it.copy(
                         fullScreenImages = intent.images,
+                        fullScreenImageMessageIds = intent.messageIds,
                         fullScreenCaptions = intent.captions,
                         fullScreenStartIndex = intent.startIndex,
                         fullScreenVideoMessageId = intent.messageId,
@@ -136,6 +163,7 @@ class ChatStoreFactory(
                 is Intent.DismissImages -> component._state.update {
                     it.copy(
                         fullScreenImages = null,
+                        fullScreenImageMessageIds = emptyList(),
                         fullScreenVideoMessageId = null,
                         fullScreenVideoPath = null,
                         fullScreenVideoCaption = null
@@ -147,7 +175,8 @@ class ChatStoreFactory(
                         fullScreenVideoPath = intent.path,
                         fullScreenVideoMessageId = intent.messageId,
                         fullScreenVideoCaption = intent.caption,
-                        fullScreenImages = null
+                        fullScreenImages = null,
+                        fullScreenImageMessageIds = emptyList()
                     )
                 }
 
