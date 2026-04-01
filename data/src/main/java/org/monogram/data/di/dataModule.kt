@@ -155,6 +155,7 @@ val dataModule = module {
             remote = get(),
             userLocal = get(),
             chatLocal = get(),
+            chatCache = get(),
             updates = get(),
             scopeProvider = get(),
             gateway = get(),
@@ -255,6 +256,7 @@ val dataModule = module {
             databaseFile = androidContext().getDatabasePath("monogram_db"),
             searchHistoryDao = get(),
             chatFolderDao = get(),
+            userFullInfoDao = get(),
             fileQueue = get(),
             stringProvider = get()
         )

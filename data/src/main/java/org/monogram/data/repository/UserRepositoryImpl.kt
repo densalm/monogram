@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.ScopeProvider
+import org.monogram.data.chats.ChatCache
 import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.RoomUserLocalDataSource
@@ -27,6 +28,7 @@ class UserRepositoryImpl(
     private val remote: UserRemoteDataSource,
     private val userLocal: UserLocalDataSource,
     private val chatLocal: ChatLocalDataSource,
+    private val chatCache: ChatCache,
     private val gateway: TelegramGateway,
     private val updates: UpdateDispatcher,
     private val fileQueue: FileDownloadQueue,
@@ -63,7 +65,7 @@ class UserRepositoryImpl(
 
         scope.launch {
             updates.user.collect { update ->
-                userLocal.putUser(update.user)
+                cacheUser(update.user)
                 if (userLocal is RoomUserLocalDataSource) {
                     val personalAvatarPath = resolveStoredPersonalAvatarPath(update.user.id)
                     userLocal.saveUser(update.user.toEntity(personalAvatarPath))
@@ -178,7 +180,7 @@ class UserRepositoryImpl(
         val user = remote.getMe() ?: return UserModel(0, "Error")
         currentUserId = user.id
         coRunCatching { keyValueDao.insertValue(KeyValueEntity(KEY_CURRENT_USER_ID, user.id.toString())) }
-        userLocal.putUser(user)
+        cacheUser(user)
         if (userLocal is RoomUserLocalDataSource) {
             val personalAvatarPath = resolveStoredPersonalAvatarPath(user.id)
             userLocal.saveUser(user.toEntity(personalAvatarPath))
@@ -197,7 +199,7 @@ class UserRepositoryImpl(
         if (userLocal is RoomUserLocalDataSource) {
             userLocal.loadUser(userId)?.let { entity ->
                 val user = entity.toTdApi()
-                userLocal.putUser(user)
+                cacheUser(user)
                 return mapUserModel(user, userLocal.getUserFullInfo(userId))
             }
         }
@@ -207,7 +209,7 @@ class UserRepositoryImpl(
         val deferred = userRequests.getOrPut(userId) {
             scope.async {
                 fetchAndCacheUser(userId)?.also {
-                    userLocal.putUser(it)
+                    cacheUser(it)
                     if (userLocal is RoomUserLocalDataSource) {
                         val personalAvatarPath = resolveStoredPersonalAvatarPath(it.id)
                         userLocal.saveUser(it.toEntity(personalAvatarPath))
@@ -227,7 +229,7 @@ class UserRepositoryImpl(
     override suspend fun getUserFullInfo(userId: Long): UserModel? {
         if (userId <= 0) return null
         val user = userLocal.getUser(userId) ?: fetchAndCacheUser(userId)?.also {
-            userLocal.putUser(it)
+            cacheUser(it)
             if (userLocal is RoomUserLocalDataSource) {
                 val personalAvatarPath = resolveStoredPersonalAvatarPath(it.id)
                 userLocal.saveUser(it.toEntity(personalAvatarPath))
@@ -240,7 +242,7 @@ class UserRepositoryImpl(
         val dbFullInfo = userLocal.getFullInfoEntity(userId)
         if (dbFullInfo != null) {
             val fullInfo = dbFullInfo.toTdApi()
-            userLocal.putUserFullInfo(userId, fullInfo)
+            cacheUserFullInfo(userId, fullInfo)
             return mapUserModel(user, fullInfo)
         }
 
@@ -251,7 +253,7 @@ class UserRepositoryImpl(
         val deferred = fullInfoRequests.getOrPut(userId) {
             scope.async {
                 fetchAndCacheUserFullInfo(userId)?.also {
-                    userLocal.putUserFullInfo(userId, it)
+                    cacheUserFullInfo(userId, it)
                     userLocal.saveFullInfoEntity(it.toEntity(userId))
                     syncUserPersonalAvatarPath(userId, it)
                 }
@@ -377,10 +379,10 @@ class UserRepositoryImpl(
                     val userId = type.userId
                     val fullInfo = userLocal.getUserFullInfo(userId) ?: userLocal.getFullInfoEntity(userId)?.let {
                         val info = it.toTdApi()
-                        userLocal.putUserFullInfo(userId, info)
+                        cacheUserFullInfo(userId, info)
                         info
                     } ?: fetchAndCacheUserFullInfo(userId)?.also {
-                        userLocal.putUserFullInfo(userId, it)
+                        cacheUserFullInfo(userId, it)
                         userLocal.saveFullInfoEntity(it.toEntity(userId))
                         syncUserPersonalAvatarPath(userId, it)
                     }
@@ -411,10 +413,10 @@ class UserRepositoryImpl(
         val userId = chatId
         val fullInfo = userLocal.getUserFullInfo(userId) ?: userLocal.getFullInfoEntity(userId)?.let {
             val info = it.toTdApi()
-            userLocal.putUserFullInfo(userId, info)
+            cacheUserFullInfo(userId, info)
             info
         } ?: fetchAndCacheUserFullInfo(userId)?.also {
-            userLocal.putUserFullInfo(userId, it)
+            cacheUserFullInfo(userId, it)
             userLocal.saveFullInfoEntity(it.toEntity(userId))
             syncUserPersonalAvatarPath(userId, it)
         }
@@ -476,6 +478,16 @@ class UserRepositoryImpl(
         cache[id] = System.currentTimeMillis() + NEGATIVE_CACHE_TTL_MS
     }
 
+    private suspend fun cacheUser(user: TdApi.User) {
+        userLocal.putUser(user)
+        chatCache.putUser(user)
+    }
+
+    private suspend fun cacheUserFullInfo(userId: Long, info: TdApi.UserFullInfo) {
+        userLocal.putUserFullInfo(userId, info)
+        chatCache.putUserFullInfo(userId, info)
+    }
+
     override suspend fun getContacts(): List<UserModel> {
         val result = remote.getContacts() ?: return emptyList()
         return result.userIds.map { scope.async { getUser(it) } }.awaitAll().filterNotNull()
@@ -496,7 +508,7 @@ class UserRepositoryImpl(
         remote.addContact(user.id, contact, true)
 
         remote.getUser(user.id)?.let { refreshedUser ->
-            userLocal.putUser(refreshedUser)
+            cacheUser(refreshedUser)
             if (userLocal is RoomUserLocalDataSource) {
                 val personalAvatarPath = resolveStoredPersonalAvatarPath(refreshedUser.id)
                 userLocal.saveUser(refreshedUser.toEntity(personalAvatarPath))

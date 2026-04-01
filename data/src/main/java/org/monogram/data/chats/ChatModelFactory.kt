@@ -5,11 +5,14 @@ import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
+import org.monogram.data.db.dao.UserFullInfoDao
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.mapper.ChatMapper
 import org.monogram.data.mapper.isForcedVerifiedChat
 import org.monogram.data.mapper.isForcedVerifiedUser
 import org.monogram.data.mapper.isSponsoredUser
+import org.monogram.data.mapper.user.toEntity
+import org.monogram.data.mapper.user.toTdApi
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.UsernamesModel
 import org.monogram.domain.repository.AppPreferencesProvider
@@ -25,6 +28,7 @@ class ChatModelFactory(
     private val fileManager: ChatFileManager,
     private val typingManager: ChatTypingManager,
     private val appPreferences: AppPreferencesProvider,
+    private val userFullInfoDao: UserFullInfoDao,
     private val triggerUpdate: (Long?) -> Unit,
     private val fetchUser: (Long) -> Unit
 ) {
@@ -122,7 +126,8 @@ class ChatModelFactory(
             }
 
             is TdApi.ChatTypePrivate -> {
-                cache.usersCache[type.userId]?.let { user ->
+                val user = cache.usersCache[type.userId]
+                user?.let {
                     isBot = user.type is TdApi.UserTypeBot
                     isOnline = !isBot && user.status is TdApi.UserStatusOnline
                     if (isOnline) onlineCount = 1
@@ -137,20 +142,32 @@ class ChatModelFactory(
                     }
                 } ?: run { fetchUser(type.userId) }
 
-                cache.userFullInfoCache[type.userId]?.let { fullInfo ->
-                    description = fullInfo.bio?.text
-                    personalAvatarPath = resolvePhotoPath(fullInfo.personalPhoto, chat.id)
-                } ?: run {
-                    if (!isUserFullInfoTemporarilyMissing(type.userId)) {
-                        lazyLoad(cache.pendingUserFullInfo, type.userId) {
-                            if (type.userId == 0L) return@lazyLoad
-                            val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
-                            if (result != null) {
-                                cache.userFullInfoCache[type.userId] = result
-                                missingUserFullInfoUntilMs.remove(type.userId)
-                                triggerUpdate(chat.id)
-                            } else {
-                                rememberMissingUserFullInfo(type.userId)
+                if (user != null) {
+                    cache.userFullInfoCache[type.userId]?.let { fullInfo ->
+                        description = fullInfo.bio?.text
+                        personalAvatarPath = resolvePhotoPath(fullInfo.personalPhoto, chat.id)
+                    } ?: run {
+                        if (!isUserFullInfoTemporarilyMissing(type.userId)) {
+                            lazyLoad(cache.pendingUserFullInfo, type.userId) {
+                                if (type.userId == 0L) return@lazyLoad
+                                val cachedInfo = coRunCatching {
+                                    userFullInfoDao.getUserFullInfo(type.userId)?.toTdApi()
+                                }.getOrNull()
+                                if (cachedInfo != null) {
+                                    cache.putUserFullInfo(type.userId, cachedInfo)
+                                    missingUserFullInfoUntilMs.remove(type.userId)
+                                    triggerUpdate(chat.id)
+                                    return@lazyLoad
+                                }
+                                val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
+                                if (result != null) {
+                                    cache.putUserFullInfo(type.userId, result)
+                                    coRunCatching { userFullInfoDao.insertUserFullInfo(result.toEntity(type.userId)) }
+                                    missingUserFullInfoUntilMs.remove(type.userId)
+                                    triggerUpdate(chat.id)
+                                } else {
+                                    rememberMissingUserFullInfo(type.userId)
+                                }
                             }
                         }
                     }

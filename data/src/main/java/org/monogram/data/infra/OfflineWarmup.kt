@@ -14,6 +14,7 @@ import org.monogram.data.db.model.UserEntity
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.user.toEntity
+import org.monogram.data.mapper.user.toTdApi
 import org.monogram.domain.repository.StickerRepository
 
 private const val TAG = "OfflineWarmup"
@@ -58,8 +59,12 @@ class OfflineWarmup(
 
     private suspend fun warmupUsers(chats: List<ChatEntity>) {
         val userIds = LinkedHashSet<Long>()
+        val privateUserIds = LinkedHashSet<Long>()
         chats.forEach { chat ->
-            if (chat.privateUserId != 0L) userIds.add(chat.privateUserId)
+            if (chat.privateUserId != 0L) {
+                privateUserIds.add(chat.privateUserId)
+                userIds.add(chat.privateUserId)
+            }
             chat.messageSenderId?.takeIf { it > 0 }?.let { userIds.add(it) }
             messageDao.getLatestMessages(chat.id, 20)
                 .asSequence()
@@ -69,10 +74,22 @@ class OfflineWarmup(
         }
         if (userIds.isEmpty()) return
 
-        val limited = userIds.take(80)
+        val limited = userIds.take(USER_WARMUP_LIMIT)
+        val fullInfoTargets = limited
+            .asSequence()
+            .filter { it in privateUserIds }
+            .toSet()
         val existingUsers = userDao.getUsersByIds(limited).associateBy { it.id }
-        val existingFullInfos = userFullInfoDao.getUserFullInfos(limited).associateBy { it.userId }
+        val existingFullInfos = if (fullInfoTargets.isNotEmpty()) {
+            userFullInfoDao.getUserFullInfos(fullInfoTargets.toList()).associateBy { it.userId }
+        } else {
+            emptyMap()
+        }
         val now = System.currentTimeMillis()
+        existingFullInfos.values
+            .asSequence()
+            .filter { now - it.createdAt <= SEVEN_DAYS_MS }
+            .forEach { cached -> chatCache.putUserFullInfo(cached.userId, cached.toTdApi()) }
 
         for (userId in limited) {
             val cachedUser = existingUsers[userId]
@@ -90,29 +107,48 @@ class OfflineWarmup(
             }
 
             if (!hasUser) {
-                delay(25)
+                delay(USER_WARMUP_DELAY_MS)
                 continue
             }
 
-            val cachedFullInfo = existingFullInfos[userId]
-            if (cachedFullInfo == null || now - cachedFullInfo.createdAt > SEVEN_DAYS_MS) {
-                val fullInfo = coRunCatching {
-                    gateway.execute(TdApi.GetUserFullInfo(userId)) as? TdApi.UserFullInfo
-                }.getOrNull()
-                if (fullInfo != null) {
-                    userFullInfoDao.insertUserFullInfo(fullInfo.toEntity(userId))
-                    val personalAvatarPath = fullInfo.extractPersonalAvatarPath()
-                    if (!personalAvatarPath.isNullOrBlank()) {
-                        userDao.getUser(userId)?.let { existing ->
-                            if (existing.personalAvatarPath != personalAvatarPath) {
-                                userDao.insertUser(existing.copy(personalAvatarPath = personalAvatarPath))
+            if (userId !in fullInfoTargets) {
+                delay(USER_WARMUP_DELAY_MS)
+                continue
+            }
+
+            if (chatCache.getUserFullInfo(userId) != null) {
+                delay(USER_WARMUP_DELAY_MS)
+                continue
+            }
+
+            if (!chatCache.pendingUserFullInfo.add(userId)) {
+                delay(USER_WARMUP_DELAY_MS)
+                continue
+            }
+
+            try {
+                val cachedFullInfo = existingFullInfos[userId]
+                if (cachedFullInfo == null || now - cachedFullInfo.createdAt > SEVEN_DAYS_MS) {
+                    val fullInfo = coRunCatching {
+                        gateway.execute(TdApi.GetUserFullInfo(userId)) as? TdApi.UserFullInfo
+                    }.getOrNull()
+                    if (fullInfo != null) {
+                        userFullInfoDao.insertUserFullInfo(fullInfo.toEntity(userId))
+                        val personalAvatarPath = fullInfo.extractPersonalAvatarPath()
+                        if (!personalAvatarPath.isNullOrBlank()) {
+                            userDao.getUser(userId)?.let { existing ->
+                                if (existing.personalAvatarPath != personalAvatarPath) {
+                                    userDao.insertUser(existing.copy(personalAvatarPath = personalAvatarPath))
+                                }
                             }
                         }
+                        chatCache.putUserFullInfo(userId, fullInfo)
                     }
-                    chatCache.putUserFullInfo(userId, fullInfo)
                 }
+            } finally {
+                chatCache.pendingUserFullInfo.remove(userId)
             }
-            delay(25)
+            delay(USER_WARMUP_DELAY_MS)
         }
     }
 
@@ -253,6 +289,8 @@ class OfflineWarmup(
     }
 
     private companion object {
+        private const val USER_WARMUP_LIMIT = 30
+        private const val USER_WARMUP_DELAY_MS = 75L
         private const val ONE_DAY_MS = 24L * 60 * 60 * 1000
         private const val SEVEN_DAYS_MS = 7L * ONE_DAY_MS
     }

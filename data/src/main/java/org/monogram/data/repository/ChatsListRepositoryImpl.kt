@@ -17,6 +17,7 @@ import org.monogram.data.datasource.remote.ChatsRemoteDataSource
 import org.monogram.data.datasource.remote.ProxyRemoteDataSource
 import org.monogram.data.db.dao.ChatFolderDao
 import org.monogram.data.db.dao.SearchHistoryDao
+import org.monogram.data.db.dao.UserFullInfoDao
 import org.monogram.data.db.model.ChatEntity
 import org.monogram.data.db.model.SearchHistoryEntity
 import org.monogram.data.db.model.TopicEntity
@@ -55,6 +56,7 @@ class ChatsListRepositoryImpl(
     private val databaseFile: File,
     private val searchHistoryDao: SearchHistoryDao,
     private val chatFolderDao: ChatFolderDao,
+    private val userFullInfoDao: UserFullInfoDao,
     private val fileQueue: FileDownloadQueue,
     private val stringProvider: StringProvider
 ) : ChatsListRepository {
@@ -91,6 +93,7 @@ class ChatsListRepositoryImpl(
         fileManager = fileManager,
         typingManager = typingManager,
         appPreferences = appPreferences,
+        userFullInfoDao = userFullInfoDao,
         triggerUpdate = { chatId -> triggerUpdate(chatId) },
         fetchUser = { userId -> fetchUser(userId) }
     )
