@@ -679,11 +679,7 @@ fun SettingsContent(component: SettingsComponent) {
                                     nativeClipboard.setPrimaryClip(
                                         ClipData.newPlainText(
                                             phoneClipLabel,
-                                            AnnotatedString(
-                                                CountryManager.formatPhone(
-                                                    rawPhone
-                                                )
-                                            )
+                                            AnnotatedString(formattedPhone)
                                         )
                                     )
                                 }

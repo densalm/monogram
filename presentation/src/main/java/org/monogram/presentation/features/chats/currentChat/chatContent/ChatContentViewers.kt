@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.text.AnnotatedString
 import org.monogram.domain.models.MessageContent
@@ -240,35 +241,27 @@ fun ChatContentViewers(
                     }
                 },
                 onVideoClick = { path ->
-                    val msg = state.messages.find {
-                        when (val content = it.content) {
-                            is MessageContent.Video -> content.path == path
-                            is MessageContent.Gif -> content.path == path
-                            else -> false
-                        }
-                    },
-                    onVideoClick = { path ->
-                        val msg = currentViewerMessage ?: state.messages.find { it.content.matchesDisplayPath(path) }
-                        if (msg != null) {
-                            val mediaPath = msg.displayMediaPathForViewer() ?: path
-                            component.onOpenVideo(
-                                path = mediaPath,
-                                messageId = msg.id,
-                                caption = when (val content = msg.content) {
-                                    is MessageContent.Video -> content.caption
-                                    is MessageContent.Gif -> content.caption
-                                    else -> null
-                                }
-                            )
-                        } else {
-                            component.onOpenVideo(path = path)
-                        }
-                    },
-                    captions = state.fullScreenCaptions,
-                    imageDownloadingStates = imageDownloadingStates,
-                    imageDownloadProgressStates = imageDownloadProgressStates,
-                    downloadUtils = component.downloadUtils
-                )
+                    val msg = currentViewerMessage ?: state.messages.find { it.content.matchesDisplayPath(path) }
+                    if (msg != null) {
+                        val mediaPath = msg.displayMediaPathForViewer() ?: path
+                        component.onOpenVideo(
+                            path = mediaPath,
+                            messageId = msg.id,
+                            caption = when (val content = msg.content) {
+                                is MessageContent.Video -> content.caption
+                                is MessageContent.Gif -> content.caption
+                                else -> null
+                            }
+                        )
+                    } else {
+                        component.onOpenVideo(path = path)
+                    }
+                },
+                captions = state.fullScreenCaptions,
+                imageDownloadingStates = imageDownloadingStates,
+                imageDownloadProgressStates = imageDownloadProgressStates,
+                downloadUtils = component.downloadUtils
+            )
             }
         }
     }

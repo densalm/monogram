@@ -1101,7 +1101,7 @@ private fun SectionHeader(
 @Composable
 fun ProfileQRDialog(
     state: ProfileComponent.State,
-    onDismiss: () -> Unitrfhnjirf 
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     if (state.isQrVisible) {
@@ -1116,7 +1116,7 @@ fun ProfileQRDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp)
-                    .padding(bottom = 40.dp),rfhnjirf 
+                    .padding(bottom = 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 val qrContent = state.qrContent
