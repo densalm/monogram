@@ -48,6 +48,9 @@ class AppPreferences(
     private val _bubbleRadius = MutableStateFlow(prefs.getFloat(KEY_BUBBLE_RADIUS, 18f))
     val bubbleRadius: StateFlow<Float> = _bubbleRadius
 
+    private val _stickerSize = MutableStateFlow(prefs.getFloat(KEY_STICKER_SIZE, 200f))
+    val stickerSize: StateFlow<Float> = _stickerSize
+
     private val _wallpaper = MutableStateFlow(prefs.getString(KEY_WALLPAPER, null))
     val wallpaper: StateFlow<String?> = _wallpaper
 
@@ -389,6 +392,11 @@ class AppPreferences(
     fun setBubbleRadius(radius: Float) {
         prefs.edit().putFloat(KEY_BUBBLE_RADIUS, radius).apply()
         _bubbleRadius.value = radius
+    }
+
+    fun setStickerSize(size: Float) {
+        prefs.edit().putFloat(KEY_STICKER_SIZE, size).apply()
+        _stickerSize.value = size
     }
 
     fun setWallpaper(wallpaper: String?) {
@@ -868,6 +876,7 @@ class AppPreferences(
         prefs.edit().clear().apply()
         _fontSize.value = 16f
         _bubbleRadius.value = 18f
+        _stickerSize.value = 200f
         _wallpaper.value = null
         _isWallpaperBlurred.value = false
         _wallpaperBlurIntensity.value = 20
@@ -976,6 +985,7 @@ class AppPreferences(
         private const val KEY_FONT_SIZE = "font_size"
         private const val KEY_LETTER_SPACING = "letter_spacing"
         private const val KEY_BUBBLE_RADIUS = "bubble_radius"
+        private const val KEY_STICKER_SIZE = "sticker_size"
         private const val KEY_WALLPAPER = "wallpaper"
         private const val KEY_WALLPAPER_BLURRED = "wallpaper_blurred"
         private const val KEY_WALLPAPER_BLUR_INTENSITY = "wallpaper_blur_intensity"

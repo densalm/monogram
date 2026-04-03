@@ -31,6 +31,7 @@ interface ChatSettingsComponent {
     fun onFontSizeChanged(size: Float)
     fun onLetterSpacingChanged(size: Float)
     fun onBubbleRadiusChanged(radius: Float)
+    fun onStickerSizeChanged(size: Float)
     fun onWallpaperChanged(wallpaper: String?)
     fun onWallpaperSelected(wallpaper: WallpaperModel)
     fun onWallpaperBlurChanged(wallpaper: WallpaperModel, isBlurred: Boolean)
@@ -92,6 +93,7 @@ interface ChatSettingsComponent {
         val fontSize: Float = 16f,
         val letterSpacing: Float = 0f,
         val bubbleRadius: Float = 18f,
+        val stickerSize: Float = 200f,
         val wallpaper: String? = null,
         val isWallpaperBlurred: Boolean = false,
         val wallpaperBlurIntensity: Int = 20,
@@ -174,6 +176,7 @@ class DefaultChatSettingsComponent(
             fontSize = appPreferences.fontSize.value,
             letterSpacing = appPreferences.letterSpacing.value,
             bubbleRadius = appPreferences.bubbleRadius.value,
+            stickerSize = appPreferences.stickerSize.value,
             wallpaper = appPreferences.wallpaper.value,
             isWallpaperBlurred = appPreferences.isWallpaperBlurred.value,
             wallpaperBlurIntensity = appPreferences.wallpaperBlurIntensity.value,
@@ -247,6 +250,12 @@ class DefaultChatSettingsComponent(
         appPreferences.bubbleRadius
             .onEach { radius ->
                 _state.update { it.copy(bubbleRadius = radius) }
+            }
+            .launchIn(scope)
+
+        appPreferences.stickerSize
+            .onEach { size ->
+                _state.update { it.copy(stickerSize = size) }
             }
             .launchIn(scope)
 
@@ -619,6 +628,10 @@ class DefaultChatSettingsComponent(
     
     override fun onBubbleRadiusChanged(radius: Float) {
         appPreferences.setBubbleRadius(radius)
+    }
+
+    override fun onStickerSizeChanged(size: Float) {
+        appPreferences.setStickerSize(size)
     }
 
     override fun onWallpaperChanged(wallpaper: String?) {

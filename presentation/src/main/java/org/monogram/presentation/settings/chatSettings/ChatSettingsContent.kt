@@ -229,6 +229,37 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                 )
                             }
                         )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        AppearanceSliderItem(
+                            title = stringResource(R.string.sticker_size_title),
+                            value = state.stickerSize,
+                            onValueChange = component::onStickerSizeChanged,
+                            valueRange = 120f..250f,
+                            steps = 26,
+                            onReset = { component.onStickerSizeChanged(200f) },
+                            valueSuffix = "dp",
+                            startIcon = {
+                                Text(
+                                    text = "S",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            endIcon = {
+                                Text(
+                                    text = "S",
+                                    fontSize = 20.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        )
                     }
                 }
             }

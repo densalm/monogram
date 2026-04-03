@@ -57,6 +57,7 @@ fun ChannelMessageBubbleContainer(
     fontSize: Float,
     letterSpacing: Float,
     bubbleRadius: Float,
+    stickerSize: Float = 200f,
     onCommentsClick: (Long) -> Unit = {},
     showComments: Boolean = true,
     toProfile: (Long) -> Unit = {},

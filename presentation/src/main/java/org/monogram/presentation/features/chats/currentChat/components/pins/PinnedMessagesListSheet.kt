@@ -128,6 +128,7 @@ fun PinnedMessagesListSheet(
                                     fontSize = state.fontSize,
                                     letterSpacing = state.letterSpacing,
                                     bubbleRadius = state.bubbleRadius,
+                                    stickerSize = state.stickerSize,
                                     downloadUtils = downloadUtils,
                                     videoPlayerPool = videoPlayerPool
                                 )
@@ -160,6 +161,7 @@ fun PinnedMessagesListSheet(
                                     fontSize = state.fontSize,
                                     letterSpacing = state.letterSpacing,
                                     bubbleRadius = state.bubbleRadius,
+                                    stSize = state.stickerSize,
                                     autoDownloadMobile = state.autoDownloadMobile,
                                     autoDownloadWifi = state.autoDownloadWifi,
                                     autoDownloadRoaming = state.autoDownloadRoaming,

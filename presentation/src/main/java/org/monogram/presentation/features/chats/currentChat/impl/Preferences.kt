@@ -27,6 +27,12 @@ internal fun DefaultChatComponent.observePreferences(availableWallpapers: List<W
         }
         .launchIn(scope)
 
+    appPreferences.stickerSize
+        .onEach { size ->
+            _state.update { it.copy(stickerSize = size) }
+        }
+        .launchIn(scope)
+
     val firstThree = combine(
         appPreferences.wallpaper,
         appPreferences.isWallpaperBlurred,

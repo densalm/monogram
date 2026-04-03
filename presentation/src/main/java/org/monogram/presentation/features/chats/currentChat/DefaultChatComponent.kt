@@ -115,6 +115,7 @@ class DefaultChatComponent(
             fontSize = appPreferences.fontSize.value,
             letterSpacing = appPreferences.letterSpacing.value,
             bubbleRadius = appPreferences.bubbleRadius.value,
+            stickerSize = appPreferences.stickerSize.value,
             wallpaper = appPreferences.wallpaper.value,
             isWallpaperBlurred = appPreferences.isWallpaperBlurred.value,
             wallpaperBlurIntensity = appPreferences.wallpaperBlurIntensity.value,

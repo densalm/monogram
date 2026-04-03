@@ -241,6 +241,7 @@ interface ChatComponent {
         val fontSize: Float = 16f,
         val letterSpacing: Float = 0f,
         val bubbleRadius: Float = 18f,
+        val stickerSize: Float = 200f,
         val wallpaper: String? = null,
         val wallpaperModel: WallpaperModel? = null,
         val isWallpaperBlurred: Boolean = false,

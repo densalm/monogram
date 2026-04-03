@@ -36,6 +36,7 @@ fun StickerMessageBubble(
     content: MessageContent.Sticker,
     msg: MessageModel,
     isOutgoing: Boolean,
+    stickerSize: Float = 200f,
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onStickerClick: (Long) -> Unit = {},
@@ -78,7 +79,7 @@ fun StickerMessageBubble(
 
         Box(
             modifier = Modifier
-                .size(300.dp)
+                .size(stickerSize.dp)
                 .combinedClickable(
                     onClick = {
                         onStickerClick(content.setId)
