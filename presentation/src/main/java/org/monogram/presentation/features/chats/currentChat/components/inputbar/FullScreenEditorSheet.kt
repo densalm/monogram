@@ -124,7 +124,7 @@ fun FullScreenEditorSheet(
 
     fun applyEditorChange(newValue: TextFieldValue, trackHistory: Boolean = true) {
         if (newValue == textValue) return
-        if (trackHistory) {
+        if (trackHistory && newValue.text != textValue.text) {
             if (undoStack.lastOrNull() != textValue) {
                 undoStack += textValue
                 if (undoStack.size > 60) undoStack.removeAt(0)
