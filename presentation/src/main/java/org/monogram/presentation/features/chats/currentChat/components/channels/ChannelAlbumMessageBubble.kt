@@ -130,7 +130,7 @@ fun ChannelAlbumMessageBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val captionMsg = remember(uniqueMessages) {
@@ -320,7 +320,7 @@ fun ChannelDocumentAlbumBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -522,7 +522,7 @@ fun ChannelAudioAlbumBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh
