@@ -1,5 +1,6 @@
 import com.android.build.gradle.internal.tasks.factory.dependsOn
 import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
+import java.net.URI
 import java.net.URL
 
 plugins {
@@ -52,36 +53,6 @@ android {
             version = "3.22.1"
         }
     }
-}
-
-val downloadFolder = "src/main/cpp"
-var vpxFolder = file("$downloadFolder/libvpx_build")
-val vpxZip = file("$downloadFolder/libvpx_build.zip")
-
-tasks.apply {
-    register("downloadVpx") {
-        onlyIf { !vpxFolder.isDirectory }
-        doLast {
-                println("Downloading VPX libs...")
-                vpxFolder.ensureParentDirsCreated()
-                URL("https://github.com/aliveoutside/prebuilt-vpx/releases/download/v.1/libvpx_build.zip")
-                    .openStream().use { input ->
-                        vpxZip.outputStream()
-                            .use { output -> input.copyTo(output) }
-                    }
-            }
-    }
-    register<Copy>("unzipVpx") {
-        dependsOn(this@apply.getByName("downloadVpx"))
-        onlyIf { !vpxFolder.isDirectory }
-        from(zipTree(vpxZip))
-        into(downloadFolder)
-    }
-    register<Delete>("downloadAndUnzipVpx") {
-        dependsOn("unzipVpx")
-        delete(vpxZip)
-    }
-    preBuild.dependsOn("downloadAndUnzipVpx")
 }
 
 dependencies {
