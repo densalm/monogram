@@ -10,6 +10,7 @@ import androidx.fragment.app.FragmentActivity
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.retainedComponent
 import org.koin.android.ext.android.inject
+import org.monogram.app.ui.theme.AppThemeContainer
 import org.monogram.data.service.TdNotificationService
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider

@@ -26,10 +26,10 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.common.BitMatrix
 import com.google.zxing.qrcode.QRCodeWriter
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import org.monogram.presentation.R
 import java.io.File
 import java.io.FileOutputStream
 import androidx.compose.foundation.Canvas as ComposeCanvas
-import org.monogram.presentation.R
 
 @Composable
 fun StyledQRCode(content: String, modifier: Modifier, primaryColor: Color, backgroundColor: Color) {
@@ -138,7 +138,7 @@ fun shareBitmap(context: Context, bitmap: Bitmap) {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
             out.flush()
         }
-        val authority = "${context.packageName}.fileprovider"
+        val authority = "${context.packageName}.provider"
         val uri = FileProvider.getUriForFile(context, authority, file)
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"

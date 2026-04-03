@@ -1,4 +1,4 @@
-package org.monogram.app
+package org.monogram.app.components
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import org.monogram.app.R
 import org.monogram.presentation.root.RootComponent
 import java.util.concurrent.Executors
 
@@ -42,7 +43,7 @@ fun LockScreen(root: RootComponent) {
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
     var isFocused by remember { mutableStateOf(false) }
-    
+
     var passcode by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
     var attempts by remember { mutableIntStateOf(0) }

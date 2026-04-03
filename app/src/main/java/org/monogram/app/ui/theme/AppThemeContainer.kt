@@ -1,4 +1,4 @@
-package org.monogram.app
+package org.monogram.app.ui.theme
 
 import android.database.ContentObserver
 import android.os.Handler
@@ -8,8 +8,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import org.monogram.app.ui.theme.CustomThemePalette
-import org.monogram.app.ui.theme.MonoGramTheme
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.NightMode
 import java.util.*
@@ -118,8 +116,10 @@ fun AppThemeContainer(
             val paletteBackground = if (darkTheme) themeDarkBackgroundColor else themeBackgroundColor
             val paletteSurface = if (darkTheme) themeDarkSurfaceColor else themeSurfaceColor
             val palettePrimaryContainer = if (darkTheme) themeDarkPrimaryContainerColor else themePrimaryContainerColor
-            val paletteSecondaryContainer = if (darkTheme) themeDarkSecondaryContainerColor else themeSecondaryContainerColor
-            val paletteTertiaryContainer = if (darkTheme) themeDarkTertiaryContainerColor else themeTertiaryContainerColor
+            val paletteSecondaryContainer =
+                if (darkTheme) themeDarkSecondaryContainerColor else themeSecondaryContainerColor
+            val paletteTertiaryContainer =
+                if (darkTheme) themeDarkTertiaryContainerColor else themeTertiaryContainerColor
             val paletteSurfaceVariant = if (darkTheme) themeDarkSurfaceVariantColor else themeSurfaceVariantColor
             val paletteOutline = if (darkTheme) themeDarkOutlineColor else themeOutlineColor
             CustomThemePalette(
