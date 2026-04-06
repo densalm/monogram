@@ -1,8 +1,7 @@
 package org.monogram.presentation.settings.chatSettings
 
-import org.monogram.presentation.core.util.coRunCatching
-import android.graphics.Color.colorToHSV
 import android.graphics.Color.HSVToColor
+import android.graphics.Color.colorToHSV
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
@@ -11,26 +10,26 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.monogram.domain.managers.AssetsManager
 import org.monogram.domain.managers.DistrManager
 import org.monogram.domain.models.WallpaperModel
-import org.monogram.domain.repository.SettingsRepository
+import org.monogram.domain.repository.EmojiRepository
 import org.monogram.domain.repository.StickerRepository
+import org.monogram.domain.repository.WallpaperRepository
 import org.monogram.presentation.core.util.*
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
-import org.json.JSONObject
 import java.io.File
 import java.net.URL
 
 interface ChatSettingsComponent {
     val state: Value<State>
     val downloadUtils: IDownloadUtils
-    val videoPlayerPool: VideoPlayerPool
     fun onBackClicked()
     fun onFontSizeChanged(size: Float)
     fun onLetterSpacingChanged(size: Float)
     fun onBubbleRadiusChanged(radius: Float)
+    fun onStickerSizeChanged(size: Float)
     fun onWallpaperChanged(wallpaper: String?)
     fun onWallpaperSelected(wallpaper: WallpaperModel)
     fun onWallpaperBlurChanged(wallpaper: WallpaperModel, isBlurred: Boolean)
@@ -92,6 +91,7 @@ interface ChatSettingsComponent {
         val fontSize: Float = 16f,
         val letterSpacing: Float = 0f,
         val bubbleRadius: Float = 18f,
+        val stickerSize: Float = 200f,
         val wallpaper: String? = null,
         val isWallpaperBlurred: Boolean = false,
         val wallpaperBlurIntensity: Int = 20,
@@ -163,9 +163,9 @@ class DefaultChatSettingsComponent(
 
     private val appPreferences: AppPreferences = container.preferences.appPreferences
     override val downloadUtils: IDownloadUtils = container.utils.downloadUtils()
-    private val settingsRepository: SettingsRepository = container.repositories.settingsRepository
+    private val wallpaperRepository: WallpaperRepository = container.repositories.wallpaperRepository
     private val stickerRepository: StickerRepository = container.repositories.stickerRepository
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
+    private val emojiRepository: EmojiRepository = container.repositories.emojiRepository
     private val distrManager: DistrManager = container.utils.distrManager()
     private val assetsManager: AssetsManager = container.utils.assetsManager()
 
@@ -174,6 +174,7 @@ class DefaultChatSettingsComponent(
             fontSize = appPreferences.fontSize.value,
             letterSpacing = appPreferences.letterSpacing.value,
             bubbleRadius = appPreferences.bubbleRadius.value,
+            stickerSize = appPreferences.stickerSize.value,
             wallpaper = appPreferences.wallpaper.value,
             isWallpaperBlurred = appPreferences.isWallpaperBlurred.value,
             wallpaperBlurIntensity = appPreferences.wallpaperBlurIntensity.value,
@@ -247,6 +248,12 @@ class DefaultChatSettingsComponent(
         appPreferences.bubbleRadius
             .onEach { radius ->
                 _state.update { it.copy(bubbleRadius = radius) }
+            }
+            .launchIn(scope)
+
+        appPreferences.stickerSize
+            .onEach { size ->
+                _state.update { it.copy(stickerSize = size) }
             }
             .launchIn(scope)
 
@@ -598,7 +605,7 @@ class DefaultChatSettingsComponent(
     }
 
     private fun loadWallpapers() {
-        settingsRepository.getWallpapers()
+        wallpaperRepository.getWallpapers()
             .onEach { wallpapers ->
                 _state.update { it.copy(availableWallpapers = wallpapers) }
             }
@@ -621,6 +628,10 @@ class DefaultChatSettingsComponent(
         appPreferences.setBubbleRadius(radius)
     }
 
+    override fun onStickerSizeChanged(size: Float) {
+        appPreferences.setStickerSize(size)
+    }
+
     override fun onWallpaperChanged(wallpaper: String?) {
         appPreferences.setWallpaper(wallpaper)
     }
@@ -630,7 +641,7 @@ class DefaultChatSettingsComponent(
 
         if (!wallpaper.isDownloaded && wallpaper.documentId != 0L) {
             scope.launch {
-                settingsRepository.downloadWallpaper(wallpaper.documentId.toInt())
+                wallpaperRepository.downloadWallpaper(wallpaper.documentId.toInt())
             }
         }
 
@@ -689,7 +700,7 @@ class DefaultChatSettingsComponent(
 
     override fun onClearRecentEmojis() {
         scope.launch {
-            stickerRepository.clearRecentEmojis()
+            emojiRepository.clearRecentEmojis()
         }
     }
 

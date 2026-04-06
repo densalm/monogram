@@ -10,7 +10,7 @@ import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
 import org.monogram.data.core.coRunCatching
-import org.monogram.data.di.TdLibException
+import org.monogram.data.gateway.TdLibException
 import org.monogram.data.gateway.TelegramGateway
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -75,7 +75,7 @@ class FileDownloadQueue(
     private val maxVideoParallelDownloads = 3
     private val maxGifParallelDownloads = 2
     private val maxDefaultParallelDownloads = 4
-    private val maxPendingDefaultAutoDownloads = 20
+    private val maxPendingDefaultAutoDownloads = 10
     private val maxStickerParallelDownloads = 5
     private val stickerStallMs = 20_000L
     private val defaultStallMs = 35_000L
@@ -582,7 +582,7 @@ class FileDownloadQueue(
                         val pendingDefaultCount = pendingRequests.values.count {
                             !it.isManual && it.type == DownloadType.DEFAULT
                         }
-                        if (pendingDefaultCount >= maxPendingDefaultAutoDownloads) {
+                        if (req.priority < 32 && pendingDefaultCount >= maxPendingDefaultAutoDownloads) {
                             return@launch
                         }
                     }

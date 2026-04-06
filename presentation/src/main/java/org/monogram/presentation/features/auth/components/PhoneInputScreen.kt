@@ -1,11 +1,21 @@
 package org.monogram.presentation.features.auth.components
 
 import android.content.res.Configuration
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,22 +46,27 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +82,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -75,9 +91,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.CountryFlag
+import org.monogram.presentation.core.ui.ExpressiveDefaults
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.util.Country
 import org.monogram.presentation.core.util.CountryManager
@@ -88,21 +107,43 @@ enum class ActiveField {
     CODE, PHONE
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PhoneInputScreen(
     onConfirm: (String) -> Unit,
     isSubmitting: Boolean
 ) {
-    val countries = remember { CountryManager.getCountries() }
+    val isPreview = LocalInspectionMode.current
+
+    val countries = remember {
+        if (isPreview) {
+            listOf(
+                Country(name = "United States", code = "1", iso = "US", flagEmoji = "🇺🇸"),
+            )
+        } else {
+            CountryManager.getCountries()
+        }
+    }
+
     val defaultCountry = remember {
         val currentIso = Locale.getDefault().country
-        countries.find { it.iso == currentIso } ?: countries.find { it.code == "380" } ?: countries.first()
+        countries.find { it.iso == currentIso } ?: countries.find { it.code == "380" }
+        ?: countries.first()
     }
 
     var phoneBody by remember { mutableStateOf("") }
-    var selectedCountry by remember { mutableStateOf(defaultCountry) }
-    var codeInput by remember { mutableStateOf(selectedCountry.code) }
+    var selectedCountry by remember { mutableStateOf<Country?>(defaultCountry) }
+    var codeInput by remember { mutableStateOf(defaultCountry.code) }
+
+    var codeFieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = defaultCountry.code,
+                selection = TextRange(defaultCountry.code.length)
+            )
+        )
+    }
+    var phoneFieldValue by remember { mutableStateOf(TextFieldValue()) }
 
     var showCountryPicker by remember { mutableStateOf(false) }
     var activeField by remember { mutableStateOf(ActiveField.PHONE) }
@@ -118,6 +159,14 @@ fun PhoneInputScreen(
     var isFocused by remember { mutableStateOf(false) }
     val isKeyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val isInputMode = isKeyboardVisible || isFocused
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (!isKeyboardVisible && isFocused) {
+            focusManager.clearFocus()
+        }
+    }
+
+    var phoneDisplay by remember { mutableStateOf("") }
 
     val iconSize by animateDpAsState(
         targetValue = if (isInputMode) 0.dp else 72.dp,
@@ -140,23 +189,30 @@ fun PhoneInputScreen(
         label = "middleSpacerHeight"
     )
 
-    fun onCodeChanged(newCode: String) {
-        if (newCode.length <= 4) {
-            codeInput = newCode
-            countries.find { it.code == newCode }?.let { selectedCountry = it }
+    val closeCountryPicker = {
+        showCountryPicker = false
+        searchQuery = ""
+    }
+
+    val onCountrySelected: (Country) -> Unit = remember {
+        { country ->
+            selectedCountry = country
+            codeInput = country.code
+            codeFieldValue =
+                TextFieldValue(text = country.code, selection = TextRange(country.code.length))
+            phoneBody = ""
+            phoneFieldValue = TextFieldValue()
+            phoneDisplay = ""
+            activeField = ActiveField.PHONE
+            closeCountryPicker()
         }
     }
 
-    fun onCountrySelected(country: Country) {
-        selectedCountry = country
-        codeInput = country.code
-        showCountryPicker = false
-        searchQuery = ""
-        activeField = ActiveField.PHONE
-    }
-
     val fullNumber = "+$codeInput$phoneBody"
-    val isFormValid = codeInput.isNotEmpty() && phoneBody.length >= selectedCountry.getMobileNumberLength()
+    val isFormValid = remember(fullNumber, selectedCountry?.iso) {
+        val iso = selectedCountry?.iso
+        codeInput.isNotEmpty() && iso != null && CountryManager.isValidPhoneNumber(fullNumber, iso)
+    }
 
     val content: @Composable () -> Unit = {
         Spacer(modifier = Modifier.height(topSpacerHeight))
@@ -175,7 +231,7 @@ fun PhoneInputScreen(
                         scaleX = scale
                         scaleY = scale
                     },
-                shape = CircleShape,
+                shape = MaterialShapes.Cookie4Sided.toShape(),
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -222,49 +278,129 @@ fun PhoneInputScreen(
                 }
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+                    .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(color = MaterialTheme.colorScheme.primary.copy(0.15f), shape = CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(selectedCountry.flagEmoji, fontSize = 20.sp)
+
+                AnimatedContent(
+                    targetState = selectedCountry,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(220, delayMillis = 90)) +
+                                scaleIn(
+                                    initialScale = 0.6f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                                        stiffness = Spring.StiffnessMediumLow
+                                    )
+                                )
+                                ).togetherWith(
+                                fadeOut(animationSpec = tween(90)) +
+                                        scaleOut(targetScale = 0.8f)
+                            )
+                    },
+                    label = "CountryIconAnimation"
+                ) { targetCountry ->
+                    if (targetCountry != null) {
+                        CountryFlag(
+                            iso = targetCountry.iso,
+                            size = 40.dp
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                                contentDescription = "Unknown country",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
                 }
+
                 Spacer(modifier = Modifier.width(16.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = selectedCountry.name,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    AnimatedContent(
+                        targetState = selectedCountry?.name,
+                        transitionSpec = {
+                            if (targetState != null) {
+                                (slideInVertically { height -> height / 2 } + fadeIn(tween(250))) togetherWith
+                                        (slideOutVertically { height -> -height / 2 } + fadeOut(
+                                            tween(150)
+                                        ))
+                            } else {
+                                (slideInVertically { height -> -height / 2 } + fadeIn(tween(250))) togetherWith
+                                        (slideOutVertically { height -> height / 2 } + fadeOut(
+                                            tween(
+                                                150
+                                            )
+                                        ))
+                            }.using(SizeTransform(clip = false))
+                        },
+                        label = "CountryTextAnimation"
+                    ) { countryName ->
+                        Text(
+                            text = countryName ?: stringResource(R.string.unknown_country),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (countryName != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     Text(
                         text = stringResource(R.string.country_label),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                Icon(
+                    Icons.Default.ArrowDropDown,
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Box {
-            val textFieldValue = remember(activeField, codeInput, phoneBody) {
-                val text = if (activeField == ActiveField.CODE) codeInput else phoneBody
-                TextFieldValue(text = text, selection = TextRange(text.length))
-            }
+            val currentValue =
+                if (activeField == ActiveField.CODE) codeFieldValue else phoneFieldValue
 
             BasicTextField(
-                value = textFieldValue,
-                onValueChange = {
-                    val newText = it.text.filter { char -> char.isDigit() }
+                value = currentValue,
+                onValueChange = { newValue ->
+                    val digits = newValue.text.filter { it.isDigit() }
+
                     if (activeField == ActiveField.CODE) {
-                        onCodeChanged(newText)
+                        if (digits.length <= 4) {
+                            codeInput = digits
+                            codeFieldValue = newValue.copy(text = digits)
+
+                            val newCountry = countries.find { it.code == digits }
+                            selectedCountry = newCountry
+
+                            phoneDisplay = newCountry?.let {
+                                CountryManager.formatPartialPhoneNumber(it.iso, phoneBody)
+                            } ?: phoneBody
+                        }
                     } else {
-                        if (newText.length <= 15) phoneBody = newText
+                        if (digits.length <= 15) {
+                            phoneBody = digits
+                            phoneDisplay = selectedCountry?.let {
+                                CountryManager.formatPartialPhoneNumber(it.iso, digits)
+                            } ?: digits
+
+                            phoneFieldValue = newValue.copy(text = digits)
+                        }
                     }
                 },
                 keyboardOptions = KeyboardOptions(
@@ -347,9 +483,11 @@ fun PhoneInputScreen(
                     ) {
                         Column {
                             Text(
-                                text = if (phoneBody.isEmpty()) stringResource(R.string.phone_number_placeholder) else phoneBody,
+                                text = if (phoneBody.isEmpty()) stringResource(R.string.phone_number_placeholder) else phoneDisplay,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = if (phoneBody.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                color = if (phoneBody.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                    alpha = 0.5f
+                                )
                                 else if (activeField == ActiveField.PHONE && isFocused) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurface
                             )
@@ -368,24 +506,27 @@ fun PhoneInputScreen(
 
         Button(
             onClick = { onConfirm(fullNumber) },
+            shapes = ExpressiveDefaults.extraLargeButtonShapes(),
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
             enabled = isFormValid && !isSubmitting,
-            shape = RoundedCornerShape(24.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
             )
         ) {
             if (isSubmitting) {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
+                    color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text(stringResource(R.string.continue_button), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(R.string.continue_button),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
             }
@@ -404,9 +545,11 @@ fun PhoneInputScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         if (isLandscape) {
-            Row(modifier = Modifier
-                .fillMaxSize()
-                .imePadding()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .imePadding()
+            ) {
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -441,10 +584,7 @@ fun PhoneInputScreen(
 
     if (showCountryPicker) {
         ModalBottomSheet(
-            onDismissRequest = {
-                showCountryPicker = false
-                searchQuery = ""
-            },
+            onDismissRequest = closeCountryPicker,
             containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -497,7 +637,11 @@ fun PhoneInputScreen(
                                     .padding(horizontal = 20.dp, vertical = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(country.flagEmoji, fontSize = 24.sp)
+                                CountryFlag(
+                                    iso = country.iso,
+                                    size = 32.dp,
+                                    flagEmoji = country.flagEmoji
+                                )
                                 Spacer(modifier = Modifier.width(16.dp))
                                 Text(
                                     text = country.name,
@@ -523,5 +667,17 @@ fun PhoneInputScreen(
                 }
             }
         }
+    }
+}
+
+@Preview
+@Preview(uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun PhoneInputScreenPreview() {
+    MaterialTheme {
+        PhoneInputScreen(
+            onConfirm = { },
+            isSubmitting = false
+        )
     }
 }

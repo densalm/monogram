@@ -98,4 +98,37 @@ Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_destroy(JNI
     delete decoder;
 }
 
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
+    JNIEnv *env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK || env == nullptr) {
+        return JNI_ERR;
+    }
+
+    jclass wrapperClass = env->FindClass("org/monogram/presentation/features/stickers/core/RLottieWrapper");
+    if (wrapperClass == nullptr) {
+        return JNI_ERR;
+    }
+
+    static const JNINativeMethod methods[] = {
+        {const_cast<char *>("create"), const_cast<char *>("()J"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_create)},
+        {const_cast<char *>("openFromData"), const_cast<char *>("(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_openFromData)},
+        {const_cast<char *>("renderFrame"), const_cast<char *>("(JLandroid/graphics/Bitmap;IIIII)Z"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_renderFrame)},
+        {const_cast<char *>("getWidth"), const_cast<char *>("(J)I"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_getWidth)},
+        {const_cast<char *>("getHeight"), const_cast<char *>("(J)I"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_getHeight)},
+        {const_cast<char *>("getTotalFrames"), const_cast<char *>("(J)I"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_getTotalFrames)},
+        {const_cast<char *>("getFrameRate"), const_cast<char *>("(J)D"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_getFrameRate)},
+        {const_cast<char *>("getDurationMs"), const_cast<char *>("(J)J"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_getDurationMs)},
+        {const_cast<char *>("destroy"), const_cast<char *>("(J)V"), reinterpret_cast<void *>(Java_org_monogram_presentation_features_stickers_core_RLottieWrapper_destroy)}
+    };
+
+    constexpr jint methodCount = static_cast<jint>(sizeof(methods) / sizeof(methods[0]));
+    if (env->RegisterNatives(wrapperClass, methods, methodCount) != JNI_OK) {
+        env->DeleteLocalRef(wrapperClass);
+        return JNI_ERR;
+    }
+
+    env->DeleteLocalRef(wrapperClass);
+    return JNI_VERSION_1_6;
+}
+
 }

@@ -1,6 +1,8 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
+import android.content.ClipData
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -8,20 +10,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import org.monogram.domain.models.MessageEntity
-import org.monogram.domain.models.MessageEntityType
+import org.monogram.presentation.features.chats.currentChat.components.chats.model.isBlockElement
 
 @Composable
 fun MessageText(
@@ -37,12 +44,12 @@ fun MessageText(
     onLongClick: (Offset) -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
-    val clipboardManager = LocalClipboardManager.current
+    val localClipboard = LocalClipboard.current
     val context = LocalContext.current
     val linkHandler = LocalLinkHandler.current
 
     val blockEntities = entities
-        .filter { it.type is MessageEntityType.Pre }
+        .filter { it.type.isBlockElement() }
         .sortedBy { it.offset }
 
     Column(modifier = modifier) {
@@ -58,7 +65,7 @@ fun MessageText(
                 onLongClick = onLongClick,
                 linkHandler = linkHandler,
                 uriHandler = uriHandler,
-                clipboardManager = clipboardManager,
+                localClipboard = localClipboard,
                 context = context
             )
         } else {
@@ -79,19 +86,16 @@ fun MessageText(
                             onLongClick = onLongClick,
                             linkHandler = linkHandler,
                             uriHandler = uriHandler,
-                            clipboardManager = clipboardManager,
+                            localClipboard = localClipboard,
                             context = context
                         )
                     }
                 }
 
-                val codeType = entity.type as MessageEntityType.Pre
-                val codeRawText = text.text.substring(entity.offset, entity.offset + entity.length)
-
-                CodeBlock(
-                    text = codeRawText,
-                    language = codeType.language,
-                    isOutgoing = isOutgoing
+                TextBlocks(
+                    text = text.text,
+                    entity = entity,
+                    isOutgoing = isOutgoing,
                 )
 
                 lastOffset = entity.offset + entity.length
@@ -111,7 +115,7 @@ fun MessageText(
                         onLongClick = onLongClick,
                         linkHandler = linkHandler,
                         uriHandler = uriHandler,
-                        clipboardManager = clipboardManager,
+                        localClipboard = localClipboard,
                         context = context
                     )
                 }
@@ -132,7 +136,7 @@ private fun DefaultTextRender(
     onLongClick: (Offset) -> Unit,
     linkHandler: (String) -> Unit,
     uriHandler: androidx.compose.ui.platform.UriHandler,
-    clipboardManager: androidx.compose.ui.platform.ClipboardManager,
+    localClipboard: Clipboard,
     context: android.content.Context
 ) {
     val layoutResult = remember { mutableStateOf<TextLayoutResult?>(null) }
@@ -160,7 +164,8 @@ private fun DefaultTextRender(
         modifier = Modifier
             .drawBehind {
                 layoutResult.value?.let { result ->
-                    val unrevealedSpoilers = text.getStringAnnotations("SPOILER_UNREVEALED", 0, text.length)
+                    val unrevealedSpoilers =
+                        text.getStringAnnotations("SPOILER_UNREVEALED", 0, text.length)
                     unrevealedSpoilers.forEach { spoilerAnnotation ->
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
                             drawSpoilerEffectApi33(
@@ -189,16 +194,25 @@ private fun DefaultTextRender(
                         var consumed = false
                         layoutResult.value?.let { result ->
                             val rawPosition = result.getOffsetForPosition(offset)
-                            val position = if (text.isNotEmpty()) rawPosition.coerceIn(0, text.length - 1) else 0
+                            val position = if (text.isNotEmpty()) rawPosition.coerceIn(
+                                0,
+                                text.length - 1
+                            ) else 0
                             val annotations = buildList {
-                                addAll(text.getStringAnnotations(position, (position + 1).coerceAtMost(text.length)))
+                                addAll(
+                                    text.getStringAnnotations(
+                                        position,
+                                        (position + 1).coerceAtMost(text.length)
+                                    )
+                                )
                                 if (position > 0) {
                                     addAll(text.getStringAnnotations(position - 1, position))
                                 }
                             }
 
-                            val annotation = annotations.firstOrNull { it.tag.startsWith("SPOILER") }
-                                ?: annotations.firstOrNull()
+                            val annotation =
+                                annotations.firstOrNull { it.tag.startsWith("SPOILER") }
+                                    ?: annotations.firstOrNull()
 
                             annotation?.let {
                                 when (annotation.tag) {
@@ -216,8 +230,17 @@ private fun DefaultTextRender(
                                     }
 
                                     "COPY" -> {
-                                        clipboardManager.setText(AnnotatedString(annotation.item))
-                                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                                        localClipboard.nativeClipboard.setPrimaryClip(
+                                            ClipData.newPlainText(
+                                                "",
+                                                AnnotatedString(annotation.item)
+                                            )
+                                        )
+                                        Toast.makeText(
+                                            context,
+                                            "Copied to clipboard",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                         consumed = true
                                     }
 

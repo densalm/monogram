@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.annotation.OptIn
@@ -23,20 +25,24 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.media3.common.util.UnstableApi
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.namespacedCacheKey
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
 
-@OptIn(UnstableApi::class)
+@OptIn(UnstableApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@kotlin.OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun GifMessageBubble(
     content: MessageContent.Gif,
@@ -50,6 +56,7 @@ fun GifMessageBubble(
     autoDownloadWifi: Boolean,
     autoDownloadRoaming: Boolean,
     autoplayGifs: Boolean,
+    modifier: Modifier = Modifier,
     onGifClick: (MessageModel) -> Unit = {},
     onCancelDownload: (Int) -> Unit = {},
     onLongClick: (Offset) -> Unit,
@@ -58,17 +65,19 @@ fun GifMessageBubble(
     showMetadata: Boolean = true,
     showReactions: Boolean = true,
     toProfile: (Long) -> Unit = {},
-    modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
+    val context = LocalContext.current
     val cornerRadius = 18.dp
     val smallCorner = 4.dp
     val tailCorner = 2.dp
 
     var stablePath by remember(msg.id) { mutableStateOf(content.path) }
     !stablePath.isNullOrBlank()
+    val gifCacheKey = remember(stablePath, content.fileId) {
+        namespacedCacheKey("chat_gif:${content.fileId}", stablePath)
+    }
     var isAutoDownloadSuppressed by remember(msg.id) { mutableStateOf(false) }
 
     LaunchedEffect(content.path) {
@@ -192,12 +201,22 @@ fun GifMessageBubble(
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit,
                                     animate = !isAnyViewerOpen,
-                                    videoPlayerPool = videoPlayerPool,
                                     thumbnailData = content.minithumbnail
                                 )
                             } else {
                                 Image(
-                                    painter = rememberAsyncImagePainter(stablePath),
+                                    painter = rememberAsyncImagePainter(
+                                        model = ImageRequest.Builder(context)
+                                            .data(stablePath)
+                                            .apply {
+                                                gifCacheKey?.let {
+                                                    memoryCacheKey(it)
+                                                    diskCacheKey(it)
+                                                }
+                                            }
+                                            .crossfade(true)
+                                            .build()
+                                    ),
                                     contentDescription = content.caption,
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Fit
@@ -268,7 +287,7 @@ fun GifMessageBubble(
                                 .background(Color.Black.copy(alpha = 0.5f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(
+                            CircularWavyProgressIndicator(
                                 progress = { content.uploadProgress },
                                 color = Color.White,
                                 trackColor = Color.White.copy(alpha = 0.3f),

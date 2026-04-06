@@ -7,7 +7,7 @@ class ChatListManager(
     private val cache: ChatCache,
     private val onChatNeeded: (Long) -> Unit
 ) {
-    private val tag = "PinnedDiag"
+    private val tag = "ChatListDiag"
 
     fun rebuildChatList(
         limit: Int = Int.MAX_VALUE,
@@ -32,9 +32,13 @@ class ChatListManager(
             compareByDescending<Pair<Long, TdApi.ChatPosition>> { it.second.order }
                 .thenByDescending { it.first }
         )
+        val otherLastMessageDates = HashMap<Long, Long>(otherEntries.size)
+        otherEntries.forEach { (chatId, _) ->
+            otherLastMessageDates[chatId] = cache.allChats[chatId]?.lastMessage?.date?.toLong() ?: 0L
+        }
         otherEntries.sortWith(
             compareByDescending<Pair<Long, TdApi.ChatPosition>> { (chatId, _) ->
-                cache.allChats[chatId]?.lastMessage?.date?.toLong() ?: 0L
+                otherLastMessageDates[chatId] ?: 0L
             }
                 .thenByDescending { it.second.order }
                 .thenByDescending { it.first }
@@ -43,6 +47,10 @@ class ChatListManager(
         fun mapEntry(chatId: Long, position: TdApi.ChatPosition): org.monogram.domain.models.ChatModel? {
             val chat = cache.allChats[chatId]
             if (chat == null) {
+                Log.w(
+                    tag,
+                    "rebuild missing chat chatId=$chatId order=${position.order} pinned=${position.isPinned} active=${cache.activeListPositions.size} chats=${cache.allChats.size}"
+                )
                 if (position.order != 0L) onChatNeeded(chatId)
                 return null
             }
@@ -62,10 +70,10 @@ class ChatListManager(
             }
         }
 
-        if (pinnedEntries.isNotEmpty()) {
-            Log.d(
+        if (missingPinnedIds.isNotEmpty()) {
+            Log.w(
                 tag,
-                "rebuild pinned: total=${pinnedEntries.size} mapped=$pinnedMapped missing=${missingPinnedIds.size} missingIds=${
+                "rebuild pinned missing: total=${pinnedEntries.size} mapped=$pinnedMapped missing=${missingPinnedIds.size} missingIds=${
                     missingPinnedIds.take(
                         10
                     )
@@ -137,7 +145,18 @@ class ChatListManager(
                     )
                 }
                 if (!shouldProtectPinned) {
-                    if (cache.activeListPositions.remove(chatId) != null) activeListChanged = true
+                    val removed = cache.activeListPositions.remove(chatId) != null
+                    if (removed) {
+                        Log.w(
+                            tag,
+                            "position removed updateChatPosition chatId=$chatId reason=order0 currentPinned=${currentPos?.isPinned} protected=${
+                                cache.protectedPinnedChatIds.contains(
+                                    chatId
+                                )
+                            } authoritative=${cache.authoritativeActiveListChatIds.contains(chatId)} active=${cache.activeListPositions.size}"
+                        )
+                        activeListChanged = true
+                    }
                     cache.authoritativeActiveListChatIds.remove(chatId)
                     cache.protectedPinnedChatIds.remove(chatId)
                 }
@@ -177,17 +196,7 @@ class ChatListManager(
             }
             oldPos == null || oldPos.order != newPos.order || oldPos.isPinned != newPos.isPinned
         } else {
-            if (cache.protectedPinnedChatIds.contains(chatId)) {
-                Log.d(tag, "updateActivePositions skip remove protected pinned chatId=$chatId")
-                return false
-            }
-            if (cache.authoritativeActiveListChatIds.contains(chatId)) {
-                if (cache.activeListPositions[chatId]?.isPinned == true) {
-                    Log.d(tag, "updateActivePositions skip remove authoritative pinned chatId=$chatId")
-                }
-                return false
-            }
-            cache.activeListPositions.remove(chatId) != null
+            false
         }
     }
 

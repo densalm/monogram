@@ -32,15 +32,18 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.namespacedCacheKey
 import org.monogram.presentation.features.chats.currentChat.AutoDownloadSuppression
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
 import org.monogram.presentation.features.chats.currentChat.components.chats.*
@@ -49,15 +52,16 @@ import org.monogram.presentation.features.chats.currentChat.components.chats.*
 fun ChannelVideoMessageBubble(
     content: MessageContent.Video,
     msg: MessageModel,
-    isSameSenderAbove: Boolean = false,
-    isSameSenderBelow: Boolean = false,
     fontSize: Float,
     letterSpacing: Float,
-    bubbleRadius: Float = 18f,
     autoDownloadMobile: Boolean,
     autoDownloadWifi: Boolean,
     autoDownloadRoaming: Boolean,
     autoplayVideos: Boolean,
+    modifier: Modifier = Modifier,
+    bubbleRadius: Float = 18f,
+    isSameSenderBelow: Boolean = false,
+    isSameSenderAbove: Boolean = false,
     onVideoClick: (MessageModel) -> Unit,
     onCancelDownload: (Int) -> Unit = {},
     onLongClick: (Offset) -> Unit,
@@ -68,9 +72,7 @@ fun ChannelVideoMessageBubble(
     showMetadata: Boolean = true,
     showReactions: Boolean = true,
     toProfile: (Long) -> Unit = {},
-    modifier: Modifier = Modifier,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val cornerRadius = bubbleRadius.dp
@@ -86,7 +88,7 @@ fun ChannelVideoMessageBubble(
         topStart = topStart,
         topEnd = topEnd,
         bottomStart = bottomStart,
-        bottomEnd = bottomEnd
+        bottomEnd = if (showComments && msg.canGetMessageThread) 4.dp else bottomEnd
     )
 
     var videoPosition by remember { mutableStateOf(Offset.Zero) }
@@ -95,11 +97,18 @@ fun ChannelVideoMessageBubble(
     var isVisible by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val screenHeightPx = remember { context.resources.displayMetrics.heightPixels }
+    val resource = LocalResources.current
+    val screenHeightPx = remember { resource.displayMetrics.heightPixels }
     val revealedSpoilers = remember { mutableStateListOf<Int>() }
 
     var stablePath by remember(msg.id) { mutableStateOf(content.path) }
     val hasPath = !stablePath.isNullOrBlank()
+    val videoCacheKey = remember(stablePath, content.fileId) {
+        namespacedCacheKey("channel_video:${content.fileId}", stablePath)
+    }
+    val videoMiniCacheKey = remember(content.minithumbnail, content.fileId) {
+        content.minithumbnail?.let { namespacedCacheKey("channel_video_mini:${content.fileId}", it) }
+    }
     var isAutoDownloadSuppressed by remember(msg.id) { mutableStateOf(false) }
     val hasCaption = content.caption.isNotEmpty()
 
@@ -209,7 +218,6 @@ fun ChannelVideoMessageBubble(
                                             currentPositionSeconds = seconds
                                         }
                                     },
-                                    videoPlayerPool = videoPlayerPool,
                                     fileId = if (!hasPath && content.supportsStreaming) content.fileId else 0,
                                     thumbnailData = content.minithumbnail
                                 )
@@ -234,7 +242,18 @@ fun ChannelVideoMessageBubble(
                             } else {
                                 if (hasPath) {
                                     Image(
-                                        painter = rememberAsyncImagePainter(stablePath),
+                                        painter = rememberAsyncImagePainter(
+                                            model = ImageRequest.Builder(context)
+                                                .data(stablePath)
+                                                .apply {
+                                                    videoCacheKey?.let {
+                                                        memoryCacheKey(it)
+                                                        diskCacheKey(it)
+                                                    }
+                                                }
+                                                .crossfade(true)
+                                                .build()
+                                        ),
                                         contentDescription = null,
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Fit
@@ -242,7 +261,17 @@ fun ChannelVideoMessageBubble(
                                 } else {
                                     if (content.minithumbnail != null) {
                                         Image(
-                                            painter = rememberAsyncImagePainter(content.minithumbnail),
+                                            painter = rememberAsyncImagePainter(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(content.minithumbnail)
+                                                    .apply {
+                                                        videoMiniCacheKey?.let {
+                                                            memoryCacheKey(it)
+                                                            diskCacheKey(it)
+                                                        }
+                                                    }
+                                                    .build()
+                                            ),
                                             contentDescription = null,
                                             modifier = Modifier
                                                 .fillMaxSize()

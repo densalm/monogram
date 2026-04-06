@@ -3,7 +3,9 @@ package org.monogram.presentation.features.instantview.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.ClickableText
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +28,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.monogram.domain.models.webapp.PageBlockCaption
 import org.monogram.domain.models.webapp.RichText
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.VideoStickerPlayer
 import org.monogram.presentation.features.chats.currentChat.components.VideoType
 import org.monogram.presentation.features.chats.currentChat.components.chats.normalizeUrl
@@ -72,39 +73,40 @@ fun RichTextView(
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AsyncImageWithDownload(
     path: String?,
     fileId: Int,
-    minithumbnail: ByteArray? = null,
     modifier: Modifier = Modifier,
+    minithumbnail: ByteArray? = null,
     contentScale: ContentScale = ContentScale.Fit
 ) {
-    val messageRepository = LocalMessageRepository.current
+    val fileRepository = LocalFileRepository.current
     var currentPath by remember(fileId) { mutableStateOf(path) }
-    var progress by remember { mutableStateOf(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(path, fileId) {
         if (!path.isNullOrEmpty()) {
             currentPath = path
         }
         if (currentPath == null) {
-            messageRepository.downloadFile(fileId)
+            fileRepository.downloadFile(fileId)
 
             val progressJob = launch {
-                messageRepository.messageDownloadProgressFlow
+                fileRepository.messageDownloadProgressFlow
                     .filter { it.first == fileId.toLong() }
                     .collect { progress = it.second }
             }
 
             val completedPath = withTimeoutOrNull(60_000L) {
-                messageRepository.messageDownloadCompletedFlow
+                fileRepository.messageDownloadCompletedFlow
                     .filter { it.first == fileId.toLong() }
                     .mapNotNull { (_, _, candidatePath) -> candidatePath.takeIf { it.isNotEmpty() } }
                     .first()
             }
 
-            currentPath = completedPath ?: messageRepository.getFilePath(fileId)
+            currentPath = completedPath ?: fileRepository.getFilePath(fileId)
             progressJob.cancel()
         }
     }
@@ -137,16 +139,14 @@ fun AsyncImageWithDownload(
             }
 
             if (progress > 0f && progress < 1f) {
-                CircularProgressIndicator(
+                CircularWavyProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(32.dp),
-                    strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary
                 )
             } else {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                 )
             }
@@ -154,40 +154,40 @@ fun AsyncImageWithDownload(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AsyncVideoWithDownload(
     path: String?,
-    videoPlayerPool: VideoPlayerPool,
     fileId: Int,
     modifier: Modifier = Modifier,
     shouldLoop: Boolean = true,
     contentScale: ContentScale = ContentScale.Fit
 ) {
-    val messageRepository = LocalMessageRepository.current
+    val fileRepository = LocalFileRepository.current
     var currentPath by remember(fileId) { mutableStateOf(path) }
-    var progress by remember { mutableStateOf(0f) }
+    var progress by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(path, fileId) {
         if (!path.isNullOrEmpty()) {
             currentPath = path
         }
         if (currentPath == null) {
-            messageRepository.downloadFile(fileId)
+            fileRepository.downloadFile(fileId)
 
             val progressJob = launch {
-                messageRepository.messageDownloadProgressFlow
+                fileRepository.messageDownloadProgressFlow
                     .filter { it.first == fileId.toLong() }
                     .collect { progress = it.second }
             }
 
             val completedPath = withTimeoutOrNull(60_000L) {
-                messageRepository.messageDownloadCompletedFlow
+                fileRepository.messageDownloadCompletedFlow
                     .filter { it.first == fileId.toLong() }
                     .mapNotNull { (_, _, candidatePath) -> candidatePath.takeIf { it.isNotEmpty() } }
                     .first()
             }
 
-            currentPath = completedPath ?: messageRepository.getFilePath(fileId)
+            currentPath = completedPath ?: fileRepository.getFilePath(fileId)
             progressJob.cancel()
         }
     }
@@ -199,8 +199,7 @@ fun AsyncVideoWithDownload(
             modifier = modifier,
             animate = true,
             shouldLoop = shouldLoop,
-            contentScale = contentScale,
-            videoPlayerPool = videoPlayerPool
+            contentScale = contentScale
         )
     } else {
         Box(
@@ -210,16 +209,14 @@ fun AsyncVideoWithDownload(
             contentAlignment = Alignment.Center
         ) {
             if (progress > 0f && progress < 1f) {
-                CircularProgressIndicator(
+                CircularWavyProgressIndicator(
                     progress = { progress },
                     modifier = Modifier.size(32.dp),
-                    strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary
                 )
             } else {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
                 )
             }

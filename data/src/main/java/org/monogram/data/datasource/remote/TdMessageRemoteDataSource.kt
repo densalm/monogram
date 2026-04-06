@@ -9,9 +9,10 @@ import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
 import org.monogram.data.chats.ChatCache
-import org.monogram.data.di.TdLibException
+import org.monogram.data.gateway.TdLibException
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.infra.FileDownloadQueue
+import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.toApi
 import org.monogram.domain.models.*
@@ -24,10 +25,11 @@ class TdMessageRemoteDataSource(
     private val gateway: TelegramGateway,
     private val messageMapper: MessageMapper,
     private val userRepository: UserRepository,
-    private val chatsListRepository: ChatsListRepository,
+    private val chatListRepository: ChatListRepository,
     private val cache: ChatCache,
     private val pollRepository: PollRepository,
     private val fileDownloadQueue: FileDownloadQueue,
+    private val fileUpdateHandler: FileUpdateHandler,
     private val dispatcherProvider: DispatcherProvider,
     scopeProvider: ScopeProvider
 ) : MessageRemoteDataSource {
@@ -69,8 +71,6 @@ class TdMessageRemoteDataSource(
     enum class DownloadType { VIDEO, GIF, STICKER, VIDEO_NOTE, DEFAULT }
 
     private val fileIdToMessageMap = fileDownloadQueue.registry.fileIdToMessageMap
-    val customEmojiPaths = ConcurrentHashMap<Long, String>()
-    val fileIdToCustomEmojiId = ConcurrentHashMap<Int, Long>()
     private val messageUpdateJobs = ConcurrentHashMap<Pair<Long, Long>, Job>()
     private val lastProgressMap = ConcurrentHashMap<Int, Int>()
     private val lastDownloadActiveMap = ConcurrentHashMap<Int, Boolean>()
@@ -321,7 +321,7 @@ class TdMessageRemoteDataSource(
                     if (cachedChat != null) {
                         UserModel(id = cachedChat.id, firstName = cachedChat.title, lastName = "", username = null, avatarPath = cachedChat.photo?.small?.local?.path)
                     } else {
-                        val chat = chatsListRepository.getChatById(sender.chatId)
+                        val chat = chatListRepository.getChatById(sender.chatId)
                         if (chat != null) UserModel(id = chat.id, firstName = chat.title, lastName = "", username = null, avatarPath = chat.avatarPath)
                         else null
                     }
@@ -482,7 +482,7 @@ class TdMessageRemoteDataSource(
             this.text = parsedText
             this.clearDraft = true
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -507,7 +507,7 @@ class TdMessageRemoteDataSource(
             this.photo = TdApi.InputFileLocal(photoPath)
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -540,7 +540,7 @@ class TdMessageRemoteDataSource(
             this.video = TdApi.InputFileLocal(videoPath)
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -571,7 +571,7 @@ class TdMessageRemoteDataSource(
             this.document = TdApi.InputFileLocal(documentPath)
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -595,7 +595,7 @@ class TdMessageRemoteDataSource(
             this.width = 512
             this.height = 512
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -620,7 +620,7 @@ class TdMessageRemoteDataSource(
         val content = TdApi.InputMessageAnimation().apply {
             this.animation = TdApi.InputFileId(gifId.toInt())
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -645,7 +645,7 @@ class TdMessageRemoteDataSource(
             this.animation = TdApi.InputFileLocal(gifPath)
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessage().apply {
             this.chatId = chatId
@@ -684,7 +684,7 @@ class TdMessageRemoteDataSource(
                 this.caption = cap
             }
         }.toTypedArray()
-        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0) else null
+        val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
         val topicId = if (threadId != null && threadId != 0L) TdApi.MessageTopicThread(threadId) else null
         val req = TdApi.SendMessageAlbum().apply {
             this.chatId = chatId
@@ -806,6 +806,8 @@ class TdMessageRemoteDataSource(
             is MessageEntityType.Strikethrough -> TdApi.TextEntityTypeStrikethrough()
             is MessageEntityType.Spoiler -> TdApi.TextEntityTypeSpoiler()
             is MessageEntityType.Code -> TdApi.TextEntityTypeCode()
+            is MessageEntityType.BlockQuote -> TdApi.TextEntityTypeBlockQuote()
+            is MessageEntityType.BlockQuoteExpandable -> TdApi.TextEntityTypeExpandableBlockQuote()
             is MessageEntityType.Pre -> {
                 if (value.language.isBlank()) TdApi.TextEntityTypePre()
                 else TdApi.TextEntityTypePreCode(value.language)
@@ -1355,8 +1357,8 @@ class TdMessageRemoteDataSource(
         if (isDC) {
             fileDownloadQueue.notifyDownloadComplete(file.id)
             lastProgressMap.remove(file.id)
-            fileIdToCustomEmojiId[file.id]?.let { customEmojiId ->
-                customEmojiPaths[customEmojiId] = file.local?.path ?: ""
+            fileUpdateHandler.fileIdToCustomEmojiId[file.id]?.let { customEmojiId ->
+                fileUpdateHandler.customEmojiPaths[customEmojiId] = file.local?.path ?: ""
             }
 
             val entries = fileIdToMessageMap[file.id]

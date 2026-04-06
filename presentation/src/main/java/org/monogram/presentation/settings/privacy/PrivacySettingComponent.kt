@@ -9,18 +9,16 @@ import kotlinx.coroutines.launch
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.PrivacyValue
 import org.monogram.domain.models.UserModel
-import org.monogram.domain.repository.ChatsListRepository
+import org.monogram.domain.repository.ChatListRepository
 import org.monogram.domain.repository.PrivacyKey
 import org.monogram.domain.repository.PrivacyRepository
 import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 interface PrivacySettingComponent {
     val state: Value<State>
-    val videoPlayerPool: VideoPlayerPool
     fun onBackClicked()
     fun onPrivacyValueChanged(value: PrivacyValue)
     fun onSearchPrivacyValueChanged(value: PrivacyValue)
@@ -52,8 +50,7 @@ class DefaultPrivacySettingComponent(
 
     private val userRepository: UserRepository = container.repositories.userRepository
     private val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
-    private val chatsRepository: ChatsListRepository = container.repositories.chatsListRepository
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
+    private val chatsRepository: ChatListRepository = container.repositories.chatListRepository
 
     private val _state =
         MutableValue(PrivacySettingComponent.State(titleRes = getTitleRes(privacyKey), privacyKey = privacyKey))

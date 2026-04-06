@@ -1,4 +1,3 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.*
 
 plugins {
@@ -10,43 +9,35 @@ plugins {
 
 android {
     namespace = "org.monogram.data"
-    buildFeatures {
-        buildConfig = true
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 25
+        consumerProguardFiles("consumer-rules.pro")
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+
+        val localProperties: Properties by rootProject.extra
+
+        val apiId = localProperties.getProperty("API_ID", "0")
+        val apiHash = localProperties.getProperty("API_HASH", "")
+
+        buildConfigField("int", "API_ID", apiId)
+        buildConfigField("String", "API_HASH", "\"$apiHash\"")
     }
 
-    compileSdk {
-        version = release(36)
-    }
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
         }
     }
-    defaultConfig {
-        ndk {
-            abiFilters.add("arm64-v8a")
-        }
 
-        val properties = Properties()
-        val localPropertiesFile = project.rootProject.file("local.properties")
-        if (localPropertiesFile.exists()) {
-            localPropertiesFile.inputStream().use { properties.load(it) }
-        }
-
-        val apiId = properties.getProperty("API_ID") ?: "0"
-        val apiHash = properties.getProperty("API_HASH") ?: ""
-
-        buildConfigField("int", "API_ID", apiId)
-        buildConfigField("String", "API_HASH", "\"$apiHash\"")
-    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
         }
-    }
-    defaultConfig {
-        minSdk = 25
-        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -59,13 +50,14 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_17
-        }
+        jvmToolchain(21)
+    }
+    buildFeatures {
+        buildConfig = true
     }
 }
 
@@ -74,6 +66,7 @@ dependencies {
     implementation(project(":domain"))
     implementation(libs.koin.android)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.media3.datasource)
     implementation(platform(libs.firebase.bom))
@@ -82,4 +75,6 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    testImplementation(libs.junit)
 }

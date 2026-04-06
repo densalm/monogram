@@ -17,15 +17,17 @@ import coil3.compose.AsyncImage
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.webapp.InvoiceModel
-import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.FileRepository
+import org.monogram.domain.repository.PaymentRepository
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun InvoiceDialog(
     slug: String? = null,
     chatId: Long? = null,
     messageId: Long? = null,
-    messageRepository: MessageRepository,
+    paymentRepository: PaymentRepository,
+    fileRepository: FileRepository,
     onDismiss: (status: String) -> Unit
 ) {
     var invoice by remember { mutableStateOf<InvoiceModel?>(null) }
@@ -37,22 +39,22 @@ fun InvoiceDialog(
     var progress by remember { mutableStateOf(0f) }
 
     LaunchedEffect(slug, chatId, messageId) {
-        val inv = messageRepository.getInvoice(slug = slug, chatId = chatId, messageId = messageId)
+        val inv = paymentRepository.getInvoice(slug = slug, chatId = chatId, messageId = messageId)
         invoice = inv
         isLoading = false
 
         inv?.photoUrl?.let { fileIdStr ->
             val fileId = fileIdStr.toIntOrNull()
             if (fileId != null) {
-                photoPath = messageRepository.getFilePath(fileId)
+                photoPath = fileRepository.getFilePath(fileId)
                 if (photoPath == null) {
-                    messageRepository.downloadFile(fileId)
+                    fileRepository.downloadFile(fileId)
                     launch {
-                        messageRepository.messageDownloadProgressFlow
+                        fileRepository.messageDownloadProgressFlow
                             .filter { it.first == fileId.toLong() }
                             .collect { progress = it.second }
                     }
-                    messageRepository.messageDownloadCompletedFlow
+                    fileRepository.messageDownloadCompletedFlow
                         .filter { it.first == fileId.toLong() }
                         .collect { (_, _, completedPath) -> photoPath = completedPath }
                 }
@@ -77,7 +79,7 @@ fun InvoiceDialog(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.padding(32.dp))
+                LoadingIndicator(modifier = Modifier.padding(32.dp))
             } else if (invoice == null) {
                 Text("Failed to load invoice", color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(16.dp))
@@ -108,13 +110,11 @@ fun InvoiceDialog(
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
+                        CircularWavyProgressIndicator(
                             progress = { progress },
                             modifier = Modifier,
                             color = ProgressIndicatorDefaults.circularColor,
-                            strokeWidth = 4.dp,
                             trackColor = ProgressIndicatorDefaults.circularIndeterminateTrackColor,
-                            strokeCap = ProgressIndicatorDefaults.CircularDeterminateStrokeCap,
                         )
                     }
                 }
@@ -167,7 +167,7 @@ fun InvoiceDialog(
                         isPaying = true
                         scope.launch {
                             val success =
-                                messageRepository.payInvoice(slug = slug, chatId = chatId, messageId = messageId)
+                                paymentRepository.payInvoice(slug = slug, chatId = chatId, messageId = messageId)
                             isPaying = false
                             if (success) {
                                 onDismiss("paid")
@@ -181,10 +181,9 @@ fun InvoiceDialog(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     if (isPaying) {
-                        CircularProgressIndicator(
+                        LoadingIndicator(
                             modifier = Modifier.size(20.dp),
                             color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
                         )
                     } else {
                         Text(

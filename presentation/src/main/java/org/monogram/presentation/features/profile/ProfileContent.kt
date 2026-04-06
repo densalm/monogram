@@ -1,5 +1,8 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.profile
 
+import android.content.ClipData
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -21,12 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
@@ -47,7 +51,7 @@ import org.monogram.presentation.features.webapp.MiniAppViewer
 @Composable
 fun ProfileContent(component: ProfileComponent) {
     val state by component.state.subscribeAsState()
-    val clipboardManager = LocalClipboardManager.current
+    val localClipboard = LocalClipboard.current
     val context = LocalContext.current
     val collapsingToolbarState = rememberCollapsingToolbarScaffoldState()
 
@@ -178,8 +182,12 @@ fun ProfileContent(component: ProfileComponent) {
                     onShare = {
                         val valueToCopy = shareLink ?: fallbackShareText
                         if (valueToCopy != null) {
-                            clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(valueToCopy))
+                            localClipboard.nativeClipboard.setPrimaryClip(
+                                ClipData.newPlainText("", AnnotatedString(valueToCopy))
+                            )
+
                             val copiedMessage = if (shareLink != null) linkCopied else userIdCopied
+
                             Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
                         }
                     },
@@ -203,6 +211,16 @@ fun ProfileContent(component: ProfileComponent) {
             },
             containerColor = dynamicContainerColor
         ) { padding ->
+            val isGroup = state.chat?.isGroup == true || state.chat?.isChannel == true
+            val tabs = mutableListOf<@Composable () -> String>({ stringResource(R.string.tab_media) })
+            if (isGroup) tabs.add { stringResource(R.string.tab_members) }
+            tabs.addAll(listOf(
+                { stringResource(R.string.tab_files) },
+                { stringResource(R.string.tab_audio) },
+                { stringResource(R.string.tab_voice) },
+                { stringResource(R.string.tab_links) },
+                { stringResource(R.string.tab_gifs) }
+            ))
             CollapsingToolbarScaffold(
                 modifier = Modifier
                     .fillMaxSize()
@@ -260,8 +278,7 @@ fun ProfileContent(component: ProfileComponent) {
                                 onAvatarClick = component::onAvatarClick,
                                 userModel = user,
                                 chatModel = chat,
-                                onActionClick = {},
-                                videoPlayerPool = component.videoPlayerPool
+                                onActionClick = {}
                             )
                         }
                     }
@@ -285,7 +302,7 @@ fun ProfileContent(component: ProfileComponent) {
                             } else {
                                 ProfileInfoSection(
                                     state = state,
-                                    clipboardManager = clipboardManager,
+                                    localClipboard = localClipboard,
                                     onOpenMiniApp = { url, name, chatId -> component.onOpenMiniApp(url, name, chatId) },
                                     onSendMessage = component::onSendMessage,
                                     onToggleMute = component::onToggleMute,
@@ -300,8 +317,7 @@ fun ProfileContent(component: ProfileComponent) {
                                     onShowPermissions = component::onShowPermissions,
                                     onAcceptTOS = component::onAcceptTOS,
                                     onToggleContact = component::onToggleContact,
-                                    onLocationClick = component::onLocationClick,
-                                    videoPlayerPool = component.videoPlayerPool
+                                    onLocationClick = component::onLocationClick
                                 )
                             }
                             Spacer(modifier = Modifier.height(12.dp))
@@ -310,6 +326,8 @@ fun ProfileContent(component: ProfileComponent) {
 
                     profileMediaSection(
                         state = state,
+                        isGroup = isGroup,
+                        tabs = tabs,
                         onTabSelected = component::onTabSelected,
                         onMessageClick = component::onMessageClick,
                         onMessageLongClick = component::onMessageLongClick,
@@ -318,8 +336,7 @@ fun ProfileContent(component: ProfileComponent) {
                         onMemberLongClick = component::onMemberLongClick,
                         onLoadMedia = { msg ->
                             component.onDownloadMedia(msg)
-                        },
-                        videoPlayerPool = component.videoPlayerPool
+                        }
                     )
 
                     item(span = { GridItemSpan(3) }) {
@@ -341,7 +358,7 @@ fun ProfileContent(component: ProfileComponent) {
                         images = images,
                         startIndex = state.fullScreenStartIndex,
                         onDismiss = component::onDismissViewer,
-                        autoDownload = true,
+                        autoDownload = false,
                         downloadUtils = component.downloadUtils,
                         onPageChanged = { index ->
 
@@ -386,8 +403,7 @@ fun ProfileContent(component: ProfileComponent) {
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                CircularProgressIndicator(
-                                    strokeWidth = 2.dp,
+                                LoadingIndicator(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
@@ -452,7 +468,7 @@ fun ProfileContent(component: ProfileComponent) {
                     onDismiss = { component.onDismissMiniApp() },
                     chatId = state.chatId,
                     botUserId = state.user!!.id,
-                    messageRepository = component.messageRepository,
+                    webAppRepository = component.messageRepository,
                 )
             }
         }

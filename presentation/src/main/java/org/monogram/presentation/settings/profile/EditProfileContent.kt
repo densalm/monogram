@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.settings.profile
 
 import android.Manifest
@@ -767,11 +769,10 @@ fun EditProfileContent(component: EditProfileComponent) {
                 },
                 actions = {
                     if (state.isLoading) {
-                        CircularProgressIndicator(
+                        LoadingIndicator(
                             modifier = Modifier
                                 .size(24.dp)
                                 .padding(end = 16.dp),
-                            strokeWidth = 2.dp
                         )
                     } else if (state.user != null) {
                         IconButton(onClick = component::onSave) {
@@ -794,7 +795,7 @@ fun EditProfileContent(component: EditProfileComponent) {
                     .padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                ContainedLoadingIndicator()
             }
         } else {
             LazyColumn(
@@ -825,7 +826,6 @@ fun EditProfileContent(component: EditProfileComponent) {
                                 path = state.avatarPath,
                                 name = state.firstName,
                                 size = 100.dp,
-                                videoPlayerPool = component.videoPlayerPool,
                                 onClick = {
                                     photoPickerLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -979,8 +979,7 @@ fun EditProfileContent(component: EditProfileComponent) {
                                         path = chat.avatarPath,
                                         fallbackPath = chat.personalAvatarPath,
                                         name = chat.title,
-                                        size = 40.dp,
-                                        videoPlayerPool = component.videoPlayerPool
+                                        size = 40.dp
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {

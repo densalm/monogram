@@ -38,7 +38,6 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.CountryManager
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -51,7 +50,6 @@ fun ContactMessageBubble(
     fontSize: Float,
     letterSpacing: Float,
     bubbleRadius: Float,
-    videoPlayerPool: VideoPlayerPool,
     isGroup: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -61,7 +59,7 @@ fun ContactMessageBubble(
     showReactions: Boolean = true
 ) {
     val formattedPhone = remember(content.phoneNumber) {
-        CountryManager.formatPhone(content.phoneNumber)
+        CountryManager.formatPhoneNumber(content.phoneNumber)
     }
     val country = remember(content.phoneNumber) {
         CountryManager.getCountryForPhone(content.phoneNumber)
@@ -134,8 +132,7 @@ fun ContactMessageBubble(
                         Avatar(
                             path = content.avatarPath,
                             name = "${content.firstName} ${content.lastName}".trim(),
-                            size = 56.dp,
-                            videoPlayerPool = videoPlayerPool
+                            size = 56.dp
                         )
                         if (country != null) {
                             Box(

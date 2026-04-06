@@ -1,9 +1,10 @@
 package org.monogram.presentation.features.chats.currentChat.impl
 
+import android.content.ClipData
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
-import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.text.AnnotatedString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.update
@@ -65,7 +66,7 @@ internal fun DefaultChatComponent.handleSendPhoto(
                     val bitmap = BitmapFactory.decodeFile(photoPath)
                     val compressedFile = File(cacheController.getCacheDir(), "compressed_photo_${System.currentTimeMillis()}.jpg")
                     FileOutputStream(compressedFile).use { out ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
                     }
                     compressedFile.absolutePath
                 } catch (e: Exception) {
@@ -113,7 +114,7 @@ internal fun DefaultChatComponent.handleSendVideo(
                 trimRange = VideoTrimRange(),
                 filter = null,
                 textElements = emptyList(),
-                quality = VideoQuality.P720,
+                quality = VideoQuality.P1080,
                 muteAudio = false,
                 context = this@handleSendVideo.cacheController.context
             )
@@ -216,7 +217,7 @@ internal fun DefaultChatComponent.handleSendAlbum(
                             trimRange = VideoTrimRange(),
                             filter = null,
                             textElements = emptyList(),
-                            quality = VideoQuality.P720,
+                            quality = VideoQuality.P1080,
                             muteAudio = false,
                             context = this@handleSendAlbum.cacheController.context
                         )
@@ -231,7 +232,7 @@ internal fun DefaultChatComponent.handleSendAlbum(
                                 val compressedFile =
                                     File(cacheController.getCacheDir(), "compressed_photo_${System.currentTimeMillis()}.jpg")
                                 FileOutputStream(compressedFile).use { out ->
-                                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                                    bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
                                 }
                                 compressedFile.absolutePath
                             } catch (e: Exception) {
@@ -297,7 +298,7 @@ internal fun DefaultChatComponent.handleSendVoice(path: String, duration: Int, w
     }
 }
 
-internal fun DefaultChatComponent.handleCopySelectedMessages(clipboardManager: ClipboardManager) {
+internal fun DefaultChatComponent.handleCopySelectedMessages(localClipboard: Clipboard) {
     val currentState = _state.value
     val selectedIds = currentState.selectedMessageIds
     val selectedMessages = currentState.messages
@@ -316,7 +317,8 @@ internal fun DefaultChatComponent.handleCopySelectedMessages(clipboardManager: C
     }
 
     if (text.isNotEmpty()) {
-        clipboardManager.setText(AnnotatedString(text))
+        val clip = ClipData.newPlainText("", AnnotatedString(text))
+        localClipboard.nativeClipboard.setPrimaryClip(clip)
     }
     onClearSelection()
 }
@@ -326,14 +328,16 @@ internal fun DefaultChatComponent.handleReportMessage(message: MessageModel) {
 }
 
 internal fun DefaultChatComponent.handleReportReasonSelected(reason: String) {
-    chatsListRepository.reportChat(chatId, reason)
+    chatOperationsRepository.reportChat(chatId, reason)
 }
 
-internal fun DefaultChatComponent.handleCopyLink(clipboardManager: ClipboardManager) {
+internal fun DefaultChatComponent.handleCopyLink(localClipboard: Clipboard) {
     scope.launch {
-        val link = chatsListRepository.getChatLink(chatId)
+        val link = chatOperationsRepository.getChatLink(chatId)
         if (link != null) {
-            clipboardManager.setText(AnnotatedString(link))
+            localClipboard.nativeClipboard.setPrimaryClip(
+                ClipData.newPlainText("", AnnotatedString(link))
+            )
         }
     }
 }

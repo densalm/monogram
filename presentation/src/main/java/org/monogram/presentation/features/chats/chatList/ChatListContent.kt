@@ -6,7 +6,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -72,7 +72,7 @@ import org.monogram.presentation.features.webapp.MiniAppViewer
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatListContent(component: ChatListComponent) {
     val state by component.state.collectAsState()
@@ -387,8 +387,7 @@ fun ChatListContent(component: ChatListComponent) {
                     botUserId = bot.botUserId,
                     botName = state.botWebAppName ?: bot.name
                 )
-            },
-            videoPlayerPool = component.videoPlayerPool
+            }
         )
     }
 
@@ -412,7 +411,7 @@ fun ChatListContent(component: ChatListComponent) {
     val onChatLongClicked = remember(component) { { id: Long -> component.onChatLongClicked(id) } }
     val statusMenuScrimAlpha by animateFloatAsState(
         targetValue = if (statusMenuTransitionState.targetState) 0.18f else 0f,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
         label = "ChatListStatusMenuScrimAlpha"
     )
 
@@ -524,21 +523,22 @@ fun ChatListContent(component: ChatListComponent) {
                                     statusAnchorBounds = anchorBounds ?: statusAnchorBounds
                                     showStatusMenu = true
                                 },
-                                onMenuClick = { showAccountMenu = true },
-                                videoPlayerPool = component.videoPlayerPool
+                                onMenuClick = { showAccountMenu = true }
                             )
                         }
                     }
                 }
 
                 if (state.connectionStatus == ConnectionStatus.Connecting || state.connectionStatus == ConnectionStatus.Updating || state.connectionStatus == ConnectionStatus.ConnectingToProxy) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.Transparent
-                    )
+                    Column {
+                        LinearWavyProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = Color.Transparent
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
                 }
 
                 val isMainView = !state.isSearchActive && state.selectedFolderId != -2
@@ -687,6 +687,11 @@ fun ChatListContent(component: ChatListComponent) {
             shape = if (isTablet) RoundedCornerShape(0.dp) else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = if (isTablet) Color.Transparent else MaterialTheme.colorScheme.surface
         ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
             if (state.isSearchActive || state.selectedFolderId == -2) {
                 var showAllGlobal by remember { mutableStateOf(false) }
                 var showAllMessages by remember { mutableStateOf(false) }
@@ -811,8 +816,7 @@ fun ChatListContent(component: ChatListComponent) {
                                                         fallbackPath = chat.personalAvatarPath,
                                                         name = chat.title,
                                                         size = 64.dp,
-                                                        isOnline = chat.isOnline,
-                                                        videoPlayerPool = component.videoPlayerPool
+                                                        isOnline = chat.isOnline
                                                     )
                                                     Box(
                                                         modifier = Modifier
@@ -859,8 +863,7 @@ fun ChatListContent(component: ChatListComponent) {
                                         onLongClick = { component.onRemoveSearchHistoryItem(chat.id) },
                                         emojiFontFamily = emojiFontFamily,
                                         messageLines = messageLines,
-                                        showPhotos = showPhotos,
-                                        videoPlayerPool = component.videoPlayerPool
+                                        showPhotos = showPhotos
                                     )
                                 }
                             }
@@ -885,8 +888,7 @@ fun ChatListContent(component: ChatListComponent) {
                                     onLongClick = { onChatLongClicked(chat.id) },
                                     emojiFontFamily = emojiFontFamily,
                                     messageLines = messageLines,
-                                    showPhotos = showPhotos,
-                                    videoPlayerPool = component.videoPlayerPool
+                                    showPhotos = showPhotos
                                 )
                             }
                         }
@@ -914,8 +916,7 @@ fun ChatListContent(component: ChatListComponent) {
                                     onLongClick = { onChatLongClicked(chat.id) },
                                     emojiFontFamily = emojiFontFamily,
                                     messageLines = messageLines,
-                                    showPhotos = showPhotos,
-                                    videoPlayerPool = component.videoPlayerPool
+                                    showPhotos = showPhotos
                                 )
                             }
 
@@ -961,8 +962,7 @@ fun ChatListContent(component: ChatListComponent) {
                                 MessageSearchItem(
                                     modifier = Modifier.animateItem(),
                                     message = msg,
-                                    onClick = { component.onMessageClicked(msg.chatId, msg.id) },
-                                    videoPlayerPool = component.videoPlayerPool
+                                    onClick = { component.onMessageClicked(msg.chatId, msg.id) }
                                 )
                             }
 
@@ -1002,8 +1002,7 @@ fun ChatListContent(component: ChatListComponent) {
                                     isTabletSelected = isTablet && state.activeChatId == chat.id,
                                     emojiFontFamily = emojiFontFamily,
                                     messageLines = messageLines,
-                                    showPhotos = showPhotos,
-                                    videoPlayerPool = component.videoPlayerPool
+                                    showPhotos = showPhotos
                                 )
                             }
                         }
@@ -1012,7 +1011,7 @@ fun ChatListContent(component: ChatListComponent) {
                     if (isArchivedView) {
                         Crossfade(
                             targetState = showArchivedShimmer,
-                            animationSpec = if (shouldAnimateFirstArchiveTransition) tween(360) else tween(0),
+                            animationSpec = if (shouldAnimateFirstArchiveTransition) MaterialTheme.motionScheme.defaultEffectsSpec() else snap(),
                             label = "ArchiveChatsCrossfade"
                         ) { showShimmer ->
                             if (showShimmer) {
@@ -1096,7 +1095,7 @@ fun ChatListContent(component: ChatListComponent) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         Crossfade(
                             targetState = showFolderShimmer,
-                            animationSpec = if (shouldAnimateFirstFolderTransition) tween(360) else tween(0),
+                            animationSpec = if (shouldAnimateFirstFolderTransition) MaterialTheme.motionScheme.defaultEffectsSpec() else snap(),
                             label = "FolderChatsCrossfade"
                         ) { showShimmer ->
                             if (showShimmer) {
@@ -1127,7 +1126,6 @@ fun ChatListContent(component: ChatListComponent) {
                                             onClick = { onChatClicked(chat.id) },
                                             onLongClick = { onChatLongClicked(chat.id) },
                                             isTabletSelected = isTablet && state.activeChatId == chat.id,
-                                            videoPlayerPool = component.videoPlayerPool,
                                             emojiFontFamily = emojiFontFamily,
                                             messageLines = messageLines,
                                             showPhotos = showPhotos
@@ -1137,6 +1135,8 @@ fun ChatListContent(component: ChatListComponent) {
                             }
                         }
                     }
+                }
+            }
                 }
             }
         }
@@ -1193,17 +1193,17 @@ fun ChatListContent(component: ChatListComponent) {
 
             AnimatedVisibility(
                 visibleState = statusMenuTransitionState,
-                enter = fadeIn(animationSpec = tween(180)) +
-                        slideInVertically(animationSpec = tween(260)) { -it / 5 } +
+                enter = fadeIn(animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec()) +
+                        slideInVertically(animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec()) { -it / 5 } +
                         scaleIn(
-                            animationSpec = tween(260),
+                            animationSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
                             initialScale = 0.94f,
                             transformOrigin = TransformOrigin(0.85f, 0f)
                         ),
-                exit = fadeOut(animationSpec = tween(130)) +
-                        slideOutVertically(animationSpec = tween(170)) { -it / 6 } +
+                exit = fadeOut(animationSpec = MaterialTheme.motionScheme.fastEffectsSpec()) +
+                        slideOutVertically(animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()) { -it / 6 } +
                         scaleOut(
-                            animationSpec = tween(170),
+                            animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
                             targetScale = 0.97f,
                             transformOrigin = TransformOrigin(0.85f, 0f)
                         ),
@@ -1213,7 +1213,7 @@ fun ChatListContent(component: ChatListComponent) {
                     modifier = Modifier
                         .width(menuWidth)
                         .heightIn(max = maxMenuHeightDp)
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(ShapeDefaults.LargeIncreased)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -1250,9 +1250,9 @@ fun ChatListContent(component: ChatListComponent) {
             InstantViewer(
                 url = url,
                 messageRepository = koinInject(),
+                fileRepository = koinInject(),
                 onDismiss = { component.onDismissInstantView() },
-                onOpenWebView = { component.onOpenWebView(it) },
-                videoPlayerPool = component.videoPlayerPool
+                onOpenWebView = { component.onOpenWebView(it) }
             )
         }
     }
@@ -1274,7 +1274,7 @@ fun ChatListContent(component: ChatListComponent) {
                 botUserId = botUserId,
                 baseUrl = webAppUrl ?: "",
                 botName = botName ?: stringResource(R.string.mini_app_default_name),
-                messageRepository = koinInject(),
+                webAppRepository = koinInject(),
                 onDismiss = { component.onDismissWebApp() }
             )
         }

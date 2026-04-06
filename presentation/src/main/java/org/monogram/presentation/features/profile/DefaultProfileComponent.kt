@@ -4,6 +4,7 @@ import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.decompose.value.update
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import org.monogram.domain.models.*
@@ -11,7 +12,6 @@ import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultProfileComponent(
@@ -28,11 +28,16 @@ class DefaultProfileComponent(
     private val onMemberLongClicked: (Long, Long) -> Unit = { _, _ -> }
 ) : ProfileComponent, AppComponentContext by context {
 
-    private val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
+    private val chatListRepository: ChatListRepository = container.repositories.chatListRepository
+    private val chatOperationsRepository: ChatOperationsRepository = container.repositories.chatOperationsRepository
+    private val chatSettingsRepository: ChatSettingsRepository = container.repositories.chatSettingsRepository
     private val userRepository: UserRepository = container.repositories.userRepository
+    private val profilePhotoRepository: ProfilePhotoRepository = container.repositories.profilePhotoRepository
+    private val chatInfoRepository: ChatInfoRepository = container.repositories.chatInfoRepository
+    private val botRepository: BotRepository = container.repositories.botRepository
+    private val chatStatisticsRepository: ChatStatisticsRepository = container.repositories.chatStatisticsRepository
     private val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
     override val messageRepository: MessageRepository = container.repositories.messageRepository
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
     private val locationRepository: LocationRepository = container.repositories.locationRepository
     private val botPreferences: BotPreferencesProvider = container.preferences.botPreferencesProvider
     override val downloadUtils: IDownloadUtils = container.utils.downloadUtils()
@@ -42,7 +47,9 @@ class DefaultProfileComponent(
     override val state: Value<ProfileComponent.State> = _state
 
     private var lastLoadedMessageId: Long = 0L
-    private val PAGE_SIZE = 50
+    private val INITIAL_MEDIA_PAGE_SIZE = 21
+    private val MEDIA_PAGE_SIZE = 50
+    private val PROFILE_PHOTOS_LIMIT = 50
     private var membersOffset = 0
     private var isCurrentlyLoadingMedia = false
     private val canLoadMoreMediaByFilter = mutableMapOf<ProfileMediaFilter, Boolean>()
@@ -59,7 +66,7 @@ class DefaultProfileComponent(
         scope.launch {
             _state.update { it.copy(isLoading = true) }
             try {
-                val chat = coRunCatching { chatsListRepository.getChatById(chatId) }.getOrNull()
+                val chat = coRunCatching { chatListRepository.getChatById(chatId) }.getOrNull()
                 val user = if (chat == null || (!chat.isGroup && !chat.isChannel)) {
                     userRepository.getUser(chatId)
                 } else null
@@ -68,7 +75,7 @@ class DefaultProfileComponent(
                 } else {
                     chat?.blockList == true
                 }
-                val fullInfo = coRunCatching { userRepository.getChatFullInfo(chatId) }.getOrNull()
+                val fullInfo = coRunCatching { chatInfoRepository.getChatFullInfo(chatId) }.getOrNull()
                 val description = fullInfo?.description
                 val link = fullInfo?.inviteLink
                     ?: chat?.username?.let { "https://t.me/$it" }
@@ -79,7 +86,7 @@ class DefaultProfileComponent(
                 var isTOSAccepted = false
 
                 if (user?.type == UserTypeEnum.BOT) {
-                    val botInfo = userRepository.getBotInfo(chatId)
+                    val botInfo = botRepository.getBotInfo(chatId)
                     val menuButton = botInfo?.menuButton
                     if (menuButton is BotMenuButtonModel.WebApp) {
                         botWebAppUrl = menuButton.url
@@ -90,7 +97,7 @@ class DefaultProfileComponent(
 
                 val linkedChatId = fullInfo?.linkedChatId?.takeIf { it != 0L }
                 val linkedChat = linkedChatId?.let {
-                    coRunCatching { chatsListRepository.getChatById(it) }.getOrNull()
+                    coRunCatching { chatListRepository.getChatById(it) }.getOrNull()
                 }
 
                 _state.update {
@@ -150,34 +157,23 @@ class DefaultProfileComponent(
 
             if (fileId != 0) {
                 messageRepository.downloadFile(fileId, priority = 16)
-                var attempts = 0
+                val downloadedPath = awaitDownloadedPath(fileId) ?: return@launch
+                withContext(Dispatchers.Main) {
+                    onFileDownloaded(fileId, downloadedPath)
 
-                while (attempts < 60) {
-                    delay(500)
-                    val fileInfo = messageRepository.getFileInfo(fileId)
-                    if (fileInfo?.local?.isDownloadingCompleted == true && fileInfo.local.path.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
+                    if (message.content is MessageContent.Photo) {
+                        val currentImages = _state.value.fullScreenImages
+                        if (currentImages != null && !_state.value.isViewingProfilePhotos) {
+                            val allPhotos = _state.value.mediaMessages.filter { it.content is MessageContent.Photo }
+                            val index = allPhotos.indexOfFirst { it.id == message.id }
 
-                            onFileDownloaded(fileId, fileInfo.local.path)
-
-
-                            if (message.content is MessageContent.Photo) {
-                                val currentImages = _state.value.fullScreenImages
-                                if (currentImages != null && !_state.value.isViewingProfilePhotos) {
-                                    val allPhotos = _state.value.mediaMessages.filter { it.content is MessageContent.Photo }
-                                    val index = allPhotos.indexOfFirst { it.id == message.id }
-
-                                    if (index != -1 && index < currentImages.size) {
-                                        val newImages = currentImages.toMutableList()
-                                        newImages[index] = fileInfo.local.path
-                                        _state.update { it.copy(fullScreenImages = newImages) }
-                                    }
-                                }
+                            if (index != -1 && index < currentImages.size) {
+                                val newImages = currentImages.toMutableList()
+                                newImages[index] = downloadedPath
+                                _state.update { it.copy(fullScreenImages = newImages) }
                             }
                         }
-                        break
                     }
-                    attempts++
                 }
             }
         }
@@ -247,7 +243,8 @@ class DefaultProfileComponent(
             _state.update { it.copy(isLoadingMembers = true) }
             try {
                 val limit = 20
-                val newMembers = userRepository.getChatMembers(chatId, membersOffset, limit, ChatMembersFilter.Recent)
+                val newMembers =
+                    chatInfoRepository.getChatMembers(chatId, membersOffset, limit, ChatMembersFilter.Recent)
 
                 if (newMembers.isEmpty()) {
                     _state.update { it.copy(canLoadMoreMembers = false) }
@@ -302,18 +299,19 @@ class DefaultProfileComponent(
             }
 
             try {
+                val pageLimit = if (isFirstLoad) INITIAL_MEDIA_PAGE_SIZE else MEDIA_PAGE_SIZE
                 val messages = messageRepository.getProfileMedia(
                     chatId = chatId,
                     filter = filter,
                     fromMessageId = lastId,
-                    limit = PAGE_SIZE
+                    limit = pageLimit
                 )
 
                 if (messages.isEmpty()) {
                     canLoadMoreMediaByFilter[filter] = false
                     _state.update { it.copy(canLoadMoreMedia = false) }
                 } else {
-                    _state.update { appendMessagesToState(it, filter, messages) }
+                    _state.update { appendMessagesToState(it, filter, messages, pageLimit) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -346,9 +344,10 @@ class DefaultProfileComponent(
     private fun appendMessagesToState(
         currentState: ProfileComponent.State,
         filter: ProfileMediaFilter,
-        newMessages: List<MessageModel>
+        newMessages: List<MessageModel>,
+        pageLimit: Int
     ): ProfileComponent.State {
-        val canLoadMore = newMessages.size >= PAGE_SIZE
+        val canLoadMore = newMessages.size >= pageLimit
         canLoadMoreMediaByFilter[filter] = canLoadMore
 
         val nextState = when (filter) {
@@ -457,7 +456,13 @@ class DefaultProfileComponent(
     }
 
     private fun observeProfilePhotos() {
-        userRepository.getUserProfilePhotosFlow(chatId)
+        val profilePhotosFlow = if (isGroupOrChannelProfile()) {
+            profilePhotoRepository.getChatProfilePhotosFlow(chatId)
+        } else {
+            profilePhotoRepository.getUserProfilePhotosFlow(chatId)
+        }
+
+        profilePhotosFlow
             .onEach { photos ->
                 if (photos.isNotEmpty()) {
                     _state.update { it.copy(profilePhotos = photos) }
@@ -477,36 +482,28 @@ class DefaultProfileComponent(
                     val bigFileId = messageRepository.getHighResFileId(chatId, message.id)
                     if (bigFileId != null && bigFileId != 0) {
                         messageRepository.downloadFile(bigFileId, priority = 32)
-                        var attempts = 0
-                        while (attempts < 60) {
-                            delay(500)
-                            val fileInfo = messageRepository.getFileInfo(bigFileId)
-                            if (fileInfo?.local?.isDownloadingCompleted == true && fileInfo.local.path.isNotEmpty()) {
-                                withContext(Dispatchers.Main) {
-                                    onFileDownloaded(bigFileId, fileInfo.local.path)
-                                    val currentImages = _state.value.fullScreenImages
-                                    if (currentImages != null) {
-                                        val viewerItems = _state.value.mediaMessages
-                                            .asSequence()
-                                            .filter { it.content is MessageContent.Photo }
-                                            .mapNotNull {
-                                                val photo =
-                                                    it.content as? MessageContent.Photo ?: return@mapNotNull null
-                                                photo.displayPath()?.let { path -> it.id to path }
-                                            }
-                                            .toList()
-                                        val index = viewerItems.indexOfFirst { it.first == message.id }
-
-                                        if (index != -1 && index < currentImages.size) {
-                                            val newImages = currentImages.toMutableList()
-                                            newImages[index] = fileInfo.local.path
-                                            _state.update { it.copy(fullScreenImages = newImages) }
-                                        }
+                        val downloadedPath = awaitDownloadedPath(bigFileId) ?: return@launch
+                        withContext(Dispatchers.Main) {
+                            onFileDownloaded(bigFileId, downloadedPath)
+                            val currentImages = _state.value.fullScreenImages
+                            if (currentImages != null) {
+                                val viewerItems = _state.value.mediaMessages
+                                    .asSequence()
+                                    .filter { it.content is MessageContent.Photo }
+                                    .mapNotNull {
+                                        val photo =
+                                            it.content as? MessageContent.Photo ?: return@mapNotNull null
+                                        photo.displayPath()?.let { path -> it.id to path }
                                     }
+                                    .toList()
+                                val index = viewerItems.indexOfFirst { it.first == message.id }
+
+                                if (index != -1 && index < currentImages.size) {
+                                    val newImages = currentImages.toMutableList()
+                                    newImages[index] = downloadedPath
+                                    _state.update { it.copy(fullScreenImages = newImages) }
                                 }
-                                break
                             }
-                            attempts++
                         }
                     }
                 }
@@ -547,23 +544,15 @@ class DefaultProfileComponent(
                     if (content.fileId != 0) {
                         scope.launch {
                             messageRepository.downloadFile(content.fileId, priority = 32)
-                            var attempts = 0
-                            while (attempts < 60) {
-                                delay(500)
-                                val fileInfo = messageRepository.getFileInfo(content.fileId)
-                                if (fileInfo?.local?.isDownloadingCompleted == true && fileInfo.local.path.isNotEmpty()) {
-                                    withContext(Dispatchers.Main) {
-                                        _state.update {
-                                            it.copy(
-                                                fullScreenVideoPath = fileInfo.local.path,
-                                                fullScreenVideoCaption = content.caption
-                                            )
-                                        }
-                                        onFileDownloaded(content.fileId, fileInfo.local.path)
-                                    }
-                                    break
+                            val downloadedPath = awaitDownloadedPath(content.fileId) ?: return@launch
+                            withContext(Dispatchers.Main) {
+                                _state.update {
+                                    it.copy(
+                                        fullScreenVideoPath = downloadedPath,
+                                        fullScreenVideoCaption = content.caption
+                                    )
                                 }
-                                attempts++
+                                onFileDownloaded(content.fileId, downloadedPath)
                             }
                         }
                     }
@@ -617,20 +606,32 @@ class DefaultProfileComponent(
             avatarPath?.let { openProfilePhotos(listOf(it)) }
         }
 
-        val userId = snapshot.user?.id?.takeIf { it > 0 } ?: snapshot.chatId.takeIf { it > 0 }
-        if (userId == null) return
+        val isGroupOrChannel = isGroupOrChannelProfile(snapshot)
 
         scope.launch {
             _state.update { it.copy(isProfilePhotoHdLoading = true) }
             try {
-                val refreshedPhotos = coRunCatching {
-                    userRepository.getUserProfilePhotos(
-                        userId = userId,
-                        offset = 0,
-                        limit = 10,
-                        ensureFullRes = true
-                    )
-                }.getOrDefault(emptyList())
+                val refreshedPhotos = if (isGroupOrChannel) {
+                    coRunCatching {
+                        profilePhotoRepository.getChatProfilePhotos(
+                            chatId = snapshot.chatId,
+                            offset = 0,
+                            limit = PROFILE_PHOTOS_LIMIT,
+                            ensureFullRes = true
+                        )
+                    }.getOrDefault(emptyList())
+                } else {
+                    val userId = snapshot.user?.id?.takeIf { it > 0 } ?: snapshot.chatId.takeIf { it > 0 }
+                    if (userId == null) return@launch
+                    coRunCatching {
+                        profilePhotoRepository.getUserProfilePhotos(
+                            userId = userId,
+                            offset = 0,
+                            limit = PROFILE_PHOTOS_LIMIT,
+                            ensureFullRes = true
+                        )
+                    }.getOrDefault(emptyList())
+                }
 
                 if (refreshedPhotos.isEmpty()) return@launch
 
@@ -712,7 +713,7 @@ class DefaultProfileComponent(
         val shouldMute = !chat.isMuted
 
         scope.launch {
-            chatsListRepository.toggleMuteChats(setOf(chatId), shouldMute)
+            chatOperationsRepository.toggleMuteChats(setOf(chatId), shouldMute)
             updateChat(chatId)
         }
     }
@@ -749,7 +750,30 @@ class DefaultProfileComponent(
 
     override fun onDeleteChat() {
         scope.launch {
-            chatsListRepository.deleteChats(setOf(chatId))
+            chatOperationsRepository.deleteChats(setOf(chatId))
+        }
+    }
+
+    private suspend fun awaitDownloadedPath(fileId: Int, timeoutMs: Long = 20_000L): String? {
+        if (fileId == 0) return null
+
+        val fileInfo = messageRepository.getFileInfo(fileId)
+        if (fileInfo?.local?.isDownloadingCompleted == true && fileInfo.local.path.isNotEmpty()) {
+            return fileInfo.local.path
+        }
+
+        val completed = withTimeoutOrNull(timeoutMs) {
+            messageRepository.messageDownloadCompletedFlow.first { (_, completedFileId, path) ->
+                completedFileId == fileId && path.isNotEmpty()
+            }
+        }
+        if (completed != null) {
+            return completed.third
+        }
+
+        val fallback = messageRepository.getFileInfo(fileId)
+        return fallback?.local?.path?.takeIf {
+            fallback.local.isDownloadingCompleted && it.isNotEmpty()
         }
     }
 
@@ -781,6 +805,12 @@ class DefaultProfileComponent(
         }
     }
 
+    private fun isGroupOrChannelProfile(snapshot: ProfileComponent.State = _state.value): Boolean {
+        val chat = snapshot.chat
+        if (chat != null) return chat.isGroup || chat.isChannel
+        return snapshot.chatId < 0
+    }
+
     override fun onToggleContact() {
         val user = _state.value.user ?: return
         scope.launch {
@@ -797,7 +827,7 @@ class DefaultProfileComponent(
 
     override fun onLeave() {
         scope.launch {
-            chatsListRepository.leaveChat(chatId)
+            chatOperationsRepository.leaveChat(chatId)
             updateChat(chatId)
         }
     }
@@ -811,7 +841,7 @@ class DefaultProfileComponent(
 
     override fun onReport(reason: String) {
         scope.launch(Dispatchers.IO) {
-            chatsListRepository.reportChat(chatId, reason)
+            chatOperationsRepository.reportChat(chatId, reason)
             withContext(Dispatchers.Main) {
                 _state.update { it.copy(isReportVisible = false) }
             }
@@ -832,7 +862,7 @@ class DefaultProfileComponent(
 
     override fun onMemberClick(userId: Long) {
         scope.launch {
-            val chat = chatsListRepository.getChatById(userId)
+            val chat = chatListRepository.getChatById(userId)
             if (chat != null && (chat.isGroup || chat.isChannel)) {
                 onMemberClicked(userId)
             } else {
@@ -843,7 +873,7 @@ class DefaultProfileComponent(
 
     override fun onMemberLongClick(userId: Long) {
         scope.launch {
-            val member = userRepository.getChatMember(chatId, userId)
+            val member = chatInfoRepository.getChatMember(chatId, userId)
             if (member?.status is ChatMemberStatus.Administrator || member?.status is ChatMemberStatus.Creator) {
                 onMemberLongClicked(chatId, userId)
             }
@@ -852,42 +882,42 @@ class DefaultProfileComponent(
 
     override fun onUpdateChatTitle(title: String) {
         scope.launch {
-            chatsListRepository.setChatTitle(chatId, title)
+            chatSettingsRepository.setChatTitle(chatId, title)
             updateChat(chatId)
         }
     }
 
     override fun onUpdateChatDescription(description: String) {
         scope.launch {
-            chatsListRepository.setChatDescription(chatId, description)
+            chatSettingsRepository.setChatDescription(chatId, description)
             loadData()
         }
     }
 
     override fun onUpdateChatUsername(username: String) {
         scope.launch {
-            chatsListRepository.setChatUsername(chatId, username)
+            chatSettingsRepository.setChatUsername(chatId, username)
             loadData()
         }
     }
 
     override fun onUpdateChatPermissions(permissions: ChatPermissionsModel) {
         scope.launch {
-            chatsListRepository.setChatPermissions(chatId, permissions)
+            chatSettingsRepository.setChatPermissions(chatId, permissions)
             updateChat(chatId)
         }
     }
 
     override fun onUpdateChatSlowModeDelay(delay: Int) {
         scope.launch {
-            chatsListRepository.setChatSlowModeDelay(chatId, delay)
+            chatSettingsRepository.setChatSlowModeDelay(chatId, delay)
             loadData()
         }
     }
 
     override fun onUpdateMemberStatus(userId: Long, status: ChatMemberStatus) {
         scope.launch {
-            userRepository.setChatMemberStatus(chatId, userId, status)
+            chatInfoRepository.setChatMemberStatus(chatId, userId, status)
             membersOffset = 0
             _state.update { it.copy(members = emptyList(), canLoadMoreMembers = true) }
             loadMembersNextPage()
@@ -896,7 +926,7 @@ class DefaultProfileComponent(
 
     override fun onShowStatistics() {
         scope.launch {
-            val stats = userRepository.getChatStatistics(chatId, false)
+            val stats = chatStatisticsRepository.getChatStatistics(chatId, false)
             if (stats != null) {
                 val enrichedStats = enrichInteractionPreviews(stats)
                 _state.update { it.copy(statistics = enrichedStats, isStatisticsVisible = true) }
@@ -908,7 +938,7 @@ class DefaultProfileComponent(
 
     override fun onShowRevenueStatistics() {
         scope.launch {
-            val stats = userRepository.getChatRevenueStatistics(chatId, false)
+            val stats = chatStatisticsRepository.getChatRevenueStatistics(chatId, false)
             if (stats != null) {
                 _state.update {
                     it.copy(revenueStatistics = stats, isRevenueStatisticsVisible = true)
@@ -932,7 +962,7 @@ class DefaultProfileComponent(
 
     override fun onLoadStatisticsGraph(token: String) {
         scope.launch {
-            val graph = userRepository.loadStatisticsGraph(chatId, token, 0L)
+            val graph = chatStatisticsRepository.loadStatisticsGraph(chatId, token, 0L)
 
             if (graph != null) {
                 _state.update { state ->
@@ -1124,7 +1154,7 @@ class DefaultProfileComponent(
 
     private fun updateChat(chatId: Long) {
         scope.launch {
-            val updatedChat = chatsListRepository.getChatById(chatId)
+            val updatedChat = chatListRepository.getChatById(chatId)
             withContext(Dispatchers.Main) {
                 _state.update {
                     it.copy(

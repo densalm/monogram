@@ -1,7 +1,7 @@
 package org.monogram.presentation.features.chats.currentChat
 
 import android.util.Log
-import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.Clipboard
 import com.arkivanov.essenty.lifecycle.doOnResume
 import com.arkivanov.essenty.lifecycle.doOnStart
 import com.arkivanov.essenty.lifecycle.doOnStop
@@ -18,7 +18,6 @@ import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.impl.*
 import org.monogram.presentation.root.AppComponentContext
 import org.monogram.presentation.settings.storage.CacheController
@@ -36,18 +35,24 @@ class DefaultChatComponent(
     private val initialMessageId: Long? = null
 ) : ChatComponent, AppComponentContext by context {
 
-    internal val settingsRepository: SettingsRepository = container.repositories.settingsRepository
+    internal val wallpaperRepository: WallpaperRepository = container.repositories.wallpaperRepository
     override val downloadUtils: IDownloadUtils = container.utils.downloadUtils()
     internal val userRepository: UserRepository = container.repositories.userRepository
+    internal val chatInfoRepository: ChatInfoRepository = container.repositories.chatInfoRepository
+    internal val botRepository: BotRepository = container.repositories.botRepository
     override val stickerRepository: StickerRepository = container.repositories.stickerRepository
+    internal val gifRepository: GifRepository = container.repositories.gifRepository
     internal val privacyRepository: PrivacyRepository = container.repositories.privacyRepository
     internal val botPreferences: BotPreferencesProvider = container.preferences.botPreferencesProvider
     internal val toastMessageDisplayer: MessageDisplayer = container.utils.messageDisplayer()
-    internal val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
+    internal val chatListRepository: ChatListRepository = container.repositories.chatListRepository
+    internal val chatOperationsRepository: ChatOperationsRepository = container.repositories.chatOperationsRepository
+    internal val forumTopicsRepository: ForumTopicsRepository = container.repositories.forumTopicsRepository
     override val repositoryMessage: MessageRepository = container.repositories.messageRepository
+    internal val inlineBotRepository: InlineBotRepository = container.repositories.inlineBotRepository
+    internal val paymentRepository: PaymentRepository = container.repositories.paymentRepository
     override val appPreferences: AppPreferences = container.preferences.appPreferences
     internal val cacheProvider: CacheProvider = container.cacheProvider
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
     internal val cacheController: CacheController = container.utils.cacheController
     internal val distrManager: DistrManager = container.utils.distrManager()
     internal val dispatcherProvider: DispatcherProvider = container.utils.dispatcherProvider
@@ -76,6 +81,7 @@ class DefaultChatComponent(
             fontSize = appPreferences.fontSize.value,
             letterSpacing = appPreferences.letterSpacing.value,
             bubbleRadius = appPreferences.bubbleRadius.value,
+            stickerSize = appPreferences.stickerSize.value,
             wallpaper = appPreferences.wallpaper.value,
             isWallpaperBlurred = appPreferences.isWallpaperBlurred.value,
             wallpaperBlurIntensity = appPreferences.wallpaperBlurIntensity.value,
@@ -236,7 +242,7 @@ class DefaultChatComponent(
                 if (currentState.isChannel && !currentState.isAdmin) return@launch
 
                 try {
-                    allMembers = userRepository.getChatMembers(chatId, 0, 200, ChatMembersFilter.Recent)
+                    allMembers = chatInfoRepository.getChatMembers(chatId, 0, 200, ChatMembersFilter.Recent)
                         .map { it.user }
                 } catch (e: Exception) {
                     Log.e("DefaultChatComponent", "Failed to load members", e)
@@ -391,8 +397,8 @@ class DefaultChatComponent(
     override fun onClearSelection() = store.accept(ChatStore.Intent.ClearSelection)
     override fun onClearMessages() = store.accept(ChatStore.Intent.ClearMessages)
 
-    override fun onCopySelectedMessages(clipboardManager: ClipboardManager) =
-        store.accept(ChatStore.Intent.CopySelectedMessages(clipboardManager))
+    override fun onCopySelectedMessages(localClipboard: Clipboard) =
+        store.accept(ChatStore.Intent.CopySelectedMessages(localClipboard))
 
     override fun onStickerClick(setId: Long) = store.accept(ChatStore.Intent.StickerClick(setId))
     override fun onDismissStickerSet() = store.accept(ChatStore.Intent.DismissStickerSet)
@@ -465,8 +471,8 @@ class DefaultChatComponent(
 
     override fun onDismissReportDialog() = store.accept(ChatStore.Intent.DismissReportDialog)
 
-    override fun onCopyLink(clipboardManager: ClipboardManager) =
-        store.accept(ChatStore.Intent.CopyLink(clipboardManager))
+    override fun onCopyLink(localClipboard: Clipboard) =
+        store.accept(ChatStore.Intent.CopyLink(localClipboard))
 
     override fun scrollToMessage(messageId: Long) = store.accept(ChatStore.Intent.ScrollToMessage(messageId))
     override fun onBotCommandClick(command: String) = store.accept(ChatStore.Intent.BotCommandClick(command))
@@ -511,7 +517,7 @@ class DefaultChatComponent(
     override fun onSendInlineResult(resultId: String) = store.accept(ChatStore.Intent.SendInlineResult(resultId))
     override fun onOpenAttachBot(botUserId: Long, fallbackName: String) {
         scope.launch {
-            val botInfo = userRepository.getBotInfo(botUserId)
+            val botInfo = botRepository.getBotInfo(botUserId)
             val menuButton = botInfo?.menuButton
             if (menuButton is BotMenuButtonModel.WebApp) {
                 onOpenMiniApp(

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.settings.chatSettings
 
 import androidx.compose.animation.*
@@ -120,8 +122,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                     blurIntensity = state.wallpaperBlurIntensity,
                     dimming = state.wallpaperDimming,
                     isGrayscale = state.isWallpaperGrayscale,
-                    downloadUtils = component.downloadUtils,
-                    videoPlayerPool = component.videoPlayerPool
+                    downloadUtils = component.downloadUtils
                 )
             }
 
@@ -224,6 +225,37 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                                     contentDescription = null,
                                     modifier = Modifier.size(22.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+
+                        AppearanceSliderItem(
+                            title = stringResource(R.string.sticker_size_title),
+                            value = state.stickerSize,
+                            onValueChange = component::onStickerSizeChanged,
+                            valueRange = 120f..250f,
+                            steps = 26,
+                            onReset = { component.onStickerSizeChanged(200f) },
+                            valueSuffix = "dp",
+                            startIcon = {
+                                Text(
+                                    text = "S",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            },
+                            endIcon = {
+                                Text(
+                                    text = "S",
+                                    fontSize = 20.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         )
@@ -756,8 +788,7 @@ fun ChatSettingsContent(component: ChatSettingsComponent) {
                 ChatListPreview(
                     messageLines = state.chatListMessageLines,
                     showPhotos = state.showChatListPhotos,
-                    position = ItemPosition.TOP,
-                    videoPlayerPool = component.videoPlayerPool
+                    position = ItemPosition.TOP
                 )
 
                 Surface(
@@ -1259,10 +1290,9 @@ private fun EmojiStyleItem(
                     contentAlignment = Alignment.Center
                 ) {
                     if (isDownloading) {
-                        CircularProgressIndicator(
+                        LoadingIndicator(
                             modifier = Modifier.size(24.dp),
                             color = Color.White,
-                            strokeWidth = 2.dp
                         )
                     } else {
                         Icon(

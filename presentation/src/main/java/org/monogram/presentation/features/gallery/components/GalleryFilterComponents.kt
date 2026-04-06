@@ -23,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.monogram.presentation.R
 import org.monogram.presentation.features.gallery.BucketFilter
 import org.monogram.presentation.features.gallery.GalleryFilter
 
@@ -93,7 +95,7 @@ fun GalleryTabs(
                     )
                     Spacer(Modifier.size(8.dp))
                     Text(
-                        text = tab.filter.title,
+                        text = tab.filter.label(),
                         style = MaterialTheme.typography.labelLarge,
                         color = contentColor,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
@@ -118,8 +120,27 @@ fun FolderRow(
             FilterChip(
                 selected = bucket == selectedBucket,
                 onClick = { onBucketChange(bucket) },
-                label = { Text(bucket.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                label = { Text(bucket.label(), maxLines = 1, overflow = TextOverflow.Ellipsis) }
             )
         }
+    }
+}
+
+@Composable
+private fun GalleryFilter.label(): String {
+    return when (this) {
+        GalleryFilter.All -> stringResource(R.string.gallery_filter_all)
+        GalleryFilter.Photos -> stringResource(R.string.gallery_filter_photos)
+        GalleryFilter.Videos -> stringResource(R.string.gallery_filter_videos)
+    }
+}
+
+@Composable
+private fun BucketFilter.label(): String {
+    return when (this) {
+        BucketFilter.All -> stringResource(R.string.gallery_bucket_all_folders)
+        BucketFilter.Camera -> stringResource(R.string.permission_camera_title)
+        BucketFilter.Screenshots -> stringResource(R.string.gallery_bucket_screenshots)
+        is BucketFilter.Custom -> name
     }
 }

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.profile.logs
 
 import android.widget.Toast
@@ -98,7 +100,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (state.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    ContainedLoadingIndicator(modifier = Modifier.align(Alignment.Center))
                 } else if (state.logs.isEmpty()) {
                     Column(
                         modifier = Modifier.align(Alignment.Center),
@@ -159,7 +161,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                                         .padding(16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                    LoadingIndicator(modifier = Modifier.size(24.dp))
                                 }
                             }
                         }
@@ -374,7 +376,7 @@ fun ProfileLogsContent(component: ProfileLogsComponent) {
                                         .padding(horizontal = 12.dp, vertical = 8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Avatar(path = info.avatarPath, videoPlayerPool = component.videoPlayerPool, name = info.name, size = 36.dp)
+                                    Avatar(path = info.avatarPath, name = info.name, size = 36.dp)
                                     Spacer(Modifier.width(12.dp))
                                     Text(
                                         text = info.name,

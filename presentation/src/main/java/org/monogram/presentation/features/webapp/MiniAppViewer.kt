@@ -17,7 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.LayoutDirection
@@ -26,10 +26,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.koin.compose.koinInject
 import org.monogram.domain.models.webapp.ThemeParams
-import org.monogram.domain.repository.BotPreferencesProvider
-import org.monogram.domain.repository.LocationRepository
-import org.monogram.domain.repository.MessageRepository
-import org.monogram.domain.repository.UserRepository
+import org.monogram.domain.repository.*
 import org.monogram.presentation.core.util.CryptoManager
 import org.monogram.presentation.features.webapp.components.*
 import java.util.*
@@ -44,17 +41,19 @@ fun MiniAppViewer(
     baseUrl: String,
     botName: String,
     botAvatarPath: String? = null,
-    messageRepository: MessageRepository,
+    webAppRepository: WebAppRepository,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val clipboardManager = LocalClipboardManager.current
+    val clipboardManager = LocalClipboard.current
     val colorScheme = MaterialTheme.colorScheme
     val density = LocalDensity.current
     val locationRepository: LocationRepository = koinInject()
     val botPreferences: BotPreferencesProvider = koinInject()
     val userRepository: UserRepository = koinInject()
+    val paymentRepository: PaymentRepository = koinInject()
+    val fileRepository: FileRepository = koinInject()
     val isDark = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
     val currentUser by userRepository.currentUserFlow.collectAsState()
@@ -91,7 +90,7 @@ fun MiniAppViewer(
         botUserId = botUserId,
         botName = botName,
         botAvatarPath = botAvatarPath,
-        messageRepository = messageRepository,
+        webAppRepository = webAppRepository,
         locationRepository = locationRepository,
         botPreferences = botPreferences,
         userRepository = userRepository,
@@ -197,19 +196,28 @@ fun MiniAppViewer(
                 displayCutout.getRight(density, LayoutDirection.Ltr)
             ) else 0
 
-            val topDp = (topPx / density.density).toInt()
-            val bottomDp = (bottomPx / density.density).toInt()
-            val leftDp = (leftPx / density.density).toInt()
-            val rightDp = (rightPx / density.density).toInt()
+            val safeAreaTopDp = (topPx / density.density).toInt()
+            val safeAreaBottomDp = (bottomPx / density.density).toInt()
+            val safeAreaLeftDp = (leftPx / density.density).toInt()
+            val safeAreaRightDp = (rightPx / density.density).toInt()
 
-            JSONObject().apply {
-                put("top", topDp)
-                put("bottom", bottomDp)
-                put("left", leftDp)
-                put("right", rightDp)
+            val safeArea = JSONObject().apply {
+                put("top", safeAreaTopDp)
+                put("bottom", safeAreaBottomDp)
+                put("left", safeAreaLeftDp)
+                put("right", safeAreaRightDp)
             }
-        }.collect { safeArea ->
-            state.telegramProxy?.updateSafeAreas(safeArea, safeArea)
+
+            val contentSafeArea = JSONObject().apply {
+                put("top", safeAreaTopDp)
+                put("bottom", safeAreaBottomDp)
+                put("left", safeAreaLeftDp)
+                put("right", safeAreaRightDp)
+            }
+
+            safeArea to contentSafeArea
+        }.collect { (safeArea, contentSafeArea) ->
+            state.telegramProxy?.updateSafeAreas(safeArea, contentSafeArea)
         }
     }
 
@@ -217,7 +225,7 @@ fun MiniAppViewer(
         if (!state.isTOSVisible) {
             if (botUserId != 0L) {
                 state.isInitializing = true
-                val result = messageRepository.openWebApp(chatId, botUserId, baseUrl, themeParams)
+                val result = webAppRepository.openWebApp(chatId, botUserId, baseUrl, themeParams)
                 if (result != null) {
                     state.launchId = result.launchId
                     state.currentUrl = result.url
@@ -280,7 +288,7 @@ fun MiniAppViewer(
                 state.showClosingConfirmation = false
                 if (state.launchId != 0L) {
                     scope.launch {
-                        messageRepository.closeWebApp(state.launchId)
+                        webAppRepository.closeWebApp(state.launchId)
                     }
                 }
 
@@ -293,7 +301,8 @@ fun MiniAppViewer(
     if (state.activeInvoiceSlug != null) {
         InvoiceDialog(
             slug = state.activeInvoiceSlug!!,
-            messageRepository = messageRepository,
+            paymentRepository = paymentRepository,
+            fileRepository = fileRepository,
             onDismiss = { status ->
                 val slug = state.activeInvoiceSlug
                 state.activeInvoiceSlug = null
@@ -390,7 +399,9 @@ fun MiniAppViewer(
                                 url = state.currentUrl,
                                 acceptLanguage = webAppLanguage,
                                 themeParams = state.themeParams,
+                                backgroundColor = state.backgroundColor,
                                 host = state.createHost(secureStorage),
+                                onUserInteraction = { state.markUserInteraction() },
                                 onWebViewCreated = { wv, proxy ->
                                     state.webView = wv
                                     state.telegramProxy = proxy
@@ -442,7 +453,7 @@ fun MiniAppViewer(
                     botName = botName,
                     botAvatarPath = botAvatarPath,
                     context = context,
-                    clipboardManager = clipboardManager,
+                    localClipboard = clipboardManager,
                     onDismiss = { state.showMenu = false },
                     onReload = { state.webView?.reload() }
                 )

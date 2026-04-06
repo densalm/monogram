@@ -1,8 +1,3 @@
-import com.android.build.gradle.internal.tasks.factory.dependsOn
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import org.jetbrains.kotlin.gradle.internal.ensureParentDirsCreated
-import java.net.URL
-
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
@@ -24,9 +19,7 @@ android {
             }
         }
         ndk {
-            abiFilters.add("arm64-v8a")
-            abiFilters.add("armeabi-v7a")
-            abiFilters.add("x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -40,16 +33,14 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
+    }
+    kotlin {
+        jvmToolchain(21)
     }
     buildFeatures {
         compose = true
-    }
-    kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_17
-        }
     }
     externalNativeBuild {
         cmake {
@@ -58,50 +49,25 @@ android {
         }
     }
 }
-val downloadFolder = "src/main/cpp"
-var vpxFolder = file("$downloadFolder/libvpx_build")
-val vpxZip = file("$downloadFolder/libvpx_build.zip")
 
-tasks.apply {
-    register("downloadVpx") {
-        onlyIf { !vpxFolder.isDirectory }
-        doLast {
-                println("Downloading VPX libs...")
-                vpxFolder.ensureParentDirsCreated()
-                URL("https://github.com/aliveoutside/prebuilt-vpx/releases/download/v.1/libvpx_build.zip")
-                    .openStream().use { input ->
-                        vpxZip.outputStream()
-                            .use { output -> input.copyTo(output) }
-                    }
-            }
-    }
-    register<Copy>("unzipVpx") {
-        dependsOn(this@apply.getByName("downloadVpx"))
-        onlyIf { !vpxFolder.isDirectory }
-        from(zipTree(vpxZip))
-        into(downloadFolder)
-    }
-    register<Delete>("downloadAndUnzipVpx") {
-        dependsOn("unzipVpx")
-        delete(vpxZip)
-    }
-    preBuild.dependsOn("downloadAndUnzipVpx")
+composeCompiler {
+    stabilityConfigurationFiles.add(project.layout.projectDirectory.file("compose-stability.conf"))
 }
 
 dependencies {
     implementation(project(":core"))
     implementation(project(":domain"))
-    
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.androidx.compose)
     implementation(libs.bundles.androidx.camera)
     implementation(libs.bundles.androidx.media3)
-    
+
     implementation(libs.bundles.coil)
     implementation(libs.bundles.decompose)
     implementation(libs.bundles.mvikotlin)
     implementation(libs.bundles.koin)
-    
+
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.mlkit.barcode.scanning)
     implementation(libs.zxing.core)
@@ -110,5 +76,11 @@ dependencies {
     implementation(libs.maplibre.compose)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.play.services.location)
+
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+
+    implementation(libs.libphonenumber)
+
     testImplementation(libs.junit)
 }

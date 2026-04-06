@@ -36,6 +36,7 @@ import org.monogram.domain.models.InlineQueryResultModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.repository.InlineBotResultsModel
 import org.monogram.presentation.R
+import org.monogram.presentation.core.util.namespacedCacheKey
 
 private enum class InlineResultsMode {
     Loading,
@@ -44,6 +45,7 @@ private enum class InlineResultsMode {
     List
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun InlineBotResults(
     inlineBotResults: InlineBotResultsModel?,
@@ -123,7 +125,7 @@ fun InlineBotResults(
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.25f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(30.dp))
+                        LoadingIndicator(modifier = Modifier.size(30.dp))
                     }
                 }
             }
@@ -332,9 +334,16 @@ private fun rememberMediaModel(result: InlineQueryResultModel): Any? {
     return remember(contentPath, result.thumbUrl) {
         val data = if (!contentPath.isNullOrBlank()) contentPath else result.thumbUrl
         if (data == null) return@remember null
+        val cacheKey = namespacedCacheKey("inline_result:${result.id}", data)
 
         ImageRequest.Builder(context)
             .data(data)
+            .apply {
+                cacheKey?.let {
+                    memoryCacheKey(it)
+                    diskCacheKey(it)
+                }
+            }
             .crossfade(true)
             .build()
     }

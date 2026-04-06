@@ -1,11 +1,11 @@
 package org.monogram.presentation.features.chats.currentChat.chatContent
 
-import org.monogram.presentation.core.util.coRunCatching
+import android.content.ClipData
 import android.util.Log
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -20,12 +20,13 @@ import org.monogram.domain.models.ChatPermissionsModel
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageViewerModel
-import org.monogram.domain.repository.MessageRepository
+import org.monogram.domain.repository.MessageAiRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.IDownloadUtils
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
 import org.monogram.presentation.features.stickers.ui.menu.MessageOptionsMenu
-import java.util.Locale
+import java.util.*
 
 @Composable
 fun ChatMessageOptionsMenu(
@@ -38,14 +39,15 @@ fun ChatMessageOptionsMenu(
     contentRect: Rect,
     groupedMessages: List<GroupedMessageItem>,
     downloadUtils: IDownloadUtils,
-    clipboardManager: ClipboardManager,
+    localClipboard: Clipboard,
     canRestoreOriginalText: Boolean,
     onApplyTransformedText: (String) -> Unit,
     onRestoreOriginalText: () -> Unit,
     onBlockRequest: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val messageRepository: MessageRepository = koinInject()
+    val nativeClipboard = localClipboard.nativeClipboard
+    val messageRepository: MessageAiRepository = koinInject()
     val canCheckViewersList = remember(state.isChannel, state.isGroup, state.memberCount) {
         !state.isChannel && (!state.isGroup || state.memberCount in 1 until 100)
     }
@@ -244,7 +246,6 @@ fun ChatMessageOptionsMenu(
             scope.launch { reloadViewers() }
         },
         onViewerClick = { component.toProfile(it) },
-        videoPlayerPool = component.videoPlayerPool,
         bubbleRadius = state.bubbleRadius,
         splitOffset = splitOffset,
         onReply = {
@@ -279,7 +280,11 @@ fun ChatMessageOptionsMenu(
             } else {
                 "https://t.me/c/${state.chatId.toString().removePrefix("-100")}/${selectedMessage.id shr 20}"
             }
-            clipboardManager.setText(AnnotatedString(link))
+
+            nativeClipboard.setPrimaryClip(
+                ClipData.newPlainText("", AnnotatedString(link))
+            )
+
             onDismiss()
         },
         onCopy = {
@@ -291,7 +296,9 @@ fun ChatMessageOptionsMenu(
                 else -> ""
             }
             if (textToCopy.isNotEmpty()) {
-                clipboardManager.setText(AnnotatedString(textToCopy))
+                nativeClipboard.setPrimaryClip(
+                    ClipData.newPlainText("", AnnotatedString(textToCopy))
+                )
             }
             onDismiss()
         },

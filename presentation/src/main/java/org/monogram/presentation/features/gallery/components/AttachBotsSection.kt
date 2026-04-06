@@ -20,11 +20,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.presentation.R
 
 @Composable
 fun AttachBotsSection(
@@ -45,8 +47,8 @@ fun AttachBotsSection(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize(animationSpec = tween(durationMillis = 220))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             AnimatedVisibility(
                 visible = selectedCount > 0,
@@ -60,7 +62,7 @@ fun AttachBotsSection(
             }
 
             AnimatedVisibility(
-                visible = bots.isNotEmpty(),
+                visible = bots.isNotEmpty() && selectedCount == 0,
                 enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 },
                 exit = fadeOut(tween(140))
             ) {
@@ -85,12 +87,11 @@ private fun SendSelectedButton(
     selectedCount: Int,
     onSendSelected: () -> Unit
 ) {
-    val suffix = if (selectedCount == 1) "" else "s"
     Button(
         onClick = onSendSelected,
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp),
+            .height(44.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.tertiary,
@@ -104,7 +105,7 @@ private fun SendSelectedButton(
         )
         Spacer(Modifier.size(8.dp))
         Text(
-            text = "Send $selectedCount item$suffix",
+            text = stringResource(R.string.action_send_items_count, selectedCount),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
@@ -119,12 +120,12 @@ private fun AttachBotTile(
     val colors = botTileColors(bot.name)
     Row(
         modifier = Modifier
-            .size(width = 118.dp, height = 58.dp)
+            .size(width = 118.dp, height = 48.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(colors.first)
             .border(1.dp, colors.second.copy(alpha = 0.28f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 7.dp),
+            .padding(horizontal = 9.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {

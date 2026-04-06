@@ -7,11 +7,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.monogram.domain.models.GroupMemberModel
+import org.monogram.domain.repository.ChatInfoRepository
 import org.monogram.domain.repository.ChatMemberStatus
 import org.monogram.domain.repository.ChatMembersFilter
-import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultMemberListComponent(
@@ -23,8 +22,7 @@ class DefaultMemberListComponent(
     private val onMemberLongClicked: (Long) -> Unit
 ) : MemberListComponent, AppComponentContext by context {
 
-    private val userRepository: UserRepository = container.repositories.userRepository
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
+    private val chatInfoRepository: ChatInfoRepository = container.repositories.chatInfoRepository
 
     private val scope = componentScope
     private val _state = MutableValue(MemberListComponent.State(chatId = chatId, type = type))
@@ -50,7 +48,7 @@ class DefaultMemberListComponent(
                     MemberListComponent.MemberListType.BLACKLIST -> ChatMembersFilter.Banned
                 }
 
-                val members = userRepository.getChatMembers(chatId, offset, limit, filter)
+                val members = chatInfoRepository.getChatMembers(chatId, offset, limit, filter)
 
                 if (members.isEmpty()) {
                     _state.update { it.copy(canLoadMore = false) }
@@ -103,7 +101,7 @@ class DefaultMemberListComponent(
                 _state.update { it.copy(isLoading = true) }
                 try {
                     val filter = ChatMembersFilter.Search(query)
-                    val results = userRepository.getChatMembers(chatId, 0, 50, filter)
+                    val results = chatInfoRepository.getChatMembers(chatId, 0, 50, filter)
 
                     val filtered = when (type) {
                         MemberListComponent.MemberListType.ADMINS -> results.filter { it.status is ChatMemberStatus.Administrator || it.status is ChatMemberStatus.Creator }

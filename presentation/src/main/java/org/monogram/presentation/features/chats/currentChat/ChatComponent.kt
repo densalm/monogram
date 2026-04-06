@@ -1,7 +1,7 @@
 package org.monogram.presentation.features.chats.currentChat
 
 import androidx.compose.runtime.Stable
-import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.platform.Clipboard
 import kotlinx.coroutines.flow.StateFlow
 import org.monogram.domain.models.*
 import org.monogram.domain.repository.InlineBotResultsModel
@@ -9,13 +9,11 @@ import org.monogram.domain.repository.MessageRepository
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.IDownloadUtils
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import java.io.File
 
 @Stable
 interface ChatComponent {
     val appPreferences: AppPreferences
-    val videoPlayerPool: VideoPlayerPool
     val stickerRepository: StickerRepository
     val state: StateFlow<State>
     val repositoryMessage: MessageRepository
@@ -98,7 +96,7 @@ interface ChatComponent {
     fun onClearSelection()
     fun onClearMessages()
     fun onDeleteSelectedMessages(revoke: Boolean = false)
-    fun onCopySelectedMessages(clipboardManager: ClipboardManager)
+    fun onCopySelectedMessages(localClipboard: Clipboard)
 
     fun onStickerClick(setId: Long)
     fun onDismissStickerSet()
@@ -149,7 +147,7 @@ interface ChatComponent {
     fun onReportMessage(message: MessageModel)
     fun onReportReasonSelected(reason: String)
     fun onDismissReportDialog()
-    fun onCopyLink(clipboardManager: ClipboardManager)
+    fun onCopyLink(localClipboard: Clipboard)
 
     fun scrollToMessage(messageId: Long)
 
@@ -191,6 +189,7 @@ interface ChatComponent {
         val chatEmojiStatus: String? = null,
         val isGroup: Boolean = false,
         val isChannel: Boolean = false,
+        val isSecretChat: Boolean = false,
         val isOnline: Boolean = false,
         val isVerified: Boolean = false,
         val isSponsor: Boolean = false,
@@ -227,6 +226,7 @@ interface ChatComponent {
         val fontSize: Float = 16f,
         val letterSpacing: Float = 0f,
         val bubbleRadius: Float = 18f,
+        val stickerSize: Float = 200f,
         val wallpaper: String? = null,
         val wallpaperModel: WallpaperModel? = null,
         val isWallpaperBlurred: Boolean = false,

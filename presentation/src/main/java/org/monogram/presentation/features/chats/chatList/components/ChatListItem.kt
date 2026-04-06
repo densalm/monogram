@@ -34,11 +34,12 @@ import org.monogram.domain.models.MessageEntityType
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.AvatarForChat
 import org.monogram.presentation.core.ui.TypingDots
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
+import org.monogram.presentation.core.util.toShortRelativeDate
 import org.monogram.presentation.features.chats.currentChat.components.chats.addEmojiStyle
 import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
 import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
+import org.monogram.core.date.toDate
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -51,7 +52,6 @@ fun ChatListItem(
     emojiFontFamily: FontFamily,
     messageLines: Int,
     showPhotos: Boolean,
-    videoPlayerPool: VideoPlayerPool,
     modifier: Modifier = Modifier,
     isTabletSelected: Boolean = false
 ) {
@@ -87,8 +87,7 @@ fun ChatListItem(
                 ChatListItemAvatar(
                     chat = chat,
                     isSavedMessages = isSavedMessages,
-                    isSelected = isSelected,
-                    videoPlayerPool = videoPlayerPool
+                    isSelected = isSelected
                 )
 
                 Spacer(Modifier.width(14.dp))
@@ -109,8 +108,7 @@ fun ChatListItem(
 private fun ChatListItemAvatar(
     chat: ChatModel,
     isSavedMessages: Boolean,
-    isSelected: Boolean,
-    videoPlayerPool: VideoPlayerPool
+    isSelected: Boolean
 ) {
     Box(contentAlignment = Alignment.Center) {
         AnimatedVisibility(
@@ -157,8 +155,7 @@ private fun ChatListItemAvatar(
                         fallbackPath = chat.personalAvatarPath,
                         name = chat.title,
                         size = 56.dp,
-                        isOnline = chat.isOnline,
-                        videoPlayerPool = videoPlayerPool
+                        isOnline = chat.isOnline
                     )
                 }
             }
@@ -195,6 +192,8 @@ private fun ChatListItemHeader(
     chat: ChatModel,
     isSavedMessages: Boolean
 ) {
+    val chatTime = chat.lastMessageDate.toDate().toShortRelativeDate()
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -268,7 +267,7 @@ private fun ChatListItemHeader(
         }
 
         Text(
-            text = chat.lastMessageTime,
+            text = chatTime,
             style = MaterialTheme.typography.labelMedium,
             color = timeColor
         )

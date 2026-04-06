@@ -5,11 +5,14 @@ import kotlinx.coroutines.launch
 import org.drinkless.tdlib.TdApi
 import org.monogram.core.DispatcherProvider
 import org.monogram.core.ScopeProvider
+import org.monogram.data.db.dao.UserFullInfoDao
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.mapper.ChatMapper
 import org.monogram.data.mapper.isForcedVerifiedChat
 import org.monogram.data.mapper.isForcedVerifiedUser
 import org.monogram.data.mapper.isSponsoredUser
+import org.monogram.data.mapper.user.toEntity
+import org.monogram.data.mapper.user.toTdApi
 import org.monogram.domain.models.ChatModel
 import org.monogram.domain.models.UsernamesModel
 import org.monogram.domain.repository.AppPreferencesProvider
@@ -25,13 +28,19 @@ class ChatModelFactory(
     private val fileManager: ChatFileManager,
     private val typingManager: ChatTypingManager,
     private val appPreferences: AppPreferencesProvider,
+    private val userFullInfoDao: UserFullInfoDao,
     private val triggerUpdate: (Long?) -> Unit,
     private val fetchUser: (Long) -> Unit
 ) {
     private val scope = scopeProvider.appScope
     private val missingUserFullInfoUntilMs = ConcurrentHashMap<Long, Long>()
 
-    fun mapChatToModel(chat: TdApi.Chat, order: Long, isPinned: Boolean): ChatModel {
+    fun mapChatToModel(
+        chat: TdApi.Chat,
+        order: Long,
+        isPinned: Boolean,
+        allowMediaDownloads: Boolean = true
+    ): ChatModel {
         val cachedCounts = parseCachedCounts(chat.clientData)
         var smallPhoto = chat.photo?.small
         var photoId = smallPhoto?.id ?: 0
@@ -122,7 +131,8 @@ class ChatModelFactory(
             }
 
             is TdApi.ChatTypePrivate -> {
-                cache.usersCache[type.userId]?.let { user ->
+                val user = cache.usersCache[type.userId]
+                user?.let {
                     isBot = user.type is TdApi.UserTypeBot
                     isOnline = !isBot && user.status is TdApi.UserStatusOnline
                     if (isOnline) onlineCount = 1
@@ -137,20 +147,32 @@ class ChatModelFactory(
                     }
                 } ?: run { fetchUser(type.userId) }
 
-                cache.userFullInfoCache[type.userId]?.let { fullInfo ->
-                    description = fullInfo.bio?.text
-                    personalAvatarPath = resolvePhotoPath(fullInfo.personalPhoto, chat.id)
-                } ?: run {
-                    if (!isUserFullInfoTemporarilyMissing(type.userId)) {
-                        lazyLoad(cache.pendingUserFullInfo, type.userId) {
-                            if (type.userId == 0L) return@lazyLoad
-                            val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
-                            if (result != null) {
-                                cache.userFullInfoCache[type.userId] = result
-                                missingUserFullInfoUntilMs.remove(type.userId)
-                                triggerUpdate(chat.id)
-                            } else {
-                                rememberMissingUserFullInfo(type.userId)
+                if (user != null) {
+                    cache.userFullInfoCache[type.userId]?.let { fullInfo ->
+                        description = fullInfo.bio?.text
+                        personalAvatarPath = resolvePhotoPath(fullInfo.personalPhoto, chat.id, allowMediaDownloads)
+                    } ?: run {
+                        if (!isUserFullInfoTemporarilyMissing(type.userId)) {
+                            lazyLoad(cache.pendingUserFullInfo, type.userId) {
+                                if (type.userId == 0L) return@lazyLoad
+                                val cachedInfo = coRunCatching {
+                                    userFullInfoDao.getUserFullInfo(type.userId)?.toTdApi()
+                                }.getOrNull()
+                                if (cachedInfo != null) {
+                                    cache.putUserFullInfo(type.userId, cachedInfo)
+                                    missingUserFullInfoUntilMs.remove(type.userId)
+                                    triggerUpdate(chat.id)
+                                    return@lazyLoad
+                                }
+                                val result = coRunCatching { gateway.execute(TdApi.GetUserFullInfo(type.userId)) }.getOrNull()
+                                if (result != null) {
+                                    cache.putUserFullInfo(type.userId, result)
+                                    coRunCatching { userFullInfoDao.insertUserFullInfo(result.toEntity(type.userId)) }
+                                    missingUserFullInfoUntilMs.remove(type.userId)
+                                    triggerUpdate(chat.id)
+                                } else {
+                                    rememberMissingUserFullInfo(type.userId)
+                                }
                             }
                         }
                     }
@@ -189,13 +211,13 @@ class ChatModelFactory(
             }
         }
 
-        val finalPath = resolvePhotoPath(smallPhoto, chat.id)
+        val finalPath = resolvePhotoPath(smallPhoto, chat.id, allowMediaDownloads)
 
         val emojiStatusId = (chat.emojiStatus?.type as? TdApi.EmojiStatusTypeCustomEmoji)?.customEmojiId ?: 0L
         var emojiPath: String? = null
         if (emojiStatusId != 0L) {
             emojiPath = fileManager.getEmojiPath(emojiStatusId)
-            if (emojiPath == null) fileManager.loadEmoji(emojiStatusId)
+            if (emojiPath == null && allowMediaDownloads) fileManager.loadEmoji(emojiStatusId)
         }
 
         val (txt, entities, time) = chatMapper.formatMessageInfo(chat.lastMessage, chat) { userId ->
@@ -232,7 +254,7 @@ class ChatModelFactory(
             lastMessageText = txt,
             lastMessageEntities = entities,
             lastMessageTime = time,
-            lastMessageDate = chat.lastMessage?.date?.toLong() ?: 0L,
+            lastMessageDate = chat.lastMessage?.date ?: 0,
             isMuted = isMuted,
             isAdmin = isAdmin,
             isMember = isMember,
@@ -267,7 +289,7 @@ class ChatModelFactory(
         missingUserFullInfoUntilMs[userId] = System.currentTimeMillis() + USER_FULL_INFO_RETRY_TTL_MS
     }
 
-    private fun resolvePhotoPath(photoFile: TdApi.File?, chatId: Long): String? {
+    private fun resolvePhotoPath(photoFile: TdApi.File?, chatId: Long, allowDownload: Boolean): String? {
         if (photoFile == null) return null
         if (photoFile.id != 0) {
             fileManager.registerChatPhoto(photoFile.id, chatId)
@@ -283,16 +305,16 @@ class ChatModelFactory(
             return cachedPath
         }
 
-        if (photoFile.id != 0) {
+        if (allowDownload && photoFile.id != 0) {
             fileManager.downloadFile(photoFile.id, 24, offset = 0, limit = 0, synchronous = false)
         }
         return null
     }
 
-    private fun resolvePhotoPath(chatPhoto: TdApi.ChatPhoto?, chatId: Long): String? {
+    private fun resolvePhotoPath(chatPhoto: TdApi.ChatPhoto?, chatId: Long, allowDownload: Boolean): String? {
         if (chatPhoto == null) return null
-        return resolvePhotoPath(chatPhoto.animation?.file, chatId)
-            ?: resolvePhotoPath(chatPhoto.sizes.lastOrNull()?.photo, chatId)
+        return resolvePhotoPath(chatPhoto.animation?.file, chatId, allowDownload)
+            ?: resolvePhotoPath(chatPhoto.sizes.lastOrNull()?.photo, chatId, allowDownload)
     }
 
     private fun TdApi.Usernames.toDomain() = UsernamesModel(

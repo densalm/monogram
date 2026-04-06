@@ -1,8 +1,7 @@
-import com.android.build.VariantOutput
-import com.android.build.gradle.internal.api.ApkVariantOutputImpl
+import com.android.build.api.artifact.SingleArtifact
+import com.android.build.api.variant.FilterConfiguration
 import com.google.android.gms.oss.licenses.plugin.DependencyTask
 import com.google.gms.googleservices.GoogleServicesPlugin
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -15,23 +14,14 @@ plugins {
 
 android {
     namespace = "org.monogram.app"
-
     compileSdk = 36
-    
-    buildFeatures {
-        compose = true
-    }
-
-    androidResources {
-        generateLocaleConfig = true
-    }
 
     defaultConfig {
         applicationId = "org.monogram"
         minSdk = 25
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0"
+        versionCode = 6
+        versionName = "0.0.6"
     }
 
     splits {
@@ -43,13 +33,8 @@ android {
         }
     }
 
-    applicationVariants.all {
-        val variant = this
-        variant.outputs.all {
-            val output = this as ApkVariantOutputImpl
-            val abi = output.getFilter(VariantOutput.FilterType.ABI) ?: "universal"
-            output.outputFileName = "monogram-$abi-${variant.versionName}(${variant.versionCode})-${variant.buildType.name}.apk"
-        }
+    androidResources {
+        generateLocaleConfig = true
     }
 
     buildTypes {
@@ -70,31 +55,64 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
-
     kotlin {
-        compilerOptions {
-            jvmTarget = JvmTarget.JVM_17
-        }
+        jvmToolchain(21)
     }
-
     buildFeatures {
         compose = true
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val apkDirProvider = variant.artifacts.get(SingleArtifact.APK)
+        val artifactsLoader = variant.artifacts.getBuiltArtifactsLoader()
+
+        val renameTask = tasks.register("rename${variant.name.capitalize()}Apk") {
+            inputs.dir(apkDirProvider)
+
+            doLast {
+                val builtArtifacts = artifactsLoader.load(apkDirProvider.get())!!
+                val targetDir = apkDirProvider.get().asFile
+
+                builtArtifacts.elements.forEach { artifact ->
+                    val abi = artifact.filters.find {
+                        it.filterType == FilterConfiguration.FilterType.ABI
+                    }?.identifier ?: "universal"
+                    val versionName = artifact.versionName
+                    val versionCode = artifact.versionCode
+                    val buildType = variant.buildType
+
+                    val originalApk = File(artifact.outputFile)
+                    val targetFile = File(
+                        targetDir,
+                        "monogram-$abi-${versionName}(${versionCode})-${buildType}.apk"
+                    )
+
+                    originalApk.copyTo(targetFile, overwrite = true)
+                }
+            }
+        }
+
+        project.tasks.matching { it.name == "assemble${variant.name.capitalize()}" }.configureEach {
+            finalizedBy(renameTask)
+        }
     }
 }
 
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.androidx.compose)
-    
+
     implementation(libs.bundles.decompose)
     implementation(libs.bundles.koin)
-    
+
     implementation(libs.coil.compose)
     implementation(libs.coil.video)
-    
+
     implementation(libs.androidx.biometric)
     implementation(libs.play.services.oss.licenses)
 
@@ -113,16 +131,14 @@ dependencies {
 
 tasks.withType(DependencyTask::class.java).configureEach {
     if (name == "debugOssDependencyTask") {
-        dependsOn("releaseOssDependencyTask")
+        val releaseTaskProvider = project.tasks.named<DependencyTask>("releaseOssDependencyTask")
+
+        dependsOn(releaseTaskProvider)
+
         doLast {
-            val releaseJson = layout.buildDirectory
-                .file("generated/third_party_licenses/release/dependencies.json")
-                .get()
-                .asFile
+            val releaseJson = releaseTaskProvider.get().dependenciesJson.get().asFile
             val debugJson = dependenciesJson.get().asFile
-            if (releaseJson.exists()) {
-                releaseJson.copyTo(debugJson, overwrite = true)
-            }
+            if (releaseJson.exists()) releaseJson.copyTo(debugJson, overwrite = true)
         }
     }
 }

@@ -28,7 +28,6 @@ import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.features.chats.chatList.components.SectionHeader
 import org.monogram.presentation.features.chats.chatList.components.SettingsTextField
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,7 +39,6 @@ fun FolderDialog(
     initialSelectedChatIds: List<Long> = emptyList(),
     availableChats: List<ChatModel> = emptyList(),
     confirmButtonText: String,
-    videoPlayerPool: VideoPlayerPool,
     isEditMode: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (String, String?, List<Long>) -> Unit,
@@ -51,6 +49,7 @@ fun FolderDialog(
     var selectedIcon by remember { mutableStateOf(initialIcon) }
     var selectedChatIds by remember { mutableStateOf(initialSelectedChatIds.toSet()) }
     var searchQuery by remember { mutableStateOf("") }
+    val canConfirm = text.isNotBlank() && selectedChatIds.isNotEmpty()
 
     val icons = listOf(
         "All", "Unread", "Unmuted", "Bots", "Channels", "Groups", "Private", "Custom",
@@ -194,8 +193,7 @@ fun FolderDialog(
                                 path = chat.avatarPath,
                                 fallbackPath = chat.personalAvatarPath,
                                 name = chat.title,
-                                size = 36.dp,
-                                videoPlayerPool = videoPlayerPool
+                                size = 36.dp
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(
@@ -233,8 +231,12 @@ fun FolderDialog(
                 }
 
                 Button(
-                    onClick = { if (text.isNotBlank()) onConfirm(text, selectedIcon, selectedChatIds.toList()) },
-                    enabled = text.isNotBlank(),
+                    onClick = {
+                        if (canConfirm) {
+                            onConfirm(text, selectedIcon, selectedChatIds.toList())
+                        }
+                    },
+                    enabled = canConfirm,
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),

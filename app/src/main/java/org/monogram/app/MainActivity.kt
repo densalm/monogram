@@ -10,9 +10,11 @@ import androidx.fragment.app.FragmentActivity
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.retainedComponent
 import org.koin.android.ext.android.inject
+import org.monogram.app.ui.theme.AppThemeContainer
 import org.monogram.data.service.TdNotificationService
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
+import org.monogram.presentation.core.util.LocalVideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.chats.LocalLinkHandler
 import org.monogram.presentation.root.DefaultAppComponentContext
 import org.monogram.presentation.root.DefaultRootComponent
@@ -41,7 +43,10 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             AppThemeContainer(root.appPreferences) {
-                CompositionLocalProvider(LocalLinkHandler provides root::handleLink) {
+                CompositionLocalProvider(
+                LocalLinkHandler provides root::handleLink,
+                        LocalVideoPlayerPool provides root.videoPlayerPool
+                ) {
                     MainContent(root)
                 }
             }

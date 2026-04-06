@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.profile.admin
 
 import androidx.compose.foundation.layout.*
@@ -72,7 +74,7 @@ fun AdminManageContent(component: AdminManageComponent) {
     ) { padding ->
         if (state.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                ContainedLoadingIndicator()
             }
         } else {
             LazyColumn(
@@ -98,8 +100,7 @@ fun AdminManageContent(component: AdminManageComponent) {
                                     path = user.avatarPath,
                                     fallbackPath = user.personalAvatarPath,
                                     name = user.firstName,
-                                    size = 64.dp,
-                                    videoPlayerPool = component.videoPlayerPool
+                                    size = 64.dp
                                 )
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {

@@ -1,24 +1,27 @@
 package org.monogram.data.di
 
-import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
+import org.monogram.data.gateway.TdLibException
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
-class TdLibException(val error: TdApi.Error) : Exception(error.message)
-
-class TdLibClient(private val context: Context) {
+internal class TdLibClient {
     private val TAG = "TdLibClient"
     private val globalRetryAfterUntilMs = AtomicLong(0L)
+    private val _updates = MutableSharedFlow<TdApi.Update>(
+        replay = 10,
+        extraBufferCapacity = 1000,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
 
     private val _isAuthenticated = MutableStateFlow(false)
     val isAuthenticated = _isAuthenticated.asStateFlow()
@@ -32,12 +35,7 @@ class TdLibClient(private val context: Context) {
         }
     }
 
-    private val _updates = MutableSharedFlow<TdApi.Update>(
-        replay = 10,
-        extraBufferCapacity = 1000,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST
-    )
-    val updates = _updates
+    val updates: SharedFlow<TdApi.Update> = _updates
 
     private val client = Client.create(
         { result ->
@@ -134,6 +132,4 @@ class TdLibClient(private val context: Context) {
             ?: 1L
         return (seconds * 1000L).coerceAtMost(60_000L)
     }
-
-    fun getContext() = context
 }

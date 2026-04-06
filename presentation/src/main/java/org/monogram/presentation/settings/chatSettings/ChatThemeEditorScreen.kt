@@ -1,6 +1,5 @@
 package org.monogram.presentation.settings.chatSettings
 
-import org.monogram.presentation.core.util.coRunCatching
 import android.graphics.Color.*
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,6 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.outlined.Colorize
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material3.*
@@ -32,8 +33,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.monogram.presentation.R
+import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.util.NightMode
-import java.util.Calendar
+import org.monogram.presentation.core.util.coRunCatching
+import org.monogram.presentation.features.chats.chatList.components.SettingsTextField
+import java.util.*
 
 private enum class PaletteMode { LIGHT, DARK }
 
@@ -59,7 +63,7 @@ private data class ThemePreset(
 private data class AccentPreset(val nameRes: Int, val color: Int)
 private data class ColorRole(val labelRes: Int, val color: Int, val onApply: (Int) -> Unit)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatThemeEditorScreen(
     state: ChatSettingsComponent.State,
@@ -262,30 +266,34 @@ fun ChatThemeEditorScreen(
             item { EditorHeader(state, component) }
             item {
 
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = ShapeDefaults.LargeIncreased, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(stringResource(R.string.chat_theme_editor_palette_mode), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.chat_theme_editor_palette_mode), style = MaterialTheme.typography.titleMediumEmphasized, fontWeight = FontWeight.SemiBold)
                             Text(
                                 stringResource(R.string.chat_theme_editor_palette_mode_description),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                FilterChip(
-                                    selected = !isDark,
-                                    onClick = { mode = PaletteMode.LIGHT },
-                                    label = { Text(stringResource(R.string.chat_theme_editor_light)) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                                FilterChip(
-                                    selected = isDark,
-                                    onClick = { mode = PaletteMode.DARK },
-                                    label = { Text(stringResource(R.string.chat_theme_editor_dark)) },
-                                    modifier = Modifier.weight(1f)
-                                )
+                                OutlinedToggleButton(
+                                    checked = !isDark,
+                                    onCheckedChange = { if (it) mode = PaletteMode.LIGHT },
+                                    modifier = Modifier.weight(1f),
+                                    shapes = ToggleButtonDefaults.shapes(shape = ShapeDefaults.LargeIncreased)
+                                ) {
+                                    Text(stringResource(R.string.chat_theme_editor_light))
+                                }
+                                OutlinedToggleButton(
+                                    checked = isDark,
+                                    onCheckedChange = { if (it) mode = PaletteMode.DARK },
+                                    modifier = Modifier.weight(1f),
+                                    shapes = ToggleButtonDefaults.shapes(shape = ShapeDefaults.LargeIncreased)
+                                ) {
+                                    Text(stringResource(R.string.chat_theme_editor_dark))
+                                }
                             }
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = ShapeDefaults.Large,
                                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
@@ -308,9 +316,9 @@ fun ChatThemeEditorScreen(
             }
             item {
 
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = ShapeDefaults.LargeIncreased, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(stringResource(R.string.chat_theme_editor_accent), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.chat_theme_editor_accent), style = MaterialTheme.typography.titleMediumEmphasized, fontWeight = FontWeight.SemiBold)
                             Text(
                                 stringResource(R.string.chat_theme_editor_accent_description, modeLabel),
                                 style = MaterialTheme.typography.bodySmall,
@@ -334,7 +342,15 @@ fun ChatThemeEditorScreen(
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                OutlinedTextField(value = accentText, onValueChange = { accentText = it }, label = { Text(stringResource(R.string.chat_theme_editor_hex_accent)) }, singleLine = true, modifier = Modifier.weight(1f))
+                                SettingsTextField(
+                                    value = accentText,
+                                    onValueChange = { accentText = it },
+                                    placeholder = stringResource(R.string.chat_theme_editor_hex_accent),
+                                    icon = Icons.Outlined.Palette,
+                                    position = ItemPosition.STANDALONE,
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
                                 Button(onClick = {
                                     parseThemeColor(accentText)?.let {
                                         component.onApplyThemeAccent(it, isDark)
@@ -347,9 +363,9 @@ fun ChatThemeEditorScreen(
                     }
             }
             item {
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = ShapeDefaults.LargeIncreased, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text(stringResource(R.string.chat_theme_editor_preset_themes), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.chat_theme_editor_preset_themes), style = MaterialTheme.typography.titleMediumEmphasized, fontWeight = FontWeight.SemiBold)
                             Text(
                                 stringResource(R.string.chat_theme_editor_preset_themes_description),
                                 style = MaterialTheme.typography.bodySmall,
@@ -363,9 +379,9 @@ fun ChatThemeEditorScreen(
                     }
             }
             item {
-                    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                    Surface(shape = ShapeDefaults.LargeIncreased, color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(stringResource(R.string.chat_theme_editor_manual_colors_title, modeLabel), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.chat_theme_editor_manual_colors_title, modeLabel), style = MaterialTheme.typography.titleMediumEmphasized, fontWeight = FontWeight.SemiBold)
                             roles.forEach { role ->
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Box(
@@ -609,13 +625,15 @@ private fun Material3ColorPickerDialog(
                         .background(Color(current), RoundedCornerShape(10.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(10.dp))
                 )
-                OutlinedTextField(
+                SettingsTextField(
                     value = hex,
                     onValueChange = {
                         hex = it
                         parseThemeColor(it)?.let { c -> hsv = toHsv(c); a = ((c ushr 24) and 0xFF) / 255f }
                     },
-                    label = { Text(stringResource(R.string.chat_theme_editor_hex)) },
+                    placeholder = stringResource(R.string.chat_theme_editor_hex),
+                    icon = Icons.Outlined.Colorize,
+                    position = ItemPosition.STANDALONE,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )

@@ -4,24 +4,26 @@ import android.os.PowerManager
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import org.drinkless.tdlib.TdApi
 import org.json.JSONObject
 import org.koin.android.ext.android.inject
-import org.monogram.data.di.TdLibClient
+import org.monogram.data.gateway.TelegramGateway
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.PushProvider
 
 class FcmPushService : FirebaseMessagingService() {
-    private val tdLibClient: TdLibClient by inject()
+    private val gateway: TelegramGateway by inject()
     private val appPreferences: AppPreferencesProvider by inject()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d("FcmPushService", "New FCM token: $token")
         if (appPreferences.pushProvider.value == PushProvider.FCM) {
-            registerToken(token)
+            scope.launch {
+                registerToken(token)
+            }
         }
     }
 
@@ -43,16 +45,23 @@ class FcmPushService : FirebaseMessagingService() {
                 }
                 val jsonPayload = json.toString()
 
-                tdLibClient.send(TdApi.ProcessPushNotification(jsonPayload)) {
-                    Log.d("FcmPushService", "ProcessPushNotification success")
-                }
-
-                runBlocking {
-                    delay(5000)
+                wakeLock.acquire(10_000L)
+                scope.launch {
+                    try {
+                        gateway.execute(TdApi.ProcessPushNotification(jsonPayload))
+                        Log.d("FcmPushService", "ProcessPushNotification success")
+                        delay(5000)
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        Log.e("FcmPushService", "Error processing push", e)
+                    } finally {
+                        if (wakeLock.isHeld) {
+                            wakeLock.release()
+                        }
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("FcmPushService", "Error processing push", e)
-            } finally {
                 if (wakeLock.isHeld) {
                     wakeLock.release()
                 }
@@ -65,16 +74,20 @@ class FcmPushService : FirebaseMessagingService() {
         Log.d("FcmPushService", "FCM messages deleted")
     }
 
-    private fun registerToken(token: String) {
-        if (!tdLibClient.isAuthenticated.value) return
+    private suspend fun registerToken(token: String) {
+        if (!gateway.isAuthenticated.value) return
 
-        tdLibClient.send(
-            TdApi.RegisterDevice(
-                TdApi.DeviceTokenFirebaseCloudMessaging(token, true),
-                longArrayOf()
+        try {
+            val result = gateway.execute(
+                TdApi.RegisterDevice(
+                    TdApi.DeviceTokenFirebaseCloudMessaging(token, true),
+                    longArrayOf()
+                )
             )
-        ) { result ->
             Log.d("FcmPushService", "RegisterDevice result: $result")
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.e("FcmPushService", "RegisterDevice failed", e)
         }
     }
 }

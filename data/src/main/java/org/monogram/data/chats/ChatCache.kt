@@ -3,6 +3,7 @@ package org.monogram.data.chats
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.datasource.cache.ChatsCacheDataSource
 import org.monogram.data.datasource.cache.UserCacheDataSource
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
@@ -12,6 +13,9 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
     val authoritativeActiveListChatIds = ConcurrentHashMap.newKeySet<Long>()
     val protectedPinnedChatIds = ConcurrentHashMap.newKeySet<Long>()
     val onlineMemberCount = ConcurrentHashMap<Long, Int>()
+    val userIdToChatId = ConcurrentHashMap<Long, Long>()
+    val supergroupIdToChatId = ConcurrentHashMap<Long, Long>()
+    val basicGroupIdToChatId = ConcurrentHashMap<Long, Long>()
 
     // Messages: ChatId -> (MessageId -> Message)
     private val messages = ConcurrentHashMap<Long, ConcurrentHashMap<Long, TdApi.Message>>()
@@ -56,6 +60,7 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
                     existing.photo = chat.photo
                 }
                 existing.permissions = chat.permissions
+                existing.type = chat.type
                 existing.lastMessage = chat.lastMessage
 
                 val newPositions = chat.positions.toMutableList()
@@ -94,8 +99,28 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
                 existing.lastReadInboxMessageId = chat.lastReadInboxMessageId
                 existing.lastReadOutboxMessageId = chat.lastReadOutboxMessageId
             }
+            indexChatByType(existing)
         } else {
             allChats[chat.id] = chat
+            indexChatByType(chat)
+        }
+    }
+
+    private fun indexChatByType(chat: TdApi.Chat) {
+        when (val type = chat.type) {
+            is TdApi.ChatTypePrivate -> if (type.userId != 0L) {
+                userIdToChatId[type.userId] = chat.id
+            }
+
+            is TdApi.ChatTypeSupergroup -> if (type.supergroupId != 0L) {
+                supergroupIdToChatId[type.supergroupId] = chat.id
+            }
+
+            is TdApi.ChatTypeBasicGroup -> if (type.basicGroupId != 0L) {
+                basicGroupIdToChatId[type.basicGroupId] = chat.id
+            }
+
+            else -> Unit
         }
     }
 
@@ -255,6 +280,9 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
         authoritativeActiveListChatIds.clear()
         protectedPinnedChatIds.clear()
         onlineMemberCount.clear()
+        userIdToChatId.clear()
+        supergroupIdToChatId.clear()
+        basicGroupIdToChatId.clear()
         messages.clear()
         usersCache.clear()
         userFullInfoCache.clear()
@@ -397,11 +425,14 @@ class ChatCache : ChatsCacheDataSource, UserCacheDataSource {
             )
             clientData = "mc:${entity.memberCount};oc:${entity.onlineCount}"
         }
-        if (entity.photoId != 0) {
-            fileCache[entity.photoId] = TdApi.File().apply {
-                id = entity.photoId
-                local = TdApi.LocalFile().apply {
-                    this.path = entity.avatarPath.orEmpty()
+        if (entity.photoId != 0 && !entity.avatarPath.isNullOrEmpty()) {
+            val avatarFile = File(entity.avatarPath)
+            if (avatarFile.exists()) {
+                fileCache[entity.photoId] = TdApi.File().apply {
+                    id = entity.photoId
+                    local = TdApi.LocalFile().apply {
+                        this.path = entity.avatarPath
+                    }
                 }
             }
         }

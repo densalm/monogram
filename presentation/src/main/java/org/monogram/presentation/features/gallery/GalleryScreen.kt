@@ -11,10 +11,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.presentation.R
 import org.monogram.presentation.features.gallery.components.*
 
 @Composable
@@ -24,9 +26,11 @@ fun GalleryScreen(
     onCameraClick: () -> Unit,
     attachBots: List<AttachMenuBotModel>,
     hasMediaAccess: Boolean,
+    isPartialAccess: Boolean,
     onPickFromOtherSources: () -> Unit,
     onRequestMediaAccess: () -> Unit,
-    onAttachBotClick: (AttachMenuBotModel) -> Unit
+    onAttachBotClick: (AttachMenuBotModel) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val mediaList = remember { mutableStateListOf<GalleryMediaItem>() }
@@ -81,6 +85,7 @@ fun GalleryScreen(
     }
 
     Scaffold(
+        modifier = modifier,
         topBar = {
             GalleryTopBar(
                 onDismiss = onDismiss,
@@ -93,7 +98,7 @@ fun GalleryScreen(
             AttachBotsSection(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
                     .windowInsetsPadding(WindowInsets.navigationBars),
                 bots = attachBots.filter { it.showInAttachMenu && it.name.isNotBlank() },
                 selectedCount = selectedMedia.size,
@@ -122,12 +127,20 @@ fun GalleryScreen(
             }
 
             if (!hasMediaAccess) {
-                SectionHeader("Permissions")
+                SectionHeader(stringResource(R.string.permissions))
                 PermissionCard(onRequestMediaAccess)
                 return@Column
             }
 
-            SectionHeader("Media")
+            if (isPartialAccess) {
+                PartialAccessCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 10.dp),
+                    onManageAccessClick = onRequestMediaAccess
+                )
+            }
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()

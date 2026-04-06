@@ -1,14 +1,10 @@
 package org.monogram.presentation.features.chats.currentChat.chatContent
 
+import android.content.ClipData
 import android.util.Log
 import androidx.compose.animation.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.text.AnnotatedString
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
@@ -26,7 +22,7 @@ import org.monogram.presentation.features.webview.InternalWebView
 fun ChatContentViewers(
     state: ChatComponent.State,
     component: ChatComponent,
-    clipboardManager: ClipboardManager
+    localClipboard: Clipboard
 ) {
     AnimatedVisibility(
         visible = state.instantViewUrl != null,
@@ -37,9 +33,9 @@ fun ChatContentViewers(
             InstantViewer(
                 url = url,
                 messageRepository = component.repositoryMessage,
+                fileRepository = component.repositoryMessage,
                 onDismiss = { component.onDismissInstantView() },
-                onOpenWebView = { component.onOpenWebView(it) },
-                videoPlayerPool = component.videoPlayerPool
+                onOpenWebView = { component.onOpenWebView(it) }
             )
         }
     }
@@ -60,8 +56,16 @@ fun ChatContentViewers(
                         ) == true
                     } ?: return@YouTubeViewer)
                 },
-                onCopyLink = { clipboardManager.setText(AnnotatedString(it)) },
-                onCopyText = { clipboardManager.setText(AnnotatedString(it)) },
+                onCopyLink = {
+                    localClipboard.nativeClipboard.setPrimaryClip(
+                        ClipData.newPlainText("", AnnotatedString(it))
+                    )
+                },
+                onCopyText = {
+                    localClipboard.nativeClipboard.setPrimaryClip(
+                        ClipData.newPlainText("", AnnotatedString(it))
+                    )
+                },
                 isPipEnabled = !state.isInstalledFromGooglePlay
             )
         }
@@ -79,7 +83,7 @@ fun ChatContentViewers(
                 baseUrl = state.miniAppUrl,
                 botName = state.chatTitle,
                 botAvatarPath = state.chatAvatar,
-                messageRepository = component.repositoryMessage,
+                webAppRepository = component.repositoryMessage,
                 onDismiss = { component.onDismissMiniApp() }
             )
         }
@@ -200,42 +204,53 @@ fun ChatContentViewers(
                         } else {
                             path
                         }
-                        clipboardManager.setText(AnnotatedString(link))
-                    },
-                    onCopyText = { path ->
-                        val msg = currentViewerMessage ?: state.messages.find { it.content.matchesDisplayPath(path) }
-                        val textToCopy = when (val content = msg?.content) {
-                            is MessageContent.Photo -> content.caption
-                            is MessageContent.Video -> content.caption
-                            is MessageContent.Gif -> content.caption
-                            else -> ""
+                    localClipboard.nativeClipboard.setPrimaryClip(
+                        ClipData.newPlainText("", AnnotatedString(link))
+                    )
+                },
+                onCopyText = { path ->
+                    val msg = state.messages.find {
+                        when (val content = it.content) {
+                            is MessageContent.Photo -> content.path == path
+                            is MessageContent.Video -> content.path == path
+                            is MessageContent.Gif -> content.path == path
+                            else -> false
                         }
-                        if (textToCopy.isNotEmpty()) {
-                            clipboardManager.setText(AnnotatedString(textToCopy))
-                        }
-                    },
-                    onVideoClick = { path ->
-                        val msg = currentViewerMessage ?: state.messages.find { it.content.matchesDisplayPath(path) }
-                        if (msg != null) {
-                            val mediaPath = msg.displayMediaPathForViewer() ?: path
-                            component.onOpenVideo(
-                                path = mediaPath,
-                                messageId = msg.id,
-                                caption = when (val content = msg.content) {
-                                    is MessageContent.Video -> content.caption
-                                    is MessageContent.Gif -> content.caption
-                                    else -> null
-                                }
-                            )
-                        } else {
-                            component.onOpenVideo(path = path)
-                        }
-                    },
-                    captions = state.fullScreenCaptions,
-                    imageDownloadingStates = imageDownloadingStates,
-                    imageDownloadProgressStates = imageDownloadProgressStates,
-                    downloadUtils = component.downloadUtils
-                )
+                    }
+                    val textToCopy = when (val content = msg?.content) {
+                        is MessageContent.Photo -> content.caption
+                        is MessageContent.Video -> content.caption
+                        is MessageContent.Gif -> content.caption
+                        else -> ""
+                    }
+                    if (textToCopy.isNotEmpty()) {
+                        localClipboard.nativeClipboard.setPrimaryClip(
+                            ClipData.newPlainText("", AnnotatedString(textToCopy))
+                        )
+                    }
+                },
+                onVideoClick = { path ->
+                    val msg = currentViewerMessage ?: state.messages.find { it.content.matchesDisplayPath(path) }
+                    if (msg != null) {
+                        val mediaPath = msg.displayMediaPathForViewer() ?: path
+                        component.onOpenVideo(
+                            path = mediaPath,
+                            messageId = msg.id,
+                            caption = when (val content = msg.content) {
+                                is MessageContent.Video -> content.caption
+                                is MessageContent.Gif -> content.caption
+                                else -> null
+                            }
+                        )
+                    } else {
+                        component.onOpenVideo(path = path)
+                    }
+                },
+                captions = state.fullScreenCaptions,
+                imageDownloadingStates = imageDownloadingStates,
+                imageDownloadProgressStates = imageDownloadProgressStates,
+                downloadUtils = component.downloadUtils
+            )
             }
         }
     }
@@ -305,7 +320,9 @@ fun ChatContentViewers(
                             } else {
                                 videoPath
                             }
-                            clipboardManager.setText(AnnotatedString(link))
+                            localClipboard.nativeClipboard.setPrimaryClip(
+                                ClipData.newPlainText("", AnnotatedString(link))
+                            )
                         },
                         onCopyText = { videoPath ->
                             val textMsg = state.messages.find {
@@ -317,7 +334,9 @@ fun ChatContentViewers(
                                 else -> ""
                             }
                             if (textToCopy.isNotEmpty()) {
-                                clipboardManager.setText(AnnotatedString(textToCopy))
+                                localClipboard.nativeClipboard.setPrimaryClip(
+                                    ClipData.newPlainText("", AnnotatedString(textToCopy))
+                                )
                             }
                         },
                         onSaveGif = if (state.messages.any { (it.content as? MessageContent.Gif)?.path == finalPath }) {
@@ -338,7 +357,8 @@ fun ChatContentViewers(
             slug = state.invoiceSlug,
             chatId = state.chatId,
             messageId = state.invoiceMessageId,
-            messageRepository = component.repositoryMessage,
+            paymentRepository = component.repositoryMessage,
+            fileRepository = component.repositoryMessage,
             onDismiss = { status -> component.onDismissInvoice(status) }
         )
     }

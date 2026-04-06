@@ -78,6 +78,7 @@
     <string name="phone_number_placeholder">000 00 00</string>
     <string name="continue_button">Продолжить</string>
     <string name="select_country_title">Выберите страну</string>
+    <string name="unknown_country">Неизвестная страна</string>
     <string name="search_country_hint">Поиск страны или кода…</string>
     <string name="verification_delivery_telegram">Код подтверждения был отправлен через Telegram на другое Ваше устройство.</string>
     <string name="verification_delivery_sms">Мы отправили СМС с кодом подтверждения на Ваш номер.</string>
@@ -555,6 +556,7 @@
     <string name="message_text_size_title">Размер текста сообщений</string>
     <string name="message_letter_spacing_title">Межбуквенный интервал сообщений</string>
     <string name="bubble_rounding_title">Скругление блоков</string>
+    <string name="sticker_size_title">Размер стикеров</string>
     <string name="reset_button">Сбросить</string>
     <string name="chat_wallpaper_header">Обои чата</string>
     <string name="reset_wallpaper_cd">Сбросить обои</string>
@@ -956,7 +958,7 @@
     <string name="action_cancel_reply">Отменить ответ</string>
     <string name="action_edit_message">Изменить сообщение</string>
     <string name="action_cancel_edit">Отменить редактирование</string>
-    <string name="action_send_items_count">Отправить %1$d объектов</string>
+    <string name="action_send_items_count">Прикрепить %1$d объектов</string>
     <string name="action_send_media">Отправить медиа</string>
     <string name="action_cancel">Отмена</string>
     <string name="action_copy">Копировать</string>
@@ -980,6 +982,22 @@
     <string name="action_edit">Изменить</string>
     <string name="action_send_now">Отправить</string>
     <string name="action_delete_message">Удалить</string>
+    <string name="action_manage_access">Управлять</string>
+    <string name="gallery_partial_access_title">Включён ограниченный доступ к фото</string>
+    <string name="gallery_partial_access_subtitle">Видны только выбранные фото и видео.</string>
+    <string name="gallery_title_attachments">Вложения</string>
+    <string name="gallery_action_other_sources">Другие источники</string>
+    <string name="gallery_filter_all">Все</string>
+    <string name="gallery_filter_photos">Фото</string>
+    <string name="gallery_filter_videos">Видео</string>
+    <string name="gallery_bucket_all_folders">Все папки</string>
+    <string name="gallery_bucket_screenshots">Скриншоты</string>
+    <string name="gallery_selected_items_count">%1$d выбрано</string>
+    <string name="gallery_ready_to_attach">Готово к прикреплению</string>
+    <string name="gallery_permission_title">Разрешить доступ к медиа</string>
+    <string name="gallery_permission_description">Предоставьте доступ к фото и видео, чтобы прикреплять файлы в чате.
+    </string>
+    <string name="gallery_permission_grant">Предоставить доступ</string>
 
     <string name="rich_text_bold">Жирный</string>
     <string name="rich_text_italic">Курсив</string>
@@ -1313,7 +1331,7 @@
     <string name="viewer_loading_original">Загружается оригинал...</string>
 
     <!-- Selection: Viewer Actions -->
-    <string name="action_download">Загрузить</string>
+    <string name="action_download">Скачать</string>
     <string name="action_download_video">Скачать видео</string>
     <string name="action_copy_image">Копировать фото</string>
     <string name="action_copy_text">Копировать текст</string>
@@ -1330,10 +1348,10 @@
 
     <!-- Selection: Viewer Settings -->
     <string name="settings_title">Настройки</string>
-    <string name="settings_playback_speed">Скорость воспроизведения</string>
-    <string name="settings_scale_mode">Режим масштабирования</string>
-    <string name="settings_scale_fit">Вписать</string>
-    <string name="settings_scale_zoom">Заполнить</string>
+    <string name="settings_playback_speed">Скорость</string>
+    <string name="settings_scale_mode">Масштаб</string>
+    <string name="settings_scale_fit">По размеру</string>
+    <string name="settings_scale_zoom">На весь экран</string>
     <string name="settings_rotate_screen">Поворот экрана</string>
     <string name="settings_pip">Картинка в картинке</string>
     <string name="settings_screenshot">Скриншот</string>
@@ -1348,7 +1366,7 @@
     <string name="settings_speed_normal">Обычная</string>
 
     <!-- Selection: Picture-in-Picture -->
-    <string name="pip_play">Играть</string>
+    <string name="pip_play">Воспроизвести</string>
     <string name="pip_pause">Пауза</string>
     <string name="pip_rewind">Назад</string>
     <string name="pip_forward">Вперёд</string>
@@ -1855,4 +1873,57 @@
     <string name="folder_tab_edit">Изменить</string>
     <string name="folder_tab_reorder">Порядок</string>
     <string name="folder_tab_delete">Удалить</string>
+    <string name="editor_undo">Отменить</string>
+    <string name="editor_redo">Повторить</string>
+    <string name="editor_mode_preview">Предпросмотр</string>
+    <string name="editor_mode_edit">Редактирование</string>
+    <string name="editor_markdown_on">Markdown: вкл</string>
+    <string name="editor_markdown_off">Markdown: выкл</string>
+    <string name="editor_zoom_in">A+</string>
+    <string name="editor_zoom_out">A-</string>
+    <string name="editor_templates">Шаблоны</string>
+    <string name="editor_save_as_snippet">Сохранить как шаблон</string>
+    <string name="editor_snippet_title_hint">Название шаблона</string>
+    <string name="editor_no_snippets">Шаблонов пока нет</string>
+    <string name="editor_find">Найти</string>
+    <string name="editor_replace">Заменить</string>
+    <string name="editor_replace_all">Заменить всё</string>
+    <string name="editor_matches_count">Совпадение %1$d из %2$d</string>
+    <string name="editor_no_matches">Совпадений нет</string>
+    <string name="editor_word_count">%1$d слов</string>
+    <string name="editor_reading_time">≈%1$d мин чтения</string>
+    <string name="editor_autosave_done">Черновик сохранён</string>
+    <string name="editor_ai">AI</string>
+    <string name="editor_ai_title">ИИ-редактор</string>
+    <string name="editor_ai_tab_translate">Перевод</string>
+    <string name="editor_ai_tab_stylize">Стилизация</string>
+    <string name="editor_ai_tab_fix">Исправление</string>
+    <string name="editor_ai_original">Оригинал</string>
+    <string name="editor_ai_result">Результат</string>
+    <string name="editor_ai_changes">Изменения</string>
+    <string name="editor_ai_apply_result">Применить результат</string>
+    <string name="editor_ai_run_translate">Перевести текст</string>
+    <string name="editor_ai_run_stylize">Применить стиль</string>
+    <string name="editor_ai_run_fix">Исправить текст</string>
+    <string name="editor_ai_target_language">Язык перевода</string>
+    <string name="editor_ai_select_language">Выберите язык</string>
+    <string name="editor_ai_language_not_found">Язык не найден</string>
+    <string name="editor_ai_style_formal">Формальный</string>
+    <string name="editor_ai_style_short">Кратко</string>
+    <string name="editor_ai_style_tribal">Трайбл</string>
+    <string name="editor_ai_style_corp">Корпоративный</string>
+    <string name="editor_ai_style_biblical">Библейский</string>
+    <string name="editor_ai_style_viking">Викинг</string>
+    <string name="editor_ai_style_zen">Дзен</string>
+    <string name="editor_ai_add_emojis">Добавить эмодзи</string>
+    <string name="editor_ai_loading">Обработка...</string>
+    <string name="editor_ai_error_empty">Введите текст для AI</string>
+    <string name="editor_ai_error_flood">Слишком много AI-запросов. Может потребоваться Telegram Premium.</string>
+    <string name="editor_ai_error_generic">Не удалось обработать текст через AI</string>
+    <string name="action_insert">Вставить</string>
+    <string name="action_previous">Назад</string>
+    <string name="action_next">Вперёд</string>
+    <string name="auth_phone_code_invalid_error">Неверный код подтверждения</string>
+    <string name="auth_password_hash_invalid">Неверный пароль</string>
+    <string name="unexpected_error">Произошла непредвиденная ошибка</string>
 </resources>

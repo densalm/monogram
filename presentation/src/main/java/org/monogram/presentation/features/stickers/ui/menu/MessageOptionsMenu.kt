@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.stickers.ui.menu
 
 import androidx.compose.animation.*
@@ -43,12 +45,11 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageViewerModel
 import org.monogram.domain.models.RecentEmojiModel
-import org.monogram.domain.repository.StickerRepository
+import org.monogram.domain.repository.EmojiRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.features.chats.currentChat.chatContent.DeleteMessagesSheet
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.text.SimpleDateFormat
@@ -81,7 +82,6 @@ fun MessageOptionsMenu(
     isLoadingViewers: Boolean = false,
     onReloadViewers: () -> Unit = {},
     onViewerClick: (Long) -> Unit = {},
-    videoPlayerPool: VideoPlayerPool,
     bubbleRadius: Float = 18f,
     splitOffset: Int? = null,
     onReply: () -> Unit,
@@ -107,7 +107,7 @@ fun MessageOptionsMenu(
     val configuration = LocalConfiguration.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    val stickerRepository: StickerRepository = koinInject()
+    val emojiRepository: EmojiRepository = koinInject()
 
     val screenHeight = with(density) { configuration.screenHeightDp.dp.toPx() }.toInt()
     val windowInsets = WindowInsets.systemBars.union(WindowInsets.ime)
@@ -198,7 +198,7 @@ fun MessageOptionsMenu(
     var availableReactions by remember(message.chatId, message.id) { mutableStateOf<List<String>>(emptyList()) }
 
     LaunchedEffect(message.chatId, message.id) {
-        availableReactions = stickerRepository.getMessageAvailableReactions(message.chatId, message.id)
+        availableReactions = emojiRepository.getMessageAvailableReactions(message.chatId, message.id)
     }
 
     fun animateOutAndDismiss(action: (() -> Unit)? = null) {
@@ -483,6 +483,13 @@ fun MessageOptionsMenu(
                     modifier = contentModifier
                         .padding(vertical = 4.dp)
                 ) {
+                    DropdownMenuGroup(
+                        shapes = MenuDefaults.groupShape(0, 1),
+                        contentPadding = PaddingValues(0.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {
                     if (page == MenuPage.Main) {
                         ReactionsRow(
                             message = message,
@@ -511,9 +518,8 @@ fun MessageOptionsMenu(
                                 text = "${viewers.size} ${stringResource(R.string.info_views)}",
                                 trailingContent = {
                                     if (isLoadingViewers) {
-                                        CircularProgressIndicator(
+                                        LoadingIndicator(
                                             modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp
                                         )
                                     } else {
                                         Icon(
@@ -756,7 +762,7 @@ fun MessageOptionsMenu(
                                         .padding(vertical = 24.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    CircularProgressIndicator()
+                                    LoadingIndicator()
                                 }
                             }
 
@@ -783,7 +789,6 @@ fun MessageOptionsMenu(
                                         ViewerRow(
                                             viewer = viewer,
                                             dateFormat = viewerDateFormat,
-                                            videoPlayerPool = videoPlayerPool,
                                             onClick = {
                                                 animateOutAndDismiss {
                                                     onViewerClick(viewer.user.id)
@@ -794,6 +799,7 @@ fun MessageOptionsMenu(
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -1054,7 +1060,6 @@ private fun ReactionsRow(
 private fun ViewerRow(
     viewer: MessageViewerModel,
     dateFormat: SimpleDateFormat,
-    videoPlayerPool: VideoPlayerPool,
     onClick: () -> Unit
 ) {
     val fullName = remember(viewer.user.firstName, viewer.user.lastName) {
@@ -1081,7 +1086,6 @@ private fun ViewerRow(
             fallbackPath = viewer.user.personalAvatarPath,
             name = fullName,
             size = 32.dp,
-            videoPlayerPool = videoPlayerPool,
             fontSize = 12,
             onClick = onClick
         )

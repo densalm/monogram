@@ -22,6 +22,12 @@ set(LOTTIE_MODULE OFF CACHE BOOL "" FORCE)
 set(LOTTIE_TEST OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/rlottie)
 
+get_target_property(RLOTTIE_INTERFACE_LINK_LIBRARIES rlottie INTERFACE_LINK_LIBRARIES)
+if(RLOTTIE_INTERFACE_LINK_LIBRARIES)
+    list(FILTER RLOTTIE_INTERFACE_LINK_LIBRARIES EXCLUDE REGEX "--version-script=.*rlottie\\.expmap")
+    set_target_properties(rlottie PROPERTIES INTERFACE_LINK_LIBRARIES "${RLOTTIE_INTERFACE_LINK_LIBRARIES}")
+endif()
+
 target_compile_options(native-lib PRIVATE
     -O3
     -fvisibility=hidden

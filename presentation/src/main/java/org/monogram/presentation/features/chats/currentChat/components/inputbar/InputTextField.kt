@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.text.contextmenu.builder.item
 import androidx.compose.foundation.text.contextmenu.data.TextContextMenuKeys
@@ -25,10 +24,10 @@ import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -77,6 +76,7 @@ fun InputTextField(
     emojiFontFamily: FontFamily,
     focusRequester: FocusRequester,
     pendingMediaPaths: List<String>,
+    fontScale: Float = 1f,
     maxEditorHeight: Dp = 140.dp,
     onFocus: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -87,7 +87,7 @@ fun InputTextField(
     var preLanguageValue by remember { mutableStateOf("") }
 
     val emojiSize = 20.sp
-    val inlineContent = remember(knownCustomEmojis.size) {
+    val inlineContentMap = remember(knownCustomEmojis.size, knownCustomEmojis.hashCode()) {
         knownCustomEmojis.map { (id, sticker) ->
             id.toString() to InlineTextContent(
                 Placeholder(emojiSize, emojiSize, PlaceholderVerticalAlign.Center)
@@ -112,6 +112,7 @@ fun InputTextField(
 
         for (annotation in sortedEmojiAnnotations) {
             if (annotation.start < lastIndex) continue
+            if (annotation.start > text.length || annotation.end > text.length) continue
             builder.append(text.subSequence(lastIndex, annotation.start))
             val stickerId = annotation.item.toLongOrNull()
             val originalEmoji = text.substring(annotation.start, annotation.end)
@@ -132,7 +133,9 @@ fun InputTextField(
 
         // Add mention highlighting
         mentionAnnotations.forEach { annotation ->
-            finalBuilder.addStyle(SpanStyle(color = primaryColor), annotation.start, annotation.end)
+            if (annotation.start < annotation.end && annotation.start >= 0 && annotation.end <= result.length) {
+                finalBuilder.addStyle(SpanStyle(color = primaryColor), annotation.start, annotation.end)
+            }
         }
 
         text.getStringAnnotations(RICH_ENTITY_TAG, 0, text.length).forEach { annotation ->
@@ -312,39 +315,54 @@ fun InputTextField(
                         }
                     }
 
+                val textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = MaterialTheme.typography.bodyLarge.fontSize * fontScale.coerceIn(0.8f, 1.6f),
+                    platformStyle = PlatformTextStyle(
+                        includeFontPadding = false
+                    ),
+                    lineHeightStyle = LineHeightStyle(
+                        alignment = LineHeightStyle.Alignment.Center,
+                        trim = LineHeightStyle.Trim.None
+                    )
+                )
+
                 BasicTextField(
                     value = textValue,
                     onValueChange = onValueChange,
                     modifier = fieldModifier,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    textStyle = textStyle.copy(
                         color = if (shouldUseOverlayText) Color.Transparent else MaterialTheme.colorScheme.onSurface
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     minLines = 1,
                     maxLines = Int.MAX_VALUE,
-                    visualTransformation = { transformedTextState },
                     decorationBox = { innerTextField ->
-                        Box {
-                            if (shouldUseOverlayText) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (textValue.text.isEmpty()) {
                                 Text(
-                                    text = transformedTextState.text,
-                                    inlineContent = inlineContent,
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    ),
+                                    text = if (pendingMediaPaths.isNotEmpty())
+                                        stringResource(R.string.input_placeholder_caption)
+                                    else
+                                        stringResource(R.string.input_placeholder_message),
+                                    style = textStyle,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
-                            if (textValue.text.isEmpty()) {
+
+                            if (shouldUseOverlayText) {
                                 Text(
-                                    text = if (pendingMediaPaths.isNotEmpty()) stringResource(R.string.input_placeholder_caption) else stringResource(
-                                        R.string.input_placeholder_message
-                                    ),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = transformedTextState.text,
+                                    inlineContent = inlineContentMap,
+                                    style = textStyle,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
+
                             innerTextField()
                         }
                     }

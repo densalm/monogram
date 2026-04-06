@@ -18,6 +18,7 @@ import org.monogram.data.datasource.TdFileDataSource
 import org.monogram.data.datasource.cache.*
 import org.monogram.data.datasource.remote.*
 import org.monogram.data.db.MonogramDatabase
+import org.monogram.data.db.MonogramMigrations
 import org.monogram.data.gateway.TelegramGateway
 import org.monogram.data.gateway.TelegramGatewayImpl
 import org.monogram.data.gateway.UpdateDispatcher
@@ -28,16 +29,19 @@ import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.NetworkMapper
 import org.monogram.data.mapper.StorageMapper
 import org.monogram.data.repository.*
+import org.monogram.data.repository.user.UserRepositoryImpl
+import org.monogram.data.stickers.StickerFileManager
 import org.monogram.domain.repository.*
 
 val dataModule = module {
     single { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
 
-    single { TdLibClient(androidContext()) }
+    single(createdAtStart = true) { TdLibClient() }
 
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single<ScopeProvider> { DefaultScopeProvider(get()) }
     single<StringProvider> { AndroidStringProvider(androidContext()) }
+    single { TdLibParametersProvider(androidContext()) }
     single(createdAtStart = true) {
         OfflineWarmup(
             scopeProvider = get(),
@@ -63,7 +67,7 @@ val dataModule = module {
     }
 
     single { ChatCache() }
-    single<TelegramGateway> {
+    single<TelegramGateway>(createdAtStart = true) {
         TelegramGatewayImpl(get())
     }
     single<UpdateDispatcher> {
@@ -84,23 +88,33 @@ val dataModule = module {
         )
     }
 
+    single {
+        NominatimRemoteDataSource()
+    }
+
     factory<PlayerDataSourceFactory> {
         PlayerDataSourceFactoryImpl(
             fileDataSource = get()
         )
     }
 
-    single<AuthRepository> {
+    single<AuthRepository>(createdAtStart = true) {
         AuthRepositoryImpl(
+            parametersProvider = get(),
             remote = get(),
             updates = get(),
-            tdLibClient = get(),
             scopeProvider = get()
         )
     }
 
     factory<UserRemoteDataSource> {
         TdUserRemoteDataSource(
+            gateway = get()
+        )
+    }
+
+    factory<LinkRemoteDataSource> {
+        TdLinkRemoteDataSource(
             gateway = get()
         )
     }
@@ -113,6 +127,7 @@ val dataModule = module {
             "monogram_db"
         )
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+            .addMigrations(MonogramMigrations.MIGRATION_26_27)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
     }
@@ -132,6 +147,7 @@ val dataModule = module {
     single { get<MonogramDatabase>().wallpaperDao() }
     single { get<MonogramDatabase>().stickerPathDao() }
     single { get<MonogramDatabase>().sponsorDao() }
+    single { get<MonogramDatabase>().textCompositionStyleDao() }
 
     single<UserLocalDataSource> {
         RoomUserLocalDataSource(
@@ -150,16 +166,73 @@ val dataModule = module {
         )
     }
 
+    single<StickerLocalDataSource> {
+        RoomStickerLocalDataSource(
+            stickerSetDao = get(),
+            recentEmojiDao = get(),
+            stickerPathDao = get()
+        )
+    }
+
     single<UserRepository> {
         UserRepositoryImpl(
             remote = get(),
             userLocal = get(),
             chatLocal = get(),
+            chatCache = get(),
             updates = get(),
             scopeProvider = get(),
             gateway = get(),
             fileQueue = get(),
             keyValueDao = get(),
+            cacheProvider = get()
+        )
+    }
+
+    single<UserProfileEditRepository> {
+        UserProfileEditRepositoryImpl(
+            remote = get()
+        )
+    }
+
+    single<ProfilePhotoRepository> {
+        ProfilePhotoRepositoryImpl(
+            remote = get(),
+            chatLocal = get(),
+            gateway = get(),
+            updates = get(),
+            fileQueue = get()
+        )
+    }
+
+    single<ChatInfoRepository> {
+        ChatInfoRepositoryImpl(
+            remote = get(),
+            chatLocal = get(),
+            userRepository = get()
+        )
+    }
+
+    single<PremiumRepository> {
+        PremiumRepositoryImpl(
+            remote = get()
+        )
+    }
+
+    single<BotRepository> {
+        BotRepositoryImpl(
+            remote = get()
+        )
+    }
+
+    single<ChatStatisticsRepository> {
+        ChatStatisticsRepositoryImpl(
+            remote = get()
+        )
+    }
+
+    single<SponsorRepository> {
+        SponsorRepositoryImpl(
             sponsorSyncManager = get()
         )
     }
@@ -214,10 +287,10 @@ val dataModule = module {
             connectivityManager = androidContext().getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager,
             gateway = get(),
             userRepository = get(),
-            customEmojiPaths = get<FileUpdateHandler>().customEmojiPaths,
-            fileIdToCustomEmojiId = get<FileUpdateHandler>().fileIdToCustomEmojiId,
+            chatInfoRepository = get(),
+            fileUpdateHandler = get(),
             fileApi = get(),
-            settingsRepository = get(),
+            appPreferences = get(),
             cache = get(),
             scopeProvider = get()
         )
@@ -235,12 +308,10 @@ val dataModule = module {
         )
     }
 
-    single<ChatsListRepository> {
+    single {
         ChatsListRepositoryImpl(
             remoteDataSource = get(),
-            cacheDataSource = get(),
             chatRemoteSource = get(),
-            proxyRemoteSource = get(),
             updates = get(),
             appPreferences = get(),
             cacheProvider = get(),
@@ -255,10 +326,19 @@ val dataModule = module {
             databaseFile = androidContext().getDatabasePath("monogram_db"),
             searchHistoryDao = get(),
             chatFolderDao = get(),
+            userFullInfoDao = get(),
             fileQueue = get(),
+            fileUpdateHandler = get(),
             stringProvider = get()
         )
     }
+    single<ChatListRepository> { get<ChatsListRepositoryImpl>() }
+    single<ChatFolderRepository> { get<ChatsListRepositoryImpl>() }
+    single<ChatOperationsRepository> { get<ChatsListRepositoryImpl>() }
+    single<ChatSearchRepository> { get<ChatsListRepositoryImpl>() }
+    single<ForumTopicsRepository> { get<ChatsListRepositoryImpl>() }
+    single<ChatSettingsRepository> { get<ChatsListRepositoryImpl>() }
+    single<ChatCreationRepository> { get<ChatsListRepositoryImpl>() }
 
     factory<SettingsRemoteDataSource> {
         TdSettingsRemoteDataSource(
@@ -271,24 +351,63 @@ val dataModule = module {
         InMemorySettingsCacheDataSource()
     }
 
-    single<SettingsRepository> {
-        SettingsRepositoryImpl(
+    single<NotificationSettingsRepository> {
+        NotificationSettingsRepositoryImpl(
             remote = get(),
             cache = get(),
             chatsRemote = get(),
             updates = get(),
-            appPreferences = get(),
-            cacheProvider = get(),
             scopeProvider = get(),
-            dispatchers = get(),
-            attachBotDao = get(),
-            keyValueDao = get(),
+            dispatchers = get()
+        )
+    }
+
+    single<SessionRepository> {
+        SessionRepositoryImpl(
+            remote = get()
+        )
+    }
+
+    single<WallpaperRepository> {
+        WallpaperRepositoryImpl(
+            remote = get(),
+            updates = get(),
             wallpaperDao = get(),
+            dispatchers = get(),
+            scopeProvider = get()
+        )
+    }
+
+    single<StorageRepository> {
+        StorageRepositoryImpl(
+            remote = get(),
+            cache = get(),
+            chatsRemote = get(),
+            dispatchers = get(),
             storageMapper = get(),
-            stringProvider = get(),
+            stringProvider = get()
+        )
+    }
+
+    single<NetworkStatisticsRepository> {
+        NetworkStatisticsRepositoryImpl(
+            remote = get(),
             networkMapper = get()
         )
     }
+
+    single<AttachMenuBotRepository> {
+        AttachMenuBotRepositoryImpl(
+            remote = get(),
+            cache = get(),
+            cacheProvider = get(),
+            updates = get(),
+            dispatchers = get(),
+            attachBotDao = get(),
+            scopeProvider = get()
+        )
+    }
+
     single<PollRepository> {
         PollRepositoryImpl()
     }
@@ -298,10 +417,11 @@ val dataModule = module {
             gateway = get(),
             messageMapper = get(),
             userRepository = get(),
-            chatsListRepository = get(),
+            chatListRepository = get(),
             cache = get(),
             pollRepository = get(),
             fileDownloadQueue = get(),
+            fileUpdateHandler = get(),
             dispatcherProvider = get(),
             scopeProvider = get()
         )
@@ -311,6 +431,7 @@ val dataModule = module {
         MessageRepositoryImpl(
             context = androidContext(),
             gateway = get(),
+            updates = get(),
             messageMapper = get(),
             messageRemoteDataSource = get(),
             cache = get(),
@@ -319,12 +440,32 @@ val dataModule = module {
             fileDataSource = get(),
             chatLocalDataSource = get(),
             userLocalDataSource = get(),
-            fileUpdateHandler = get()
+            fileUpdateHandler = get(),
+            textCompositionStyleDao = get()
         )
     }
 
+    single<InlineBotRepository> { get<MessageRepository>() }
+    single<ChatEventLogRepository> { get<MessageRepository>() }
+    single<MessageAiRepository> { get<MessageRepository>() }
+    single<PaymentRepository> { get<MessageRepository>() }
+    single<FileRepository> { get<MessageRepository>() }
+    single<WebAppRepository> { get<MessageRepository>() }
+
     factory<StickerRemoteSource> {
         TdStickerRemoteSource(
+            gateway = get()
+        )
+    }
+
+    factory<GifRemoteSource> {
+        TdGifRemoteSource(
+            gateway = get()
+        )
+    }
+
+    factory<EmojiRemoteSource> {
+        TdEmojiRemoteSource(
             gateway = get()
         )
     }
@@ -352,19 +493,44 @@ val dataModule = module {
         )
     }
 
+    single {
+        StickerFileManager(
+            localDataSource = get(),
+            fileQueue = get(),
+            fileUpdateHandler = get(),
+            dispatchers = get(),
+            scopeProvider = get()
+        )
+    }
+
     single<StickerRepository> {
         StickerRepositoryImpl(
             remote = get(),
-            fileQueue = get(),
-            fileUpdateHandler = get(),
+            fileManager = get(),
             updates = get(),
             cacheProvider = get(),
             dispatchers = get(),
+            localDataSource = get(),
+            scopeProvider = get()
+        )
+    }
+
+    single<GifRepository> {
+        GifRepositoryImpl(
+            remote = get(),
+            cacheProvider = get(),
+            stickerFileManager = get()
+        )
+    }
+
+    single<EmojiRepository> {
+        EmojiRepositoryImpl(
+            remote = get(),
+            localDataSource = get(),
+            cacheProvider = get(),
+            dispatchers = get(),
             context = androidContext(),
-            scopeProvider = get(),
-            stickerSetDao = get(),
-            recentEmojiDao = get(),
-            stickerPathDao = get()
+            scopeProvider = get()
         )
     }
 
@@ -382,8 +548,12 @@ val dataModule = module {
         )
     }
 
+    single {
+        LinkParser()
+    }
+
     single<LinkHandlerRepository> {
-        LinkHandlerRepositoryImpl(get(), get(), get(), get())
+        LinkHandlerRepositoryImpl(get(), get(), get(), get(), get())
     }
 
     single<StreamingRepository> {
@@ -410,7 +580,9 @@ val dataModule = module {
     }
 
     single<LocationRepository> {
-        LocationRepositoryImpl()
+        LocationRepositoryImpl(
+            remote = get()
+        )
     }
 
     factory<UpdateRemoteDateSource> {
@@ -430,5 +602,5 @@ val dataModule = module {
         )
     }
 
-    single { TdNotificationManager(androidContext(), get(), get(), get(), get(), get()) }
+    single(createdAtStart = true) { TdNotificationManager(androidContext(), get(), get(), get(), get(), get()) }
 }

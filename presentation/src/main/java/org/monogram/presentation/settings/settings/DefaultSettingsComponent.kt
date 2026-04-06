@@ -1,6 +1,5 @@
 package org.monogram.presentation.settings.settings
 
-import org.monogram.presentation.core.util.coRunCatching
 import android.os.Build
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
@@ -11,11 +10,9 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.monogram.domain.managers.DomainManager
-import org.monogram.domain.repository.AppPreferencesProvider
-import org.monogram.domain.repository.ExternalNavigator
-import org.monogram.domain.repository.UserRepository
+import org.monogram.domain.repository.*
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultSettingsComponent(
@@ -37,10 +34,11 @@ class DefaultSettingsComponent(
 ) : SettingsComponent, AppComponentContext by context {
 
     private val repository: UserRepository = container.repositories.userRepository
+    private val userProfileEditRepository: UserProfileEditRepository = container.repositories.userProfileEditRepository
+    private val profilePhotoRepository: ProfilePhotoRepository = container.repositories.profilePhotoRepository
     private val externalNavigator: ExternalNavigator = container.utils.externalNavigator()
     private val domainManager: DomainManager = container.utils.domainManager()
     private val preferences: AppPreferencesProvider = container.preferences.appPreferences
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
 
     private val _state = MutableValue(SettingsComponent.State())
     override val state: Value<SettingsComponent.State> = _state
@@ -59,7 +57,7 @@ class DefaultSettingsComponent(
                     )
                 }
 
-                repository.getUserProfilePhotosFlow(me.id)
+                profilePhotoRepository.getUserProfilePhotosFlow(me.id)
                     .onEach { photos ->
                         val highResPhoto = photos.firstOrNull { it.endsWith(".mp4", ignoreCase = true) }
                             ?: photos.firstOrNull()
@@ -205,7 +203,7 @@ class DefaultSettingsComponent(
 
         scope.launch(Dispatchers.IO) {
             coRunCatching {
-                repository.setEmojiStatus(customEmojiId)
+                userProfileEditRepository.setEmojiStatus(customEmojiId)
             }
         }
     }

@@ -44,6 +44,7 @@ playServices-ossLicenses = "17.4.0"
 # Others
 zxing = "3.5.4"
 junit = "4.13.2"
+libphonenumber = "8.13.55"
 
 [libraries]
 # AndroidX Activity
@@ -71,6 +72,8 @@ androidx-compose-material3-windowsizeclass = { module = "androidx.compose.materi
 androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidx-compose-runtime" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "androidx-compose-runtime" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 
 # AndroidX Media3
 androidx-media3-common = { module = "androidx.media3:media3-common", version.ref = "androidx-media3" }
@@ -93,6 +96,7 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 
 # KotlinX
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-play-services = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-play-services", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
 # Decompose
@@ -128,6 +132,7 @@ play-services-oss-licenses = { group = "com.google.android.gms", name = "play-se
 maplibre-compose = { module = "io.github.rallista:maplibre-compose", version.ref = "maplibre" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", version.ref = "libphonenumber" }
 
 [bundles]
 androidx-camera = [

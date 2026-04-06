@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.gallery.components
 
 import android.net.Uri
@@ -9,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,8 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import org.monogram.presentation.R
 import org.monogram.presentation.features.gallery.GalleryMediaItem
 
 @Composable
@@ -35,14 +38,14 @@ fun GalleryGrid(
 ) {
     if (isLoading) {
         Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            ContainedLoadingIndicator()
         }
         return
     }
 
     if (media.isEmpty()) {
         Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Text("No media found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(R.string.empty_media), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
@@ -94,7 +97,7 @@ fun GalleryGrid(
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                     ) {
                         Text(
-                            text = "VIDEO",
+                            text = stringResource(R.string.media_type_video),
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )

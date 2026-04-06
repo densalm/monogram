@@ -2,6 +2,7 @@ package org.monogram.data.repository
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.drinkless.tdlib.TdApi
@@ -13,7 +14,10 @@ import org.monogram.data.datasource.FileDataSource
 import org.monogram.data.datasource.cache.ChatLocalDataSource
 import org.monogram.data.datasource.cache.UserLocalDataSource
 import org.monogram.data.datasource.remote.MessageRemoteDataSource
+import org.monogram.data.db.dao.TextCompositionStyleDao
+import org.monogram.data.db.model.TextCompositionStyleEntity
 import org.monogram.data.gateway.TelegramGateway
+import org.monogram.data.gateway.UpdateDispatcher
 import org.monogram.data.infra.FileUpdateHandler
 import org.monogram.data.mapper.MessageMapper
 import org.monogram.data.mapper.map
@@ -29,6 +33,7 @@ import java.io.File
 class MessageRepositoryImpl(
     private val context: Context,
     private val gateway: TelegramGateway,
+    private val updates: UpdateDispatcher,
     private val messageMapper: MessageMapper,
     private val messageRemoteDataSource: MessageRemoteDataSource,
     private val cache: ChatCache,
@@ -37,9 +42,11 @@ class MessageRepositoryImpl(
     scopeProvider: ScopeProvider,
     private val chatLocalDataSource: ChatLocalDataSource,
     private val userLocalDataSource: UserLocalDataSource,
-    private val fileUpdateHandler: FileUpdateHandler
+    private val fileUpdateHandler: FileUpdateHandler,
+    private val textCompositionStyleDao: TextCompositionStyleDao
 ) : MessageRepository {
     private val scope = scopeProvider.appScope
+    private val _textCompositionStyles = MutableStateFlow<List<TextCompositionStyleModel>>(emptyList())
 
     override val newMessageFlow = messageRemoteDataSource.newMessageFlow
     override val senderUpdateFlow = messageMapper.senderUpdateFlow
@@ -53,69 +60,33 @@ class MessageRepositoryImpl(
     override val messageIdUpdateFlow = messageRemoteDataSource.messageIdUpdateFlow
     override val pinnedMessageFlow = messageRemoteDataSource.pinnedMessageFlow
     override val mediaUpdateFlow = messageRemoteDataSource.mediaUpdateFlow
+    override val textCompositionStyles = _textCompositionStyles.asStateFlow()
 
     init {
-        scope.launch {
-            try {
-                gateway.updates.collect { update ->
-                    messageRemoteDataSource.handleUpdate(update)
-                    when (update) {
-                        is TdApi.UpdateNewMessage -> {
-                            val entity = messageMapper.mapToEntity(update.message, ::resolveSenderName)
-                            chatLocalDataSource.insertMessage(entity)
-                        }
-
-                        is TdApi.UpdateMessageContent -> {
-                            val extracted = messageMapper.extractCachedContent(update.newContent)
-                            chatLocalDataSource.updateMessageContent(
-                                messageId = update.messageId,
-                                content = extracted.text,
-                                contentType = extracted.type,
-                                contentMeta = extracted.meta,
-                                mediaFileId = extracted.fileId,
-                                mediaPath = extracted.path,
-                                editDate = 0
-                            )
-                        }
-
-                        is TdApi.UpdateMessageEdited -> {
-                            val updated = messageRemoteDataSource.getMessage(update.chatId, update.messageId)
-                            if (updated != null) {
-                                chatLocalDataSource.insertMessage(
-                                    messageMapper.mapToEntity(
-                                        updated,
-                                        ::resolveSenderName
-                                    )
-                                )
-                            }
-                        }
-
-                        is TdApi.UpdateMessageInteractionInfo -> {
-                            chatLocalDataSource.updateInteractionInfo(
-                                messageId = update.messageId,
-                                viewCount = update.interactionInfo?.viewCount ?: 0,
-                                forwardCount = update.interactionInfo?.forwardCount ?: 0,
-                                replyCount = update.interactionInfo?.replyInfo?.replyCount ?: 0
-                            )
-                        }
-
-                        is TdApi.UpdateChatReadInbox -> {
-                            chatLocalDataSource.markAsRead(update.chatId, update.lastReadInboxMessageId)
-                        }
-
-                        is TdApi.UpdateDeleteMessages -> {
-                            if (update.isPermanent) {
-                                update.messageIds.forEach { messageId ->
-                                    chatLocalDataSource.deleteMessage(messageId)
-                                }
-                            }
-                        }
-                    }
+        scope.launch(dispatcherProvider.io) {
+            textCompositionStyleDao.getAll().collect { cachedStyles ->
+                _textCompositionStyles.value = cachedStyles.map { style ->
+                    TextCompositionStyleModel(
+                        name = style.name,
+                        customEmojiId = style.customEmojiId,
+                        title = style.title
+                    )
                 }
-            } catch (e: Exception) {
-                Log.e("TdLibUpdates", "CRITICAL: Update loop died", e)
             }
         }
+
+        updates.all
+            .map { update ->
+                messageRemoteDataSource.handleUpdate(update)
+                update
+            }
+            .onEach { update ->
+                processCachedUpdate(update)
+            }
+            .catch { error ->
+                Log.e("TdLibUpdates", "CRITICAL: Update loop died", error)
+            }
+            .launchIn(scope)
 
         scope.launch(dispatcherProvider.io) {
             val ninetyDaysAgo = System.currentTimeMillis() - (90L * 24 * 60 * 60 * 1000)
@@ -128,6 +99,73 @@ class MessageRepositoryImpl(
                 if (fileId != 0 && path.isNotBlank()) {
                     chatLocalDataSource.updateMediaPath(fileId, path)
                 }
+            }
+        }
+    }
+
+    private suspend fun processCachedUpdate(update: TdApi.Update) {
+        when (update) {
+            is TdApi.UpdateNewMessage -> {
+                val entity = messageMapper.mapToEntity(update.message, ::resolveSenderName)
+                chatLocalDataSource.insertMessage(entity)
+            }
+
+            is TdApi.UpdateMessageContent -> {
+                val extracted = messageMapper.extractCachedContent(update.newContent)
+                chatLocalDataSource.updateMessageContent(
+                    messageId = update.messageId,
+                    content = extracted.text,
+                    contentType = extracted.type,
+                    contentMeta = extracted.meta,
+                    mediaFileId = extracted.fileId,
+                    mediaPath = extracted.path,
+                    editDate = 0
+                )
+            }
+
+            is TdApi.UpdateMessageEdited -> {
+                val updated = messageRemoteDataSource.getMessage(update.chatId, update.messageId)
+                if (updated != null) {
+                    chatLocalDataSource.insertMessage(
+                        messageMapper.mapToEntity(
+                            updated,
+                            ::resolveSenderName
+                        )
+                    )
+                }
+            }
+
+            is TdApi.UpdateMessageInteractionInfo -> {
+                chatLocalDataSource.updateInteractionInfo(
+                    messageId = update.messageId,
+                    viewCount = update.interactionInfo?.viewCount ?: 0,
+                    forwardCount = update.interactionInfo?.forwardCount ?: 0,
+                    replyCount = update.interactionInfo?.replyInfo?.replyCount ?: 0
+                )
+            }
+
+            is TdApi.UpdateChatReadInbox -> {
+                chatLocalDataSource.markAsRead(update.chatId, update.lastReadInboxMessageId)
+            }
+
+            is TdApi.UpdateDeleteMessages -> {
+                if (update.isPermanent) {
+                    update.messageIds.forEach { messageId ->
+                        chatLocalDataSource.deleteMessage(messageId)
+                    }
+                }
+            }
+
+            is TdApi.UpdateTextCompositionStyles -> {
+                val styles = update.styles.orEmpty().map { style ->
+                    TextCompositionStyleModel(
+                        name = style.name,
+                        customEmojiId = style.customEmojiId,
+                        title = style.title
+                    )
+                }
+                _textCompositionStyles.value = styles
+                textCompositionStyleDao.replaceAll(styles.map { it.toEntity() })
             }
         }
     }
@@ -393,7 +431,7 @@ class MessageRepositoryImpl(
     @Deprecated("Use getMessagesOlder instead")
     override suspend fun getMessages(chatId: Long, fromMessageId: Long, limit: Int): List<MessageModel> =
         withContext(dispatcherProvider.io) {
-            getMessagesOlder(chatId, fromMessageId, limit).messages
+            getMessagesOlder(chatId, fromMessageId, limit, null).messages
         }
 
     override suspend fun getChatDraft(chatId: Long, threadId: Long?): String? =
@@ -415,6 +453,7 @@ class MessageRepositoryImpl(
                         this.messageId = replyToMsgId
                         this.quote = null
                         this.checklistTaskId = 0
+                        this.pollOptionId = ""
                     }
                 }
             }
@@ -503,7 +542,7 @@ class MessageRepositoryImpl(
 
     override suspend fun summarizeMessage(chatId: Long, messageId: Long, toLanguageCode: String): String? =
         withContext(dispatcherProvider.io) {
-            when (val result = gateway.execute(TdApi.SummarizeMessage(chatId, messageId, toLanguageCode))) {
+            when (val result = gateway.execute(TdApi.SummarizeMessage(chatId, messageId, toLanguageCode, ""))) {
                 is TdApi.FormattedText -> result.text
                 else -> null
             }
@@ -511,14 +550,126 @@ class MessageRepositoryImpl(
 
     override suspend fun translateMessage(chatId: Long, messageId: Long, toLanguageCode: String): String? =
         withContext(dispatcherProvider.io) {
-            when (val result = gateway.execute(TdApi.TranslateMessageText(chatId, messageId, toLanguageCode))) {
+            when (val result = gateway.execute(TdApi.TranslateMessageText(chatId, messageId, toLanguageCode, ""))) {
                 is TdApi.FormattedText -> result.text
                 else -> null
             }
         }
 
+    override suspend fun composeTextWithAi(
+        text: String,
+        entities: List<MessageEntity>,
+        translateToLanguageCode: String,
+        styleName: String,
+        addEmojis: Boolean
+    ): FormattedTextResult? = withContext(dispatcherProvider.io) {
+        val input = TdApi.FormattedText(text, entities.toTdTextEntitiesForAi(text))
+        when (
+            val result = gateway.execute(
+                TdApi.ComposeTextWithAi(
+                    input,
+                    translateToLanguageCode,
+                    styleName,
+                    addEmojis
+                )
+            )
+        ) {
+            is TdApi.FormattedText -> FormattedTextResult(
+                text = result.text,
+                entities = result.entities.orEmpty().mapNotNull { it.toDomainMessageEntity() }
+            )
+
+            else -> null
+        }
+    }
+
+    override suspend fun fixTextWithAi(
+        text: String,
+        entities: List<MessageEntity>
+    ): FixedTextResult? = withContext(dispatcherProvider.io) {
+        val input = TdApi.FormattedText(text, entities.toTdTextEntitiesForAi(text))
+        when (val result = gateway.execute(TdApi.FixTextWithAi(input))) {
+            is TdApi.FixedText -> {
+                val formatted = result.text ?: return@withContext null
+                FixedTextResult(
+                    text = formatted.text,
+                    entities = formatted.entities.orEmpty().mapNotNull { it.toDomainMessageEntity() }
+                )
+            }
+
+            else -> null
+        }
+    }
+
     override suspend fun addMessageReaction(chatId: Long, messageId: Long, reaction: String) {
         messageRemoteDataSource.addMessageReaction(chatId, messageId, reaction)
+    }
+
+    private fun List<MessageEntity>.toTdTextEntitiesForAi(text: String): Array<TdApi.TextEntity> {
+        if (isEmpty()) return emptyArray()
+
+        return mapNotNull { entity ->
+            val start = entity.offset.coerceIn(0, text.length)
+            val end = (entity.offset + entity.length).coerceIn(0, text.length)
+            val safeLength = end - start
+            if (safeLength <= 0) return@mapNotNull null
+
+            val type = when (val value = entity.type) {
+                is MessageEntityType.Bold -> TdApi.TextEntityTypeBold()
+                is MessageEntityType.Italic -> TdApi.TextEntityTypeItalic()
+                is MessageEntityType.Underline -> TdApi.TextEntityTypeUnderline()
+                is MessageEntityType.Strikethrough -> TdApi.TextEntityTypeStrikethrough()
+                is MessageEntityType.Spoiler -> TdApi.TextEntityTypeSpoiler()
+                is MessageEntityType.Code -> TdApi.TextEntityTypeCode()
+                is MessageEntityType.BlockQuote -> TdApi.TextEntityTypeBlockQuote()
+                is MessageEntityType.BlockQuoteExpandable -> TdApi.TextEntityTypeExpandableBlockQuote()
+                is MessageEntityType.Pre -> if (value.language.isBlank()) TdApi.TextEntityTypePre() else TdApi.TextEntityTypePreCode(
+                    value.language
+                )
+
+                is MessageEntityType.TextUrl -> TdApi.TextEntityTypeTextUrl(value.url)
+                is MessageEntityType.Mention -> TdApi.TextEntityTypeMention()
+                is MessageEntityType.TextMention -> TdApi.TextEntityTypeMentionName(value.userId)
+                is MessageEntityType.Hashtag -> TdApi.TextEntityTypeHashtag()
+                is MessageEntityType.BotCommand -> TdApi.TextEntityTypeBotCommand()
+                is MessageEntityType.Url -> TdApi.TextEntityTypeUrl()
+                is MessageEntityType.Email -> TdApi.TextEntityTypeEmailAddress()
+                is MessageEntityType.PhoneNumber -> TdApi.TextEntityTypePhoneNumber()
+                is MessageEntityType.BankCardNumber -> TdApi.TextEntityTypeBankCardNumber()
+                is MessageEntityType.CustomEmoji -> TdApi.TextEntityTypeCustomEmoji(value.emojiId)
+                is MessageEntityType.Other -> return@mapNotNull null
+            }
+
+            TdApi.TextEntity(start, safeLength, type)
+        }
+            .sortedWith(compareBy<TdApi.TextEntity> { it.offset }.thenByDescending { it.length })
+            .toTypedArray()
+    }
+
+    private fun TdApi.TextEntity.toDomainMessageEntity(): MessageEntity? {
+        val mappedType = when (val value = type) {
+            is TdApi.TextEntityTypeBold -> MessageEntityType.Bold
+            is TdApi.TextEntityTypeItalic -> MessageEntityType.Italic
+            is TdApi.TextEntityTypeUnderline -> MessageEntityType.Underline
+            is TdApi.TextEntityTypeStrikethrough -> MessageEntityType.Strikethrough
+            is TdApi.TextEntityTypeSpoiler -> MessageEntityType.Spoiler
+            is TdApi.TextEntityTypeCode -> MessageEntityType.Code
+            is TdApi.TextEntityTypePre -> MessageEntityType.Pre()
+            is TdApi.TextEntityTypePreCode -> MessageEntityType.Pre(value.language)
+            is TdApi.TextEntityTypeTextUrl -> MessageEntityType.TextUrl(value.url)
+            is TdApi.TextEntityTypeMention -> MessageEntityType.Mention
+            is TdApi.TextEntityTypeMentionName -> MessageEntityType.TextMention(value.userId)
+            is TdApi.TextEntityTypeHashtag -> MessageEntityType.Hashtag
+            is TdApi.TextEntityTypeBotCommand -> MessageEntityType.BotCommand
+            is TdApi.TextEntityTypeUrl -> MessageEntityType.Url
+            is TdApi.TextEntityTypeEmailAddress -> MessageEntityType.Email
+            is TdApi.TextEntityTypePhoneNumber -> MessageEntityType.PhoneNumber
+            is TdApi.TextEntityTypeBankCardNumber -> MessageEntityType.BankCardNumber
+            is TdApi.TextEntityTypeCustomEmoji -> MessageEntityType.CustomEmoji(value.customEmojiId)
+            else -> return null
+        }
+
+        return MessageEntity(offset = offset, length = length, type = mappedType)
     }
 
     override suspend fun removeMessageReaction(chatId: Long, messageId: Long, reaction: String) {
@@ -707,26 +858,6 @@ class MessageRepositoryImpl(
 
         if (lowQualityFile != null && lowQualityFile.local.path.isEmpty()) {
             fileDataSource.downloadFile(lowQualityFile.id, 32, 0, 0, false)
-        }
-
-        triggerFullQualityDownload(msg)
-    }
-
-    private suspend fun triggerFullQualityDownload(msg: TdApi.Message) {
-        val file = when (val content = msg.content) {
-            is TdApi.MessagePhoto -> {
-                content.photo.sizes.find { it.type == "x" }?.photo
-                    ?: content.photo.sizes.find { it.type == "m" }?.photo
-                    ?: content.photo.sizes.lastOrNull()?.photo
-            }
-
-            is TdApi.MessageVideo -> content.video.video
-            is TdApi.MessageAnimation -> content.animation.animation
-            else -> null
-        }
-
-        if (file != null && file.local.path.isEmpty()) {
-            fileDataSource.downloadFile(file.id, 16, 0, 0, false)
         }
     }
 
@@ -938,7 +1069,7 @@ class MessageRepositoryImpl(
         threadId: Long?
     ) {
         val replyTo = if (replyToMsgId != null)
-            TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0)
+            TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "")
         else null
 
         val topicId = if (threadId != null) {
@@ -1303,5 +1434,13 @@ class MessageRepositoryImpl(
 
         val cachedPath = cache.fileCache[file.id]?.local?.path
         return cachedPath?.takeIf { it.isNotBlank() && File(it).exists() }
+    }
+
+    private fun TextCompositionStyleModel.toEntity(): TextCompositionStyleEntity {
+        return TextCompositionStyleEntity(
+            name = name,
+            customEmojiId = customEmojiId,
+            title = title
+        )
     }
 }

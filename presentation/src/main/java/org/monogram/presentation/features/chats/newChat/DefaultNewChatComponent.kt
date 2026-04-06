@@ -8,10 +8,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import org.monogram.domain.repository.ChatsListRepository
+import org.monogram.domain.repository.ChatCreationRepository
+import org.monogram.domain.repository.ChatSettingsRepository
 import org.monogram.domain.repository.UserRepository
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 class DefaultNewChatComponent(
@@ -22,8 +22,8 @@ class DefaultNewChatComponent(
 ) : NewChatComponent, AppComponentContext by context {
 
     private val userRepository: UserRepository = container.repositories.userRepository
-    private val chatsListRepository: ChatsListRepository = container.repositories.chatsListRepository
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
+    private val chatCreationRepository: ChatCreationRepository = container.repositories.chatCreationRepository
+    private val chatSettingsRepository: ChatSettingsRepository = container.repositories.chatSettingsRepository
 
     private val scope = componentScope
     private val _state = MutableStateFlow(NewChatComponent.State())
@@ -248,14 +248,14 @@ class DefaultNewChatComponent(
                 scope.launch {
                     _state.update { it.copy(isCreating = true, validationError = null) }
                     try {
-                        val chatId = chatsListRepository.createGroup(
+                        val chatId = chatCreationRepository.createGroup(
                             currentState.title,
                             currentState.selectedUserIds.toList(),
                             currentState.autoDeleteTime
                         )
                         if (chatId != 0L) {
                             if (currentState.photoPath != null) {
-                                chatsListRepository.setChatPhoto(chatId, currentState.photoPath)
+                                chatSettingsRepository.setChatPhoto(chatId, currentState.photoPath)
                             }
                             onChatCreated(chatId)
                         }
@@ -276,14 +276,14 @@ class DefaultNewChatComponent(
                 scope.launch {
                     _state.update { it.copy(isCreating = true, validationError = null) }
                     try {
-                        val chatId = chatsListRepository.createChannel(
+                        val chatId = chatCreationRepository.createChannel(
                             currentState.title,
                             currentState.description,
                             messageAutoDeleteTime = currentState.autoDeleteTime
                         )
                         if (chatId != 0L) {
                             if (currentState.photoPath != null) {
-                                chatsListRepository.setChatPhoto(chatId, currentState.photoPath)
+                                chatSettingsRepository.setChatPhoto(chatId, currentState.photoPath)
                             }
                             onChatCreated(chatId)
                         }

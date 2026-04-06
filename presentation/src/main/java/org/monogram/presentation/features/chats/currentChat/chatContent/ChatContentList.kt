@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.TopicModel
+import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.ChatComponent
@@ -56,25 +58,24 @@ import java.io.File
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatContentList(
-    showNavPadding: Boolean = false,
     state: ChatComponent.State,
     component: ChatComponent,
     scrollState: LazyListState,
     groupedMessages: List<GroupedMessageItem>,
     onPhotoClick: (MessageModel, List<String>, List<String?>, List<Long>, Int) -> Unit,
     onPhotoDownload: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    showNavPadding: Boolean = false,
     onVideoClick: (MessageModel, String?, String?) -> Unit,
     onDocumentClick: (MessageModel) -> Unit,
     onAudioClick: (MessageModel) -> Unit,
     onMessageOptionsClick: (MessageModel, Offset, IntSize, Offset) -> Unit,
     onGoToReply: (MessageModel) -> Unit,
-    modifier: Modifier = Modifier,
     selectedMessageId: Long? = null,
     onMessagePositionChange: (Offset, IntSize) -> Unit = { _, _ -> },
     onViaBotClick: (String) -> Unit = {},
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val isComments = state.rootMessage != null
@@ -127,8 +128,7 @@ fun ChatContentList(
         TopicsList(
             topics = state.topics,
             onTopicClick = { component.onTopicClick(it.id) },
-            modifier = modifier,
-            videoPlayerPool = component.videoPlayerPool
+            modifier = modifier
         )
         return
     }
@@ -169,7 +169,6 @@ fun ChatContentList(
                         onViaBotClick,
                         toProfile,
                         downloadUtils,
-                        videoPlayerPool,
                         isAnyViewerOpen = isAnyViewerOpen
                     )
                 }
@@ -181,6 +180,12 @@ fun ChatContentList(
                     when (item) {
                         is GroupedMessageItem.Single -> "msg_${item.message.id}"
                         is GroupedMessageItem.Album -> "album_${item.albumId}"
+                    }
+                },
+                contentType = { _, item ->
+                    when (item) {
+                        is GroupedMessageItem.Single -> "single"
+                        is GroupedMessageItem.Album -> "album"
                     }
                 }
             ) { index, item ->
@@ -208,7 +213,6 @@ fun ChatContentList(
                     toProfile = toProfile,
                     isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
             }
@@ -239,7 +243,6 @@ fun ChatContentList(
                         onViaBotClick,
                         toProfile,
                         downloadUtils,
-                        videoPlayerPool,
                         isAnyViewerOpen = isAnyViewerOpen
                     )
                 }
@@ -250,6 +253,12 @@ fun ChatContentList(
                     when (item) {
                         is GroupedMessageItem.Single -> "msg_${item.message.id}"
                         is GroupedMessageItem.Album -> "album_${item.albumId}"
+                    }
+                },
+                contentType = { _, item ->
+                    when (item) {
+                        is GroupedMessageItem.Single -> "single"
+                        is GroupedMessageItem.Album -> "album"
                     }
                 }
             ) { index, item ->
@@ -277,7 +286,6 @@ fun ChatContentList(
                     toProfile = toProfile,
                     isScrolling = isScrolling,
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
             }
@@ -303,6 +311,7 @@ fun ChatContentList(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun PagingLoadingIndicator() {
     Box(
@@ -321,12 +330,11 @@ private fun PagingLoadingIndicator() {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(14.dp),
-                    strokeWidth = 2.dp
                 )
                 Text(
-                    text = "Loading...",
+                    text = stringResource(R.string.loading_text),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -357,7 +365,6 @@ private fun MessageRowItem(
     toProfile: (Long) -> Unit,
     isScrolling: Boolean,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val mainMsg = remember(item) {
@@ -457,7 +464,6 @@ private fun MessageRowItem(
                     onViaBotClick = onViaBotClick,
                     toProfile = toProfile,
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
             }
@@ -485,7 +491,6 @@ private fun MessageBubbleSwitcher(
     onViaBotClick: (String) -> Unit,
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val isChannel = state.isChannel && state.currentTopicId == null
@@ -580,6 +585,7 @@ private fun MessageBubbleSwitcher(
                     fontSize = state.fontSize,
                     letterSpacing = state.letterSpacing,
                     bubbleRadius = state.bubbleRadius,
+                    stickerSize = state.stickerSize,
                     shouldReportPosition = item.message.id == selectedMessageId,
                     onPositionChange = { _, pos, size -> onMessagePositionChange(pos, size) },
                     onCommentsClick = { component.onCommentsClick(it) },
@@ -588,7 +594,6 @@ private fun MessageBubbleSwitcher(
                     onYouTubeClick = { component.onOpenYouTube(it) },
                     onInstantViewClick = { component.onOpenInstantView(it) },
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
             } else {
@@ -600,6 +605,7 @@ private fun MessageBubbleSwitcher(
                     fontSize = state.fontSize,
                     letterSpacing = state.letterSpacing,
                     bubbleRadius = state.bubbleRadius,
+                    stSize = state.stickerSize,
                     autoDownloadMobile = state.autoDownloadMobile,
                     autoDownloadWifi = state.autoDownloadWifi,
                     autoDownloadRoaming = state.autoDownloadRoaming,
@@ -692,7 +698,6 @@ private fun MessageBubbleSwitcher(
                     onReplySwipe = { component.onReplyMessage(it) },
                     swipeEnabled = !isSelectionMode,
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
             }
@@ -761,7 +766,6 @@ private fun MessageBubbleSwitcher(
                 onReplySwipe = { component.onReplyMessage(it) },
                 swipeEnabled = !isSelectionMode,
                 downloadUtils = downloadUtils,
-                videoPlayerPool = videoPlayerPool,
                 isAnyViewerOpen = isAnyViewerOpen
             )
         }
@@ -805,7 +809,6 @@ private fun RootMessageSection(
     onViaBotClick: (String) -> Unit,
     toProfile: (Long) -> Unit,
     downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     val root = state.rootMessage ?: return
@@ -837,13 +840,13 @@ private fun RootMessageSection(
                 fontSize = state.fontSize,
                 letterSpacing = state.letterSpacing,
                 bubbleRadius = state.bubbleRadius,
+                stickerSize = state.stickerSize,
                 onCommentsClick = {}, showComments = false,
                 toProfile = toProfile,
                 onViaBotClick = onViaBotClick,
                 onYouTubeClick = { component.onOpenYouTube(it) },
                 onInstantViewClick = { component.onOpenInstantView(it) },
                 downloadUtils = downloadUtils,
-                videoPlayerPool = videoPlayerPool,
                 isAnyViewerOpen = isAnyViewerOpen
             )
         } else {
@@ -852,6 +855,7 @@ private fun RootMessageSection(
                 fontSize = state.fontSize,
                 letterSpacing = state.letterSpacing,
                 bubbleRadius = state.bubbleRadius,
+                stSize = state.stickerSize,
                 autoDownloadMobile = state.autoDownloadMobile, autoDownloadWifi = state.autoDownloadWifi,
                 autoDownloadRoaming = state.autoDownloadRoaming, autoDownloadFiles = state.autoDownloadFiles,
                 autoplayGifs = state.autoplayGifs, autoplayVideos = state.autoplayVideos,
@@ -875,7 +879,6 @@ private fun RootMessageSection(
                 onInstantViewClick = { component.onOpenInstantView(it) },
                 onYouTubeClick = { component.onOpenYouTube(it) },
                 downloadUtils = downloadUtils,
-                videoPlayerPool = videoPlayerPool,
                 isAnyViewerOpen = isAnyViewerOpen
             )
         }
@@ -1029,7 +1032,6 @@ private fun MessageModel.mediaCaption(): String? {
 @Composable
 fun TopicsList(
     topics: List<TopicModel>,
-    videoPlayerPool: VideoPlayerPool,
     onTopicClick: (TopicModel) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1043,7 +1045,7 @@ fun TopicsList(
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         itemsIndexed(sortedTopics, key = { _, topic -> topic.id }) { _, topic ->
-            TopicItem(topic = topic, videoPlayerPool = videoPlayerPool, onClick = { onTopicClick(topic) })
+            TopicItem(topic = topic, onClick = { onTopicClick(topic) })
         }
     }
 }
@@ -1051,14 +1053,13 @@ fun TopicsList(
 @Composable
 fun TopicItem(
     topic: TopicModel,
-    videoPlayerPool: VideoPlayerPool,
     onClick: () -> Unit
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(
@@ -1120,8 +1121,7 @@ fun TopicItem(
                             path = topic.lastMessageSenderAvatar,
                             name = topic.lastMessageSenderName ?: "",
                             size = 18.dp,
-                            fontSize = 8,
-                            videoPlayerPool = videoPlayerPool
+                            fontSize = 8
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                     }

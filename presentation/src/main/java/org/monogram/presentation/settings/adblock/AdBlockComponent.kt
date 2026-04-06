@@ -11,15 +11,13 @@ import kotlinx.coroutines.withContext
 import org.monogram.domain.managers.AssetsManager
 import org.monogram.domain.managers.ClipManager
 import org.monogram.domain.models.ChatModel
-import org.monogram.domain.repository.ChatsListRepository
+import org.monogram.domain.repository.ChatListRepository
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.componentScope
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.root.AppComponentContext
 
 interface AdBlockComponent {
     val state: Value<State>
-    val videoPlayerPool: VideoPlayerPool
     fun onBackClicked()
     fun onAdBlockEnabledChanged(enabled: Boolean)
     fun onAddKeywords(keywords: String)
@@ -50,10 +48,9 @@ class DefaultAdBlockComponent(
 ) : AdBlockComponent, AppComponentContext by context {
 
     private val appPreferences: AppPreferences = container.preferences.appPreferences
-    private val chatsRepository: ChatsListRepository = container.repositories.chatsListRepository
+    private val chatsRepository: ChatListRepository = container.repositories.chatListRepository
     private val clipManager: ClipManager = container.utils.clipManager
     private val assetsManager: AssetsManager = container.utils.assetsManager()
-    override val videoPlayerPool: VideoPlayerPool = container.utils.videoPlayerPool
 
     private val _state = MutableValue(
         AdBlockComponent.State(
@@ -149,7 +146,7 @@ class DefaultAdBlockComponent(
             val keywords = withContext(Dispatchers.IO) {
                 try {
                     assetsManager.getAssets("adblock_keywords.txt").bufferedReader().useLines { lines ->
-                        lines.filter { it.isNotBlank() }.toSet()
+                        lines.map { it.trim() }.filter { it.isNotBlank() }.toSet()
                     }
                 } catch (e: Exception) {
                     emptySet()

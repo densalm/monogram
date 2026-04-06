@@ -29,7 +29,6 @@ import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.core.ui.Avatar
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.core.util.coRunCatching
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -39,8 +38,7 @@ fun MessageReactionsView(
     onReactionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
     stickerRepository: StickerRepository = koinInject(),
-    appPreferences: AppPreferences = koinInject(),
-    videoPlayerPool: VideoPlayerPool = koinInject()
+    appPreferences: AppPreferences = koinInject()
 ) {
     val context = LocalContext.current
     val emojiStyle by appPreferences.emojiStyle.collectAsState()
@@ -63,6 +61,7 @@ fun MessageReactionsView(
             }
         }
     }
+    val seenReactionKeys = remember { mutableStateMapOf<Any, Boolean>() }
 
     AnimatedVisibility(
         visible = reactions.isNotEmpty(),
@@ -76,12 +75,16 @@ fun MessageReactionsView(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             reactions.forEachIndexed { index, reaction ->
-                key(reaction.emoji ?: reaction.customEmojiId) {
-                    var isVisible by remember { mutableStateOf(false) }
+                val reactionKey = reaction.emoji ?: reaction.customEmojiId ?: "unknown_$index"
+                key(reactionKey) {
+                    var isVisible by remember { mutableStateOf(seenReactionKeys[reactionKey] == true) }
 
                     LaunchedEffect(Unit) {
-                        delay(index * 35L)
-                        isVisible = true
+                        if (!isVisible) {
+                            delay(index * 35L)
+                            isVisible = true
+                        }
+                        seenReactionKeys[reactionKey] = true
                     }
 
                     AnimatedVisibility(
@@ -105,8 +108,7 @@ fun MessageReactionsView(
                             onReactionClick = onReactionClick,
                             emojiFontFamily = emojiFontFamily,
                             stickerRepository = stickerRepository,
-                            customEmojiFileIdsById = customEmojiFileIdsById,
-                            videoPlayerPool = videoPlayerPool
+                            customEmojiFileIdsById = customEmojiFileIdsById
                         )
                     }
                 }
@@ -122,8 +124,7 @@ private fun MessageReactionItem(
     onReactionClick: (String) -> Unit,
     emojiFontFamily: FontFamily,
     stickerRepository: StickerRepository,
-    customEmojiFileIdsById: Map<Long, Long>,
-    videoPlayerPool: VideoPlayerPool
+    customEmojiFileIdsById: Map<Long, Long>
 ) {
     val customEmojiId = reaction.customEmojiId
     val emoji = reaction.emoji
@@ -230,7 +231,6 @@ private fun MessageReactionItem(
                             path = sender.avatar,
                             name = sender.name,
                             size = 22.dp,
-                            videoPlayerPool = videoPlayerPool,
                             modifier = Modifier
                                 .background(backgroundColor, CircleShape)
                                 .padding(1.dp)
@@ -313,8 +313,7 @@ private fun MessageReactionItem(
                             Avatar(
                                 path = sender.avatar,
                                 name = sender.name,
-                                size = 28.dp,
-                                videoPlayerPool = videoPlayerPool
+                                size = 28.dp
                             )
                             Text(
                                 text = sender.name,

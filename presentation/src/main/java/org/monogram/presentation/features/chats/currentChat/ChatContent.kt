@@ -5,11 +5,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.*
@@ -28,10 +29,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -53,6 +53,7 @@ import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.ReplyMarkupModel
 import org.monogram.presentation.R
 import org.monogram.presentation.core.ui.ConfirmationSheet
+import org.monogram.presentation.core.ui.ExpressiveDefaults
 import org.monogram.presentation.features.chats.currentChat.chatContent.*
 import org.monogram.presentation.features.chats.currentChat.components.*
 import org.monogram.presentation.features.chats.currentChat.components.chats.BotCommandsSheet
@@ -61,24 +62,22 @@ import org.monogram.presentation.features.chats.currentChat.components.chats.Pol
 import org.monogram.presentation.features.chats.currentChat.components.pins.PinnedMessagesListSheet
 import org.monogram.presentation.features.chats.currentChat.editor.photo.PhotoEditorScreen
 import org.monogram.presentation.features.chats.currentChat.editor.video.VideoEditorScreen
-import org.monogram.presentation.root.RootComponent
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import kotlin.math.abs
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatContent(
     component: ChatComponent,
     isOverlay: Boolean = false,
-    previousChild: RootComponent.Child? = null,
-    renderChild: @Composable (RootComponent.Child) -> Unit = {}
 ) {
     val state by component.state.collectAsState()
     val scrollState = rememberLazyListState()
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val localClipboard = LocalClipboard.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
@@ -162,7 +161,6 @@ fun ChatContent(
                 )
             }
         } else {
-            component.onClearMessages()
             component.onPinnedMessageClick(msg)
         }
     })
@@ -434,8 +432,6 @@ fun ChatContent(
             state.selectedMessageIds.isEmpty() &&
             (!state.viewAsTopics || state.currentTopicId != null)
 
-    val isDragToBackEnabled by component.appPreferences.isDragToBackEnabled.collectAsState()
-    val dragOffsetX = remember { Animatable(0f) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     val isCustomBackHandlingEnabled =
@@ -448,7 +444,7 @@ fun ChatContent(
                 .background(MaterialTheme.colorScheme.background)
                 .onGloballyPositioned { containerSize = it.size }
         ) {
-            if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled && dragOffsetX.value > 0 && previousChild != null) {
+            /*if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled && dragOffsetX.value > 0 && previousChild != null) {
                 Box(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -466,56 +462,11 @@ fun ChatContent(
                             )
                     )
                 }
-            }
+            }*/
 
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (isDragToBackEnabled && !isTablet && !isCustomBackHandlingEnabled) {
-                            Modifier.pointerInput(Unit) {
-                                var isDragging = false
-                                detectHorizontalDragGestures(
-                                    onDragStart = { offset ->
-                                        isDragging = offset.x > 48.dp.toPx()
-                                    },
-                                    onHorizontalDrag = { change, dragAmount ->
-                                        if (isDragging) {
-                                            change.consume()
-                                            coroutineScope.launch {
-                                                val newOffset = dragOffsetX.value + dragAmount
-                                                dragOffsetX.snapTo(newOffset.coerceAtLeast(0f))
-                                            }
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        if (isDragging) {
-                                            val width = containerSize.width.toFloat()
-                                            coroutineScope.launch {
-                                                if (dragOffsetX.value > width * 0.15f) {
-                                                    dragOffsetX.animateTo(width, tween(200))
-                                                    component.onBackClicked()
-                                                } else {
-                                                    dragOffsetX.animateTo(0f, spring())
-                                                }
-                                            }
-                                            isDragging = false
-                                        }
-                                    },
-                                    onDragCancel = {
-                                        if (isDragging) {
-                                            coroutineScope.launch { dragOffsetX.animateTo(0f) }
-                                            isDragging = false
-                                        }
-                                    }
-                                )
-                            }
-                        } else Modifier
-                    )
-                    .graphicsLayer {
-                        translationX = dragOffsetX.value
-                        shadowElevation = if (dragOffsetX.value > 0) 20f else 0f
-                    }
             ) {
                 Box(
                     modifier = Modifier
@@ -572,7 +523,8 @@ fun ChatContent(
                                     isInlineBotLoading = state.isInlineBotLoading,
                                     attachBots = state.attachMenuBots,
                                     scheduledMessages = state.scheduledMessages,
-                                    isPremiumUser = state.currentUser?.isPremium == true
+                                    isPremiumUser = state.currentUser?.isPremium == true,
+                                    isSecretChat = state.isSecretChat
                                 )
                             }
 
@@ -682,28 +634,26 @@ fun ChatContent(
                                 state = inputBarState,
                                 actions = inputBarActions,
                                 appPreferences = component.appPreferences,
-                                videoPlayerPool = component.videoPlayerPool,
                                 stickerRepository = component.stickerRepository
                             )
                         } else if (!state.isMember && (state.isChannel || state.isGroup)) {
-                            Surface(
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { component.onJoinChat() },
-                                color = MaterialTheme.colorScheme.surface,
-                                tonalElevation = 2.dp
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                                    .windowInsetsPadding(WindowInsets.navigationBars),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
+                                Button(
+                                    onClick = { component.onJoinChat() },
+                                    shapes = ExpressiveDefaults.largeButtonShapes(),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp)
-                                        .windowInsetsPadding(WindowInsets.navigationBars),
-                                    contentAlignment = Alignment.Center
+                                        .height(ButtonDefaults.MediumContainerHeight)
                                 ) {
                                     Text(
                                         text = stringResource(R.string.action_join),
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.primary,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
@@ -731,22 +681,30 @@ fun ChatContent(
                                     translationY = contentOffset.toPx()
                                 }
                         ) {
-                            ChatContentList(
-                                showNavPadding = false,
-                                state = state,
-                                component = component,
-                                scrollState = scrollState,
-                                groupedMessages = groupedMessages,
-                                onPhotoDownload = { fileId -> if (fileId != 0) component.onDownloadFile(fileId) },
-                                onPhotoClick = { msg, paths, captions, messageIds, index ->
+                            val currentKeyboardController = rememberUpdatedState(keyboardController)
+                            val currentFocusManager = rememberUpdatedState(focusManager)
+                            val currentIsVisible = rememberUpdatedState(isVisible)
+                            val currentShowInitialLoading = rememberUpdatedState(showInitialLoading)
+
+                            val onPhotoDownloadStable: (Int) -> Unit = remember(component) {
+                                { fileId: Int ->
+                                    if (fileId != 0) {
+                                        component.onDownloadFile(fileId)
+                                    }
+                                }
+                            }
+
+                            val onPhotoClickStable: (MessageModel, List<String>, List<String?>, List<Long>, Int) -> Unit =
+                                remember(component) {
+                                    { msg: MessageModel, paths: List<String>, captions: List<String?>, messageIds: List<Long>, index: Int ->
                                     val content = msg.content as? MessageContent.Photo
                                     val clickedPath = paths.getOrNull(index)
                                         ?.takeIf { it.isNotBlank() && File(it).exists() }
                                         ?: content?.path?.takeIf { File(it).exists() }
 
                                     if (clickedPath != null) {
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus()
+                                        currentKeyboardController.value?.hide()
+                                        currentFocusManager.value.clearFocus()
 
                                         val validItems = paths.mapIndexedNotNull { itemIndex, path ->
                                             val validPath = path.takeIf { it.isNotBlank() && File(it).exists() }
@@ -776,19 +734,23 @@ fun ChatContent(
                                     } else {
                                         content?.fileId?.takeIf { it != 0 }?.let(component::onDownloadFile)
                                     }
-                                },
-                                    onVideoClick = { msg, path, caption ->
-                                        if (!isVisible || showInitialLoading || scrollState.isScrollInProgress) {
-                                            return@ChatContentList
-                                        }
+                                        Unit
+                                    }
+                                }
 
+                            val onVideoClickStable: (MessageModel, String?, String?) -> Unit =
+                                remember(component, scrollState) {
+                                    { msg: MessageModel, path: String?, caption: String? ->
+                                        if (!currentIsVisible.value || currentShowInitialLoading.value || scrollState.isScrollInProgress) {
+                                            Unit
+                                        } else {
                                         val videoContent = msg.content as? MessageContent.Video
                                         val supportsStreaming = videoContent?.supportsStreaming ?: false
                                         val validPath = path?.takeIf { File(it).exists() }
 
                                         if (validPath != null || supportsStreaming) {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
+                                            currentKeyboardController.value?.hide()
+                                            currentFocusManager.value.clearFocus()
                                             component.onOpenVideo(path = validPath, messageId = msg.id, caption = caption)
                                         } else {
                                             val fileId = when (val c = msg.content) {
@@ -797,23 +759,23 @@ fun ChatContent(
                                                 else -> 0
                                             }
                                             if (fileId != 0) {
-                                                when (msg.content) {
-                                                    is MessageContent.Video -> "video"
-                                                    is MessageContent.Gif -> "gif"
-                                                    else -> "unknown"
-                                                }
                                                 component.onDownloadFile(fileId)
                                             }
                                         }
-                                    },
-                                    onDocumentClick = { msg ->
-                                        val doc = msg.content as? MessageContent.Document ?: return@ChatContentList
+                                        }
+                                    }
+                                }
+
+                            val onDocumentClickStable: (MessageModel) -> Unit = remember(component) {
+                                { msg: MessageModel ->
+                                    val doc = msg.content as? MessageContent.Document
+                                    if (doc != null) {
                                         val validDocPath = doc.path?.takeIf { File(it).exists() }
                                         if (validDocPath != null) {
                                             val path = validDocPath.lowercase()
                                             if (path.endsWith(".jpg") || path.endsWith(".png")) {
-                                                keyboardController?.hide()
-                                                focusManager.clearFocus()
+                                                currentKeyboardController.value?.hide()
+                                                currentFocusManager.value.clearFocus()
                                                 component.onOpenImages(
                                                     images = listOf(validDocPath),
                                                     captions = listOf(doc.caption),
@@ -822,51 +784,102 @@ fun ChatContent(
                                                     messageIds = listOf(msg.id)
                                                 )
                                             } else if (path.endsWith(".mp4")) {
-                                                keyboardController?.hide()
-                                                focusManager.clearFocus()
+                                                currentKeyboardController.value?.hide()
+                                                currentFocusManager.value.clearFocus()
                                                 component.onOpenVideo(
                                                     path = validDocPath,
                                                     messageId = msg.id,
                                                     caption = doc.caption
                                                 )
-                                            } else component.downloadUtils.openFile(validDocPath)
-                                        } else component.onDownloadFile(doc.fileId)
-                                    },
-                                    onAudioClick = { msg ->
-                                        val audio = msg.content as? MessageContent.Audio ?: return@ChatContentList
+                                            } else {
+                                                component.downloadUtils.openFile(validDocPath)
+                                            }
+                                        } else {
+                                            component.onDownloadFile(doc.fileId)
+                                        }
+                                    }
+                                    Unit
+                                }
+                            }
+
+                            val onAudioClickStable: (MessageModel) -> Unit = remember(component) {
+                                { msg: MessageModel ->
+                                    val audio = msg.content as? MessageContent.Audio
+                                    if (audio != null) {
                                         val validAudioPath = audio.path?.takeIf { File(it).exists() }
                                         if (validAudioPath != null) {
-                                            keyboardController?.hide()
-                                            focusManager.clearFocus()
+                                            currentKeyboardController.value?.hide()
+                                            currentFocusManager.value.clearFocus()
                                             component.onOpenVideo(
                                                 path = validAudioPath,
                                                 messageId = msg.id,
                                                 caption = audio.caption
                                             )
-                                        } else component.onDownloadFile(audio.fileId)
-                                    },
-                                    onMessageOptionsClick = { msg, pos, size, clickPos ->
-                                        keyboardController?.hide()
-                                        focusManager.clearFocus(force = true)
+                                        } else {
+                                            component.onDownloadFile(audio.fileId)
+                                        }
+                                    }
+                                    Unit
+                                }
+                            }
+
+                            val onMessageOptionsClickStable: (MessageModel, Offset, IntSize, Offset) -> Unit =
+                                remember(component) {
+                                    { msg: MessageModel, pos: Offset, size: IntSize, clickPos: Offset ->
+                                        currentKeyboardController.value?.hide()
+                                        currentFocusManager.value.clearFocus(force = true)
                                         selectedMessageId = msg.id
-                                        menuOffset = pos; menuMessageSize = size; clickOffset = clickPos
-                                    },
-                                    onGoToReply = { scrollToMessageState.value(it) },
-                                    selectedMessageId = selectedMessageId,
-                                    onMessagePositionChange = { pos, size ->
                                         menuOffset = pos
                                         menuMessageSize = size
-                                    },
-                                    onViaBotClick = { botUsername ->
-                                        val prefill = "@$botUsername "
-                                        component.onDraftChange(prefill)
-                                        component.onInlineQueryChange("", "")
-                                    },
-                                    toProfile = {
-                                        it.let { component.toProfile(it) }
-                                    },
+                                        clickOffset = clickPos
+                                    }
+                                }
+
+                            val onGoToReplyStable: (MessageModel) -> Unit = remember(scrollToMessageState) {
+                                { msg: MessageModel ->
+                                    scrollToMessageState.value(msg)
+                                }
+                            }
+
+                            val onMessagePositionChangeStable: (Offset, IntSize) -> Unit = remember {
+                                { pos: Offset, size: IntSize ->
+                                    menuOffset = pos
+                                    menuMessageSize = size
+                                }
+                            }
+
+                            val onViaBotClickStable: (String) -> Unit = remember(component) {
+                                { botUsername: String ->
+                                    val prefill = "@$botUsername "
+                                    component.onDraftChange(prefill)
+                                    component.onInlineQueryChange("", "")
+                                }
+                            }
+
+                            val toProfileStable: (Long) -> Unit = remember(component) {
+                                { userId: Long ->
+                                    component.toProfile(userId)
+                                }
+                            }
+
+                            ChatContentList(
+                                showNavPadding = false,
+                                state = state,
+                                component = component,
+                                scrollState = scrollState,
+                                groupedMessages = groupedMessages,
+                                onPhotoDownload = onPhotoDownloadStable,
+                                onPhotoClick = onPhotoClickStable,
+                                onVideoClick = onVideoClickStable,
+                                onDocumentClick = onDocumentClickStable,
+                                onAudioClick = onAudioClickStable,
+                                onMessageOptionsClick = onMessageOptionsClickStable,
+                                onGoToReply = onGoToReplyStable,
+                                selectedMessageId = selectedMessageId,
+                                onMessagePositionChange = onMessagePositionChangeStable,
+                                onViaBotClick = onViaBotClickStable,
+                                toProfile = toProfileStable,
                                     downloadUtils = component.downloadUtils,
-                                    videoPlayerPool = component.videoPlayerPool,
                                     isAnyViewerOpen = isAnyViewerOpen
                                 )
 
@@ -994,8 +1007,7 @@ fun ChatContent(
                     onUnpin = { component.onUnpinMessage(it) },
                     onReplyClick = { scrollToMessageState.value(it); component.onDismissPinnedMessages() },
                     onReactionClick = { id, r -> component.onSendReaction(id, r) },
-                    downloadUtils = component.downloadUtils,
-                    videoPlayerPool = component.videoPlayerPool
+                    downloadUtils = component.downloadUtils
                 )
             }
 
@@ -1015,8 +1027,7 @@ fun ChatContent(
                         component.onDismissVoters()
                         component.toProfile(it)
                     },
-                    onDismiss = { component.onDismissVoters() },
-                    videoPlayerPool = component.videoPlayerPool
+                    onDismiss = { component.onDismissVoters() }
                 )
             }
 
@@ -1031,7 +1042,7 @@ fun ChatContent(
             ChatContentViewers(
                 state = state,
                 component = component,
-                clipboardManager = clipboardManager
+                localClipboard = localClipboard
             )
 
             selectedMessage?.let { msg ->
@@ -1045,7 +1056,7 @@ fun ChatContent(
                     contentRect = contentRect,
                     groupedMessages = groupedMessages,
                     downloadUtils = component.downloadUtils,
-                    clipboardManager = clipboardManager,
+                    localClipboard = localClipboard,
                     canRestoreOriginalText = originalMessageTexts.containsKey(msg.id),
                     onApplyTransformedText = { newText ->
                         val originalText = msg.extractTextContent()

@@ -51,7 +51,8 @@ import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -95,14 +96,12 @@ import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.ui.SettingsItem
 import org.monogram.presentation.core.util.AppUtils
 import org.monogram.presentation.core.util.CountryManager
-import org.monogram.presentation.core.util.formatMaskedGlobal
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import kotlin.math.roundToInt
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AccountMenu(
     user: UserModel?,
-    videoPlayerPool: VideoPlayerPool,
     attachMenuBots: List<AttachMenuBotModel>,
     updateState: UpdateState = UpdateState.Idle,
     onDismiss: () -> Unit,
@@ -236,7 +235,9 @@ fun AccountMenu(
                 Surface(
                     modifier = Modifier
                         .padding(8.dp)
-                        .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
+                        .padding(
+                            top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+                        )
                         .widthIn(max = 600.dp)
                         .offset { IntOffset(0, offsetY.value.roundToInt()) }
                         .pointerInput(Unit) {
@@ -290,7 +291,9 @@ fun AccountMenu(
                                     .width(32.dp)
                                     .height(4.dp)
                                     .background(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.4f
+                                        ),
                                         shape = CircleShape
                                     )
                             )
@@ -307,8 +310,7 @@ fun AccountMenu(
                                     isPhoneVisible = isExpanded
                                 },
                                 isPhoneVisible = isPhoneVisible,
-                                onPhoneToggle = { isPhoneVisible = !isPhoneVisible },
-                                videoPlayerPool = videoPlayerPool
+                                onPhoneToggle = { isPhoneVisible = !isPhoneVisible }
                             )
 
                             AnimatedVisibility(
@@ -342,7 +344,8 @@ fun AccountMenu(
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            val sideMenuBots = attachMenuBots.filter { it.showInSideMenu && it.name.isNotBlank() && it.icon?.icon != null }
+                            val sideMenuBots =
+                                attachMenuBots.filter { it.showInSideMenu && it.name.isNotBlank() && it.icon?.icon != null }
 
                             sideMenuBots.forEachIndexed { index, bot ->
                                 SettingsItem(
@@ -410,7 +413,6 @@ fun AccountMenu(
                                         )
 
                                         is UpdateState.ReadyToInstall -> stringResource(R.string.update_ready_subtitle)
-                                        else -> null
                                     },
                                     position = ItemPosition.MIDDLE,
                                     onClick = {
@@ -421,7 +423,7 @@ fun AccountMenu(
                                     }
                                 )
                                 if (updateState is UpdateState.Downloading) {
-                                    LinearProgressIndicator(
+                                    LinearWavyProgressIndicator(
                                         progress = { updateState.progress },
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -470,7 +472,9 @@ fun AccountMenu(
                                     .width(32.dp)
                                     .height(4.dp)
                                     .background(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                            alpha = 0.4f
+                                        ),
                                         shape = CircleShape
                                     )
                             )
@@ -518,7 +522,6 @@ private fun MenuHeader(onDismiss: () -> Unit) {
 @Composable
 private fun ActiveAccountCard(
     user: UserModel?,
-    videoPlayerPool: VideoPlayerPool,
     isExpanded: Boolean,
     onExpandToggle: () -> Unit,
     isPhoneVisible: Boolean,
@@ -566,8 +569,7 @@ private fun ActiveAccountCard(
                 fallbackPath = user?.personalAvatarPath,
                 name = user?.firstName ?: "",
                 size = 56.dp,
-                fontSize = 20,
-                videoPlayerPool = videoPlayerPool
+                fontSize = 20
             )
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -583,8 +585,14 @@ private fun ActiveAccountCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = user?.phoneNumber?.let {
-                        if (isPhoneVisible) CountryManager.formatPhone(it) else formatMaskedGlobal(it)
+                    text = user?.phoneNumber?.let { phone ->
+                        val formatted = remember(phone) {
+                            CountryManager.formatPhoneNumber(phone)
+                        }
+                        if (isPhoneVisible) formatted
+                        else {
+                            CountryManager.maskPhoneNumber(formatted)
+                        }
                     } ?: user?.username ?: stringResource(R.string.no_info),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -651,7 +659,10 @@ private fun MenuFooter(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            FooterLink(text = stringResource(R.string.terms_of_service_title), onClick = onTermsClick)
+            FooterLink(
+                text = stringResource(R.string.terms_of_service_title),
+                onClick = onTermsClick
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))

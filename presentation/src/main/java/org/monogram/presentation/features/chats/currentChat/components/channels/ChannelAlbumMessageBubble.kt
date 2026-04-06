@@ -11,6 +11,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,37 +29,35 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.presentation.core.util.IDownloadUtils
 import org.monogram.presentation.features.chats.currentChat.components.CompactMediaMosaic
-import org.monogram.presentation.features.chats.currentChat.components.VideoPlayerPool
 import org.monogram.presentation.features.chats.currentChat.components.chats.*
 
 @Composable
 fun ChannelAlbumMessageBubble(
     messages: List<MessageModel>,
-    isSameSenderAbove: Boolean = false,
-    isSameSenderBelow: Boolean = false,
     autoplayGifs: Boolean,
     autoplayVideos: Boolean,
+    modifier: Modifier = Modifier,
+    fontSize: Float,
+    onPhotoClick: (MessageModel) -> Unit,
+    onLongClick: (Offset) -> Unit,
+    downloadUtils: IDownloadUtils,
+    isSameSenderAbove: Boolean = false,
+    isSameSenderBelow: Boolean = false,
     autoDownloadMobile: Boolean = false,
     autoDownloadWifi: Boolean = false,
     autoDownloadRoaming: Boolean = false,
     autoDownloadFiles: Boolean = false,
-    fontSize: Float,
     bubbleRadius: Float = 16f,
-    onPhotoClick: (MessageModel) -> Unit,
     onDownloadPhoto: (Int) -> Unit = {},
     onVideoClick: (MessageModel) -> Unit,
     onDocumentClick: (MessageModel) -> Unit = {},
     onAudioClick: (MessageModel) -> Unit = {},
     onCancelDownload: (Int) -> Unit = {},
-    onLongClick: (Offset) -> Unit,
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onCommentsClick: (Long) -> Unit = {},
     showComments: Boolean = true,
     toProfile: (Long) -> Unit = {},
-    modifier: Modifier = Modifier,
-    downloadUtils: IDownloadUtils,
-    videoPlayerPool: VideoPlayerPool,
     isAnyViewerOpen: Boolean = false
 ) {
     if (messages.isEmpty()) return
@@ -111,8 +111,7 @@ fun ChannelAlbumMessageBubble(
             onCommentsClick = onCommentsClick,
             showComments = showComments,
             toProfile = toProfile,
-            modifier = modifier,
-            downloadUtils = downloadUtils
+            modifier = modifier
         )
         return
     }
@@ -128,7 +127,7 @@ fun ChannelAlbumMessageBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val captionMsg = remember(uniqueMessages) {
@@ -210,7 +209,6 @@ fun ChannelAlbumMessageBubble(
                     autoDownloadRoaming = autoDownloadRoaming,
                     toProfile = toProfile,
                     downloadUtils = downloadUtils,
-                    videoPlayerPool = videoPlayerPool,
                     isAnyViewerOpen = isAnyViewerOpen
                 )
 
@@ -284,6 +282,7 @@ fun ChannelAlbumMessageBubble(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChannelDocumentAlbumBubble(
     messages: List<MessageModel>,
@@ -317,7 +316,7 @@ fun ChannelDocumentAlbumBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -382,11 +381,10 @@ fun ChannelDocumentAlbumBubble(
                             contentAlignment = Alignment.Center
                         ) {
                             if (content.isDownloading || content.isUploading) {
-                                CircularProgressIndicator(
+                                CircularWavyProgressIndicator(
                                     progress = { if (content.isDownloading) content.downloadProgress else content.uploadProgress },
                                     modifier = Modifier.size(36.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 3.dp,
                                     trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f),
                                 )
                                 Icon(
@@ -486,6 +484,7 @@ fun ChannelDocumentAlbumBubble(
     }
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChannelAudioAlbumBubble(
     messages: List<MessageModel>,
@@ -505,8 +504,7 @@ fun ChannelAudioAlbumBubble(
     onCommentsClick: (Long) -> Unit,
     showComments: Boolean,
     toProfile: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-    downloadUtils: IDownloadUtils
+    modifier: Modifier = Modifier
 ) {
     val firstMsg = messages.first()
     val lastMsg = messages.last()
@@ -519,7 +517,7 @@ fun ChannelAudioAlbumBubble(
         topStart = if (isSameSenderAbove) smallCorner else cornerRadius,
         topEnd = cornerRadius,
         bottomStart = if (isSameSenderBelow) smallCorner else tailCorner,
-        bottomEnd = cornerRadius
+        bottomEnd = if (showComments && firstMsg.canGetMessageThread) 4.dp else cornerRadius
     )
 
     val backgroundColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -584,11 +582,10 @@ fun ChannelAudioAlbumBubble(
                             contentAlignment = Alignment.Center
                         ) {
                             if (content.isDownloading || content.isUploading) {
-                                CircularProgressIndicator(
+                                CircularWavyProgressIndicator(
                                     progress = { if (content.isDownloading) content.downloadProgress else content.uploadProgress },
                                     modifier = Modifier.size(36.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,
-                                    strokeWidth = 3.dp,
                                     trackColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.2f),
                                 )
                                 Icon(

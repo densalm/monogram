@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import androidx.annotation.OptIn
@@ -10,6 +12,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,12 +29,14 @@ import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import org.monogram.presentation.features.stickers.ui.view.StickerSkeleton
 import java.io.File
 
-@OptIn(UnstableApi::class, ExperimentalFoundationApi::class)
+@OptIn(UnstableApi::class, ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@kotlin.OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun StickerMessageBubble(
     content: MessageContent.Sticker,
     msg: MessageModel,
     isOutgoing: Boolean,
+    stickerSize: Float = 200f,
     onReplyClick: (MessageModel) -> Unit = {},
     onReactionClick: (String) -> Unit = {},
     onStickerClick: (Long) -> Unit = {},
@@ -73,7 +79,7 @@ fun StickerMessageBubble(
 
         Box(
             modifier = Modifier
-                .size(190.dp)
+                .size(stickerSize.dp)
                 .combinedClickable(
                     onClick = {
                         onStickerClick(content.setId)
@@ -107,7 +113,7 @@ fun StickerMessageBubble(
                     StickerSkeleton(modifier = Modifier.matchParentSize())
 
                     if (content.isDownloading) {
-                        CircularProgressIndicator(
+                        CircularWavyProgressIndicator(
                             progress = { content.downloadProgress },
                             modifier = Modifier.size(48.dp),
                             color = Color.White,

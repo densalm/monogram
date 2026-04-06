@@ -162,7 +162,7 @@ suspend fun processVideo(
     trimRange: VideoTrimRange = VideoTrimRange(),
     filter: VideoFilter? = null,
     textElements: List<VideoTextElement> = emptyList(),
-    quality: VideoQuality = VideoQuality.P720,
+    quality: VideoQuality = VideoQuality.P1080,
     muteAudio: Boolean = false
 ): String = withContext(Dispatchers.IO) {
 
@@ -204,7 +204,7 @@ suspend fun processVideo(
         return@withContext inputPath
     }
 
-    if (!isTrimmed && quality == VideoQuality.P720 && !muteAudio && filter == null && textElements.isEmpty() &&
+    if (!isTrimmed && quality == VideoQuality.P1080 && !muteAudio && filter == null && textElements.isEmpty() &&
         inputPath.contains(context.cacheDir.absolutePath) && File(inputPath).name.startsWith("processed_video_")
     ) {
         return@withContext inputPath

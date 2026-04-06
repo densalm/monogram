@@ -19,12 +19,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import org.koin.compose.koinInject
 import org.monogram.domain.models.FolderModel
 import org.monogram.presentation.R
+import org.monogram.presentation.core.util.AppPreferences
+import org.monogram.presentation.features.chats.currentChat.components.chats.addEmojiStyle
+import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
 import org.monogram.presentation.settings.folders.getFolderIcon
 
 @Composable
@@ -41,6 +48,10 @@ fun FolderTabs(
     val lazyListState = rememberLazyListState()
     var contextMenuExpanded by remember { mutableStateOf(false) }
     var contextMenuFolderIndex by remember { mutableIntStateOf(-1) }
+    val context = LocalContext.current
+    val appPreferences: AppPreferences = koinInject()
+    val emojiStyle by appPreferences.emojiStyle.collectAsState()
+    val emojiFontFamily = remember(context, emojiStyle) { getEmojiFontFamily(context, emojiStyle) }
 
     LaunchedEffect(pagerState.currentPage) {
         lazyListState.animateScrollToItem(pagerState.currentPage)
@@ -51,8 +62,9 @@ fun FolderTabs(
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         items(folders.size) { index ->
             val folder = folders[index]
@@ -101,12 +113,22 @@ fun FolderTabs(
                         )
                     }
 
+                    val folderTitle = if (folder.id == -1) {
+                        stringResource(R.string.folders_system_all_chats)
+                    } else {
+                        folder.title
+                    }
+                    val formattedFolderTitle = remember(folderTitle, emojiFontFamily) {
+                        buildAnnotatedString {
+                            append(folderTitle)
+                            if (emojiFontFamily != FontFamily.Default) {
+                                addEmojiStyle(folderTitle, emojiFontFamily)
+                            }
+                        }
+                    }
+
                     Text(
-                        text = if (folder.id == -1) {
-                            stringResource(R.string.folders_system_all_chats)
-                        } else {
-                            folder.title
-                        },
+                        text = formattedFolderTitle,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         color = contentColor
