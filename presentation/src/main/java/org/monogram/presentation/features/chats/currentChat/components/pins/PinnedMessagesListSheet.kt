@@ -44,6 +44,7 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PinnedMessagesListSheet(
+    isVisible: Boolean,
     allPinnedMessages: List<MessageModel>,
     pinnedMessageCount: Int,
     isLoadingPinnedMessages: Boolean,
@@ -59,7 +60,8 @@ fun PinnedMessagesListSheet(
     autoDownloadFiles: Boolean,
     autoplayGifs: Boolean,
     autoplayVideos: Boolean,
-    onDismiss: () -> Unit,
+    onDismissRequest: () -> Unit,
+    onHidden: () -> Unit,
     onMessageClick: (MessageModel) -> Unit,
     onUnpin: (MessageModel) -> Unit,
     onReplyClick: (MessageModel) -> Unit,
@@ -76,10 +78,12 @@ fun PinnedMessagesListSheet(
     val shimmerBrush = rememberShimmerBrush()
     var dismissOffsetY by remember { mutableFloatStateOf(0f) }
     var sheetHeightPx by remember { mutableFloatStateOf(0f) }
+    var isAnimationReady by remember { mutableStateOf(false) }
     val dismissDistanceThresholdPx = with(density) { 104.dp.toPx() }
     val dismissVelocityThresholdPx = with(density) { 360.dp.toPx() }
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val dismissProgress = (dismissOffsetY / (sheetHeightPx.takeIf { it > 0f } ?: 1f)).coerceIn(0f, 1f)
+    val hiddenOffset = sheetHeightPx.takeIf { it > 0f } ?: with(density) { 640.dp.toPx() }
+    val dismissProgress = (dismissOffsetY / hiddenOffset).coerceIn(0f, 1f)
     val dividerColor = MaterialTheme.colorScheme.outlineVariant
     val surfaceColor = MaterialTheme.colorScheme.background
     val contentColor = MaterialTheme.colorScheme.onSurface
@@ -88,6 +92,26 @@ fun PinnedMessagesListSheet(
     val dragState = rememberDraggableState { delta ->
         if (isAnyViewerOpen) return@rememberDraggableState
         dismissOffsetY = (dismissOffsetY + delta).coerceAtLeast(0f)
+    }
+
+    LaunchedEffect(sheetHeightPx) {
+        if (sheetHeightPx > 0f && !isAnimationReady) {
+            dismissOffsetY = hiddenOffset
+            isAnimationReady = true
+        }
+    }
+
+    LaunchedEffect(isVisible, isAnimationReady, hiddenOffset) {
+        if (!isAnimationReady) return@LaunchedEffect
+        val target = if (isVisible) 0f else hiddenOffset
+        animate(
+            initialValue = dismissOffsetY,
+            targetValue = target,
+            animationSpec = if (isVisible) spring() else tween(durationMillis = 220)
+        ) { value, _ -> dismissOffsetY = value }
+        if (!isVisible) {
+            onHidden()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -99,7 +123,7 @@ fun PinnedMessagesListSheet(
                     interactionSource = scrimInteractionSource,
                     indication = null
                 ) {
-                    if (!isAnyViewerOpen) onDismiss()
+                    if (!isAnyViewerOpen) onDismissRequest()
                 }
         )
 
@@ -138,27 +162,15 @@ fun PinnedMessagesListSheet(
                                     return@draggable
                                 }
 
-                                val shouldDismiss =
-                                    dismissOffsetY > dismissDistanceThresholdPx ||
-                                            velocity > dismissVelocityThresholdPx
+                                    val shouldDismiss =
+                                        dismissOffsetY > dismissDistanceThresholdPx ||
+                                                velocity > dismissVelocityThresholdPx
 
-                                if (shouldDismiss) {
-                                    scope.launch {
-                                        val target = if (sheetHeightPx > 0f) {
-                                            sheetHeightPx
-                                        } else {
-                                            with(density) { 640.dp.toPx() }
-                                        }
-                                        animate(
-                                            initialValue = dismissOffsetY,
-                                            targetValue = target,
-                                            animationSpec = tween(durationMillis = 220)
-                                        ) { value, _ -> dismissOffsetY = value }
-                                        onDismiss()
-                                    }
-                                } else {
-                                    scope.launch {
-                                        animate(
+                                    if (shouldDismiss) {
+                                        onDismissRequest()
+                                    } else {
+                                        scope.launch {
+                                            animate(
                                             initialValue = dismissOffsetY,
                                             targetValue = 0f,
                                             animationSpec = spring()

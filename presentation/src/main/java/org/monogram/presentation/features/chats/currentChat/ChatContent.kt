@@ -433,6 +433,20 @@ fun ChatContent(
             (!state.viewAsTopics || state.currentTopicId != null)
 
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    var renderPinnedMessagesList by remember { mutableStateOf(state.showPinnedMessagesList) }
+    var pendingPinnedSheetAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    LaunchedEffect(state.showPinnedMessagesList) {
+        if (state.showPinnedMessagesList) {
+            renderPinnedMessagesList = true
+        }
+    }
+
+    val requestPinnedMessagesListDismiss = {
+        if (state.showPinnedMessagesList) {
+            component.onDismissPinnedMessages()
+        }
+    }
 
     val isCustomBackHandlingEnabled =
         (editingPhotoPath != null || editingVideoPath != null || selectedMessageId != null || state.selectedMessageIds.isNotEmpty() || state.currentTopicId != null || state.showBotCommands || state.restrictUserId != null || state.showPinnedMessagesList || state.fullScreenImages != null || state.fullScreenVideoPath != null || state.fullScreenVideoMessageId != null || state.miniAppUrl != null || state.webViewUrl != null || state.instantViewUrl != null || state.youtubeUrl != null)
@@ -1010,8 +1024,9 @@ fun ChatContent(
 
 
             // Modals & Overlays
-            if (state.showPinnedMessagesList) {
+            if (renderPinnedMessagesList) {
                 PinnedMessagesListSheet(
+                    isVisible = state.showPinnedMessagesList,
                     allPinnedMessages = state.allPinnedMessages,
                     pinnedMessageCount = state.pinnedMessageCount,
                     isLoadingPinnedMessages = state.isLoadingPinnedMessages,
@@ -1027,10 +1042,21 @@ fun ChatContent(
                     autoDownloadFiles = state.autoDownloadFiles,
                     autoplayGifs = state.autoplayGifs,
                     autoplayVideos = state.autoplayVideos,
-                    onDismiss = { component.onDismissPinnedMessages() },
-                    onMessageClick = { component.onDismissPinnedMessages(); scrollToMessageState.value(it) },
+                    onDismissRequest = requestPinnedMessagesListDismiss,
+                    onHidden = {
+                        renderPinnedMessagesList = false
+                        pendingPinnedSheetAction?.invoke()
+                        pendingPinnedSheetAction = null
+                    },
+                    onMessageClick = {
+                        pendingPinnedSheetAction = { scrollToMessageState.value(it) }
+                        requestPinnedMessagesListDismiss()
+                    },
                     onUnpin = { component.onUnpinMessage(it) },
-                    onReplyClick = { component.onDismissPinnedMessages(); scrollToMessageState.value(it) },
+                    onReplyClick = {
+                        pendingPinnedSheetAction = { scrollToMessageState.value(it) }
+                        requestPinnedMessagesListDismiss()
+                    },
                     onReactionClick = { id, r -> component.onSendReaction(id, r) },
                     downloadUtils = component.downloadUtils,
                     isAnyViewerOpen = isAnyViewerOpen
@@ -1182,7 +1208,7 @@ fun ChatContent(
                 else if (selectedMessageId != null) selectedMessageId = null
                 else if (state.showBotCommands) component.onDismissBotCommands()
                 else if (state.restrictUserId != null) component.onDismissRestrictDialog()
-                else if (state.showPinnedMessagesList && !isAnyViewerOpen) component.onDismissPinnedMessages()
+                else if (state.showPinnedMessagesList && !isAnyViewerOpen) requestPinnedMessagesListDismiss()
                 else if (state.fullScreenImages != null) component.onDismissImages()
                 else if (state.fullScreenVideoPath != null || state.fullScreenVideoMessageId != null) component.onDismissVideo()
                 else if (state.instantViewUrl != null) component.onDismissInstantView()
