@@ -1001,6 +1001,7 @@
     <string name="action_cancel">Cancel</string>
     <string name="action_copy">Copy</string>
     <string name="action_paste">Paste</string>
+    <string name="action_paste_image">Paste image</string>
     <string name="action_cut">Cut</string>
     <string name="action_select_all">Select all</string>
     <string name="action_apply">Apply</string>

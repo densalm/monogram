@@ -986,6 +986,7 @@
     <string name="action_cancel">Cancelar</string>
     <string name="action_copy">Copiar</string>
     <string name="action_paste">Pegar</string>
+    <string name="action_paste_image">Pegar imagen</string>
     <string name="action_cut">Cortar</string>
     <string name="action_select_all">Seleccionar todo</string>
     <string name="action_apply">Aplicar</string>

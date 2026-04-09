@@ -959,6 +959,7 @@
     <string name="action_cancel">取消</string>
     <string name="action_copy">复制</string>
     <string name="action_paste">粘贴</string>
+    <string name="action_paste_image">粘贴图片</string>
     <string name="action_cut">剪切</string>
     <string name="action_select_all">全选</string>
     <string name="action_apply">应用</string>

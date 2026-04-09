@@ -966,6 +966,7 @@
     <string name="action_cancel">Скасувати</string>
     <string name="action_copy">Копіювати</string>
     <string name="action_paste">Вставити</string>
+    <string name="action_paste_image">Вставити зображення</string>
     <string name="action_cut">Вирізати</string>
     <string name="action_select_all">Виділити все</string>
     <string name="action_apply">Застосувати</string>

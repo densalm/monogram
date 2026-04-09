@@ -6,17 +6,58 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.*
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -25,17 +66,44 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
-import org.monogram.domain.models.*
+import org.monogram.domain.models.AttachMenuBotModel
+import org.monogram.domain.models.BotCommandModel
+import org.monogram.domain.models.BotMenuButtonModel
+import org.monogram.domain.models.ChatPermissionsModel
+import org.monogram.domain.models.GifModel
+import org.monogram.domain.models.KeyboardButtonModel
+import org.monogram.domain.models.MessageEntity
+import org.monogram.domain.models.MessageModel
+import org.monogram.domain.models.MessageSendOptions
+import org.monogram.domain.models.ReplyMarkupModel
+import org.monogram.domain.models.StickerModel
+import org.monogram.domain.models.UserModel
 import org.monogram.domain.repository.InlineBotResultsModel
 import org.monogram.domain.repository.StickerRepository
 import org.monogram.presentation.R
 import org.monogram.presentation.core.util.AppPreferences
 import org.monogram.presentation.features.camera.CameraScreen
 import org.monogram.presentation.features.chats.currentChat.components.chats.getEmojiFontFamily
-import org.monogram.presentation.features.chats.currentChat.components.inputbar.*
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.ChatInputBarComposerSection
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.FullScreenEditorSheet
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.ScheduleDatePickerDialog
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.ScheduleTimePickerDialog
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.ScheduledMessagesSheet
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.applyMentionSuggestion
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.buildEditingMessageTextValue
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.buildScheduledDateEpochSeconds
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.copyUriToTempPath
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.declaredPermissions
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.extractEntities
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.hasAllPermissions
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.isInlineBotPrefillText
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.parseInlineQueryInput
+import org.monogram.presentation.features.chats.currentChat.components.inputbar.rememberVoiceRecorder
 import org.monogram.presentation.features.gallery.GalleryScreen
 import java.text.DateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlin.math.ceil
 
 @Immutable
@@ -582,6 +650,7 @@ fun ChatInputBar(
                         focusRequester = focusRequester,
                         canWriteText = canWriteText,
                         canSendMedia = canSendMedia,
+                        canPasteMediaFromClipboard = canSendMedia && state.editingMessage == null,
                         canSendStickers = canSendStickers,
                         canSendVoice = canSendVoice,
                         canSendVideoNotes = canSendVideoNotes,
@@ -607,6 +676,15 @@ fun ChatInputBar(
                         onCancelMedia = actions.onCancelMedia,
                         onMediaOrderChange = actions.onMediaOrderChange,
                         onMediaClick = actions.onMediaClick,
+                        onPasteImages = { uris ->
+                            if (!canSendMedia || state.editingMessage != null) return@ChatInputBarComposerSection
+                            val localPaths = uris.mapNotNull { uri ->
+                                context.copyUriToTempPath(uri)
+                            }
+                            if (localPaths.isNotEmpty()) {
+                                actions.onMediaOrderChange((state.pendingMediaPaths + localPaths).distinct())
+                            }
+                        },
                         onMentionClick = { user ->
                             textValue = applyMentionSuggestion(textValue, user)
                         },

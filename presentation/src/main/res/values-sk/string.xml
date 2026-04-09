@@ -1030,6 +1030,7 @@
     <string name="action_cancel">Zrušiť</string>
     <string name="action_copy">Kopírovať</string>
     <string name="action_paste">Vložiť</string>
+    <string name="action_paste_image">Vložiť obrázok</string>
     <string name="action_cut">Vystrihnúť</string>
     <string name="action_select_all">Vybrať všetko</string>
     <string name="action_apply">Použiť</string>

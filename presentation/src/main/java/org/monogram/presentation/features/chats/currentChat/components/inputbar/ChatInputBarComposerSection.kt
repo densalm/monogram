@@ -1,5 +1,6 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -78,6 +79,7 @@ fun ChatInputBarComposerSection(
     focusRequester: FocusRequester,
     canWriteText: Boolean,
     canSendMedia: Boolean,
+    canPasteMediaFromClipboard: Boolean,
     canSendStickers: Boolean,
     canSendVoice: Boolean,
     canSendVideoNotes: Boolean,
@@ -104,6 +106,7 @@ fun ChatInputBarComposerSection(
     onCancelMedia: () -> Unit,
     onMediaOrderChange: (List<String>) -> Unit,
     onMediaClick: (String) -> Unit,
+    onPasteImages: (List<Uri>) -> Unit,
     onMentionClick: (UserModel) -> Unit,
     onMentionQueryClear: () -> Unit,
     onInlineResultClick: (String) -> Unit,
@@ -263,6 +266,8 @@ fun ChatInputBarComposerSection(
                                     emojiFontFamily = emojiFontFamily,
                                     focusRequester = focusRequester,
                                     pendingMediaPaths = pendingMediaPaths,
+                                    canPasteMediaFromClipboard = canPasteMediaFromClipboard,
+                                    onPasteImages = onPasteImages,
                                     onFocus = onInputFocus,
                                     onOpenFullScreenEditor = onOpenFullScreenEditor,
                                     modifier = Modifier.fillMaxWidth()
