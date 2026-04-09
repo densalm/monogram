@@ -9,6 +9,6 @@
     <item
         android:width="72dp"
         android:height="72dp"
-        android:drawable="@drawable/ic_app_logo"
+        android:drawable="@drawable/splash_logo_monochrome"
         android:gravity="center" />
 </layer-list>
