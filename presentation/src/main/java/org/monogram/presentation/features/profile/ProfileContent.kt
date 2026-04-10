@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.window.core.layout.WindowSizeClass
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import org.koin.compose.koinInject
 import org.monogram.domain.models.UserStatusType
 import org.monogram.domain.models.UserTypeEnum
 import org.monogram.presentation.R
@@ -69,6 +70,7 @@ import org.monogram.presentation.core.ui.ConfirmationSheet
 import org.monogram.presentation.core.ui.ItemPosition
 import org.monogram.presentation.core.ui.rememberCollapsingToolbarScaffoldState
 import org.monogram.presentation.core.ui.rememberShimmerBrush
+import org.monogram.presentation.core.util.DateFormatManager
 import org.monogram.presentation.core.util.LocalTabletInterfaceEnabled
 import org.monogram.presentation.core.util.ScrollStrategy
 import org.monogram.presentation.core.util.getUserStatusText
@@ -95,6 +97,8 @@ fun ProfileContent(component: ProfileComponent) {
     val context = LocalContext.current
     val collapsingToolbarState = rememberCollapsingToolbarScaffoldState()
 
+    val dateFormatManager: DateFormatManager = koinInject()
+    val timeFormat = dateFormatManager.getHourMinuteFormat()
 
     val chat = state.chat
     val user = state.user
@@ -140,7 +144,7 @@ fun ProfileContent(component: ProfileComponent) {
                 ?: ownProfileSubtitle
         }
 
-        else -> getUserStatusText(user, context)
+        else -> getUserStatusText(user, context, timeFormat)
     }
 
     val isOnline = user?.type != UserTypeEnum.BOT && user?.userStatus == UserStatusType.ONLINE
