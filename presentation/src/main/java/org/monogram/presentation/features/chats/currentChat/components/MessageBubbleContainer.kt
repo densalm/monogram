@@ -122,11 +122,39 @@ fun MessageBubbleContainer(
     }
 
     val isOutgoing = msg.isOutgoing
-    val isSameSenderAbove = remember(olderMsg?.senderId, msg.senderId, olderMsg?.date, msg.date) {
-        olderMsg?.senderId == msg.senderId && !shouldShowDate(msg, olderMsg)
+    val isSameSenderAbove = remember(
+        olderMsg?.id,
+        olderMsg?.senderId,
+        olderMsg?.senderName,
+        olderMsg?.senderCustomTitle,
+        olderMsg?.date,
+        msg.senderId,
+        msg.senderName,
+        msg.senderCustomTitle,
+        msg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = msg,
+            neighbor = olderMsg,
+            dateBreak = olderMsg?.let { shouldShowDate(msg, it) } ?: true
+        )
     }
-    val isSameSenderBelow = remember(newerMsg?.senderId, msg.senderId, newerMsg?.date, msg.date) {
-        newerMsg != null && newerMsg.senderId == msg.senderId && !shouldShowDate(newerMsg, msg)
+    val isSameSenderBelow = remember(
+        newerMsg?.id,
+        newerMsg?.senderId,
+        newerMsg?.senderName,
+        newerMsg?.senderCustomTitle,
+        newerMsg?.date,
+        msg.senderId,
+        msg.senderName,
+        msg.senderCustomTitle,
+        msg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = msg,
+            neighbor = newerMsg,
+            dateBreak = newerMsg?.let { shouldShowDate(it, msg) } ?: true
+        )
     }
 
     val topSpacing = if (!isSameSenderAbove) 8.dp else 2.dp

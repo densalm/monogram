@@ -107,11 +107,39 @@ fun AlbumMessageBubbleContainer(
         }
     }
 
-    val isSameSenderAbove = remember(olderMsg?.senderId, firstMsg.senderId, olderMsg?.date, firstMsg.date) {
-        olderMsg?.senderId == firstMsg.senderId && !shouldShowDate(firstMsg, olderMsg)
+    val isSameSenderAbove = remember(
+        olderMsg?.id,
+        olderMsg?.senderId,
+        olderMsg?.senderName,
+        olderMsg?.senderCustomTitle,
+        olderMsg?.date,
+        firstMsg.senderId,
+        firstMsg.senderName,
+        firstMsg.senderCustomTitle,
+        firstMsg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = firstMsg,
+            neighbor = olderMsg,
+            dateBreak = olderMsg?.let { shouldShowDate(firstMsg, it) } ?: true
+        )
     }
-    val isSameSenderBelow = remember(newerMsg?.senderId, lastMsg.senderId, newerMsg?.date, lastMsg.date) {
-        newerMsg != null && newerMsg.senderId == lastMsg.senderId && !shouldShowDate(newerMsg, lastMsg)
+    val isSameSenderBelow = remember(
+        newerMsg?.id,
+        newerMsg?.senderId,
+        newerMsg?.senderName,
+        newerMsg?.senderCustomTitle,
+        newerMsg?.date,
+        lastMsg.senderId,
+        lastMsg.senderName,
+        lastMsg.senderCustomTitle,
+        lastMsg.date
+    ) {
+        shouldGroupSenderBlock(
+            current = lastMsg,
+            neighbor = newerMsg,
+            dateBreak = newerMsg?.let { shouldShowDate(it, lastMsg) } ?: true
+        )
     }
 
     val topSpacing = if (isChannel && !isSameSenderAbove) 12.dp else 2.dp
