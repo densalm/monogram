@@ -197,6 +197,7 @@ fun DocumentMessageBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
@@ -428,6 +429,7 @@ fun DocumentAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
@@ -571,6 +573,7 @@ fun ChannelDocumentAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,

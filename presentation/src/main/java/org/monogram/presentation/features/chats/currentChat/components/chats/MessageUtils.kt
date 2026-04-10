@@ -1,13 +1,30 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
 import android.content.Context
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +53,8 @@ import org.monogram.presentation.features.chats.currentChat.components.channels.
 import java.io.File
 import java.text.BreakIterator
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import kotlin.math.log10
 import kotlin.math.pow
 
@@ -141,8 +159,12 @@ fun isBigEmoji(text: String, entities: List<MessageEntity>): Boolean {
 
     if (emojiEntities.size == 1) {
         val entity = emojiEntities[0]
-        val textBefore = text.substring(0, entity.offset)
-        val textAfter = text.substring(entity.offset + entity.length)
+        val safeStart = entity.offset.coerceIn(0, text.length)
+        val safeEnd = (entity.offset.toLong() + entity.length.toLong())
+            .coerceIn(safeStart.toLong(), text.length.toLong())
+            .toInt()
+        val textBefore = text.substring(0, safeStart)
+        val textAfter = text.substring(safeEnd)
         return textBefore.trim().isEmpty() && textAfter.trim().isEmpty()
     }
 

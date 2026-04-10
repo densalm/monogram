@@ -1,9 +1,24 @@
 package org.monogram.presentation.features.chats.currentChat.components.chats
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
@@ -107,7 +122,6 @@ fun TextMessageBubble(
                     )
                 }
 
-                val inlineContent = rememberMessageInlineContent(content.entities, fontSize)
                 val finalAnnotatedString = buildAnnotatedMessageTextWithEmoji(
                     text = content.text,
                     entities = content.entities,
@@ -121,7 +135,7 @@ fun TextMessageBubble(
                 val finalFontSize = if (isBigEmoji) fontSize * 5f else fontSize
 
                 AnimatedContent(
-                    targetState = finalAnnotatedString,
+                    targetState = Triple(finalAnnotatedString, content.text, content.entities),
                     transitionSpec = {
                         (fadeIn(animationSpec = tween(240, easing = FastOutSlowInEasing)) +
                                 scaleIn(initialScale = 0.97f, animationSpec = tween(240, easing = FastOutSlowInEasing)) +
@@ -133,10 +147,12 @@ fun TextMessageBubble(
                             )
                     },
                     label = "TextEditAnimation"
-                ) { targetText ->
+                ) { (targetText, targetRawText, targetEntities) ->
+                    val inlineContent = rememberMessageInlineContent(targetEntities, fontSize)
                     MessageText(
                         text = targetText,
-                        entities = content.entities,
+                        rawText = targetRawText,
+                        entities = targetEntities,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = finalFontSize.sp,

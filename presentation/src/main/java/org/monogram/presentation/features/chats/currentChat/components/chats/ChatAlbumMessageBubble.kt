@@ -242,6 +242,7 @@ fun ChatAlbumMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,

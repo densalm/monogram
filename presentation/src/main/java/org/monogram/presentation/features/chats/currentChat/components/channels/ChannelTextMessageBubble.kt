@@ -1,8 +1,19 @@
 package org.monogram.presentation.features.chats.currentChat.components.channels
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -28,7 +39,14 @@ import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageSendingState
 import org.monogram.presentation.core.util.DateFormatManager
-import org.monogram.presentation.features.chats.currentChat.components.chats.*
+import org.monogram.presentation.features.chats.currentChat.components.chats.ForwardContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.LinkPreview
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageReactionsView
+import org.monogram.presentation.features.chats.currentChat.components.chats.MessageText
+import org.monogram.presentation.features.chats.currentChat.components.chats.ReplyContent
+import org.monogram.presentation.features.chats.currentChat.components.chats.buildAnnotatedMessageTextWithEmoji
+import org.monogram.presentation.features.chats.currentChat.components.chats.isBigEmoji
+import org.monogram.presentation.features.chats.currentChat.components.chats.rememberMessageInlineContent
 
 @Composable
 fun ChannelTextMessageBubble(
@@ -111,6 +129,7 @@ fun ChannelTextMessageBubble(
 
                 MessageText(
                     text = finalAnnotatedString,
+                    rawText = content.text,
                     inlineContent = inlineContent,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontSize = finalFontSize.sp,

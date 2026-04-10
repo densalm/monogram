@@ -174,6 +174,7 @@ fun AudioMessageBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
@@ -405,6 +406,7 @@ fun AudioAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
@@ -547,6 +549,7 @@ fun ChannelAudioAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,

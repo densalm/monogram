@@ -86,7 +86,7 @@ fun ChannelAlbumMessageBubble(
 ) {
     if (messages.isEmpty()) return
 
-    val context = LocalContext.current
+    LocalContext.current
     val uniqueMessages = remember(messages) { messages.distinct() }
     val isDocumentAlbum = remember(uniqueMessages) { uniqueMessages.all { it.content is MessageContent.Document } }
     val isAudioAlbum = remember(uniqueMessages) { uniqueMessages.all { it.content is MessageContent.Audio } }
@@ -255,6 +255,7 @@ fun ChannelAlbumMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
@@ -463,6 +464,7 @@ fun ChannelDocumentAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,
@@ -668,6 +670,7 @@ fun ChannelAudioAlbumBubble(
 
                     MessageText(
                         text = finalAnnotatedString,
+                        rawText = content.caption,
                         inlineContent = inlineContent,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = fontSize.sp,

@@ -174,7 +174,10 @@ fun GifMessageBubble(
                         .heightIn(min = 160.dp, max = 360.dp)
                         .aspectRatio(
                             if (content.width > 0 && content.height > 0)
-                                (content.width.toFloat() / content.height.toFloat()).coerceIn(0.5f, 2f)
+                                (content.width.toFloat() / content.height.toFloat()).coerceIn(
+                                    0.5f,
+                                    2f
+                                )
                             else 1f
                         )
                         .clipToBounds()
@@ -247,7 +250,10 @@ fun GifMessageBubble(
                                 modifier = Modifier
                                     .align(Alignment.TopStart)
                                     .padding(8.dp)
-                                    .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                                    .background(
+                                        Color.Black.copy(alpha = 0.45f),
+                                        RoundedCornerShape(6.dp)
+                                    )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -309,7 +315,10 @@ fun GifMessageBubble(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .padding(6.dp)
-                                .background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                                .background(
+                                    Color.Black.copy(alpha = 0.45f),
+                                    RoundedCornerShape(10.dp)
+                                )
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -364,6 +373,7 @@ fun GifMessageBubble(
 
                         MessageText(
                             text = finalAnnotatedString,
+                            rawText = content.caption,
                             inlineContent = inlineContent,
                             style = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = fontSize.sp,
