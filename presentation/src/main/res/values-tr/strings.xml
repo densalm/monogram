@@ -21,7 +21,7 @@
     <string name="cd_qr_icon">QR Tarayıcı simgesi</string>
 
     <!-- Startup -->
-	<string name="startup_connecting">Telegram'a bağlanılıyor…</string>
+	<string name="startup_connecting">Telegram\'a bağlanılıyor…</string>
 
     <!-- About Screen -->
 	<string name="about_title">Hakkında</string>
@@ -326,7 +326,6 @@
     <string name="report_pornography">Pornografi</string>
     <string name="report_child_abuse">Çocuk İstismarı</string>
     <string name="report_copyright">Telif Hakkı</string>
-    <string name="revenue_title">Gelir</string>
     <string name="report_other">Diğer</string>
     <string name="close_button">Kapat</string>
     <string name="tos_dialog_description">Bu Mini Uygulamayı başlatarak Hizmet Şartlarını ve Gizlilik Politikasını kabul etmiş olursunuz. Bot, temel profil bilgilerinize erişebilecektir.</string>
@@ -937,7 +936,7 @@
 
     <!-- Permissions -->
     <string name="permissions_required_title">İzinler Gerekli</string>
-    <string name="permissions_required_description">En iyi deneyimi sunmak için MonoGram'ın aşağıdaki izinlere ihtiyacı vardır.</string>
+    <string name="permissions_required_description">En iyi deneyimi sunmak için MonoGram\'ın aşağıdaki izinlere ihtiyacı vardır.</string>
     <string name="permission_notifications_title">Bildirimler</string>
     <string name="permission_notifications_description">Yeni mesajlardan haberdar olun</string>
     <string name="permission_allow_button">İzin Ver</string>
