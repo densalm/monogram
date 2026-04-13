@@ -22,7 +22,7 @@
   </a>
 </h1>
 
-**Bu dokümanı diğer dillerde okuyun:** [English](README.md), [Русский](README_RU.md), [한국어](README_KOR.md), [اُردو](README_UR.md), [Español](README_ES.md)
+**Bu dokümanı diğer dillerde okuyun:** [English](README.md), [Русский](README_RU.md), [Türkçe](README_TR.md), [한국어](README_KOR.md), [اُردو](README_UR.md), [Español](README_ES.md)
 
 ---
 

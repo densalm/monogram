@@ -235,6 +235,7 @@
     <string name="menu_pin">Sabitle</string>
     <string name="menu_unpin">Sabitlemeyi Kaldır</string>
     <string name="menu_forward">İlet</string>
+    <string name="menu_repeat">+1</string>
     <string name="menu_select">Seç</string>
     <string name="menu_more">Daha Fazla</string>
     <string name="menu_delete">Sil</string>
@@ -377,6 +378,12 @@
     <string name="debug_sponsor_sheet_subtitle">Sponsor bilgi sayfasını aç</string>
     <string name="debug_force_sponsor_sync_title">Sponsor senkronizasyonunu zorla</string>
     <string name="debug_force_sponsor_sync_subtitle">Sponsor ID\'lerini şimdi kanaldan çek</string>
+    <string name="debug_section_push_diagnostics">Push Tanılama</string>
+    <string name="debug_section_runtime_flags">Çalışma Zamanı Bayrakları</string>
+    <string name="debug_section_push_environment">Push Ortamı</string>
+    <string name="debug_section_unifiedpush_details">UnifiedPush Ayrıntıları</string>
+    <string name="debug_section_sponsor">Sponsor</string>
+    <string name="debug_section_danger_zone">Tehlike Bölgesi</string>
     <string name="log_out_title">Oturumu Kapat</string>
     <string name="log_out_subtitle">Hesap bağlantısını kes</string>
 
@@ -595,6 +602,7 @@
     <string name="repeat_hour_format">Her 1 saatte bir</string>
     <string name="repeat_hours_format">Her %1$d saatte bir</string>
     <string name="push_provider_fcm">Firebase Cloud Messaging</string>
+    <string name="push_provider_unified">UnifiedPush (Simple Push)</string>
     <string name="push_provider_gms_less">GMS-less (Arka Plan Servisi)</string>
 
     <!-- Chat Settings -->
