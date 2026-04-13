@@ -28,8 +28,6 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.graphics.createBitmap
-import androidx.core.graphics.drawable.IconCompat
-import androidx.core.graphics.drawable.toBitmap
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +72,7 @@ class TdNotificationManager(
     private val notificationManager = NotificationManagerCompat.from(context)
     private val userCache = ConcurrentHashMap<Long, TdApi.User>()
     private val chatCache = ConcurrentHashMap<Long, TdApi.Chat>()
-    private val messagesHistory = ConcurrentHashMap<Long, MutableList<Pair<Long, NotificationCompat.MessagingStyle.Message>>>()
+    private val messagesHistory = ConcurrentHashMap<Long, MutableList<NotificationHistoryEntry>>()
     private val lastMessageIds = ConcurrentHashMap<Long, Long>()
     private val activeNotifications = ConcurrentHashMap<Long, MutableSet<Int>>()
     private val bitmapCache = object : LruCache<Int, Bitmap>(5 * 1024 * 1024) {
@@ -103,6 +101,13 @@ class TdNotificationManager(
         const val SUMMARY_ID = 0
         const val KEY_TEXT_REPLY = "key_text_reply"
     }
+
+    private data class NotificationHistoryEntry(
+        val messageId: Long,
+        val senderName: String,
+        val text: String,
+        val timestamp: Long
+    )
 
     init {
         createNotificationChannels()
@@ -359,7 +364,7 @@ class TdNotificationManager(
         activeNotifications.remove(chatId)?.forEach { notificationId ->
             notificationManager.cancel(notificationId)
         }
-        notificationManager.cancel(chatId.toInt())
+        notificationManager.cancel(notificationIdForChat(chatId))
         updateSummary()
     }
 
@@ -367,13 +372,13 @@ class TdNotificationManager(
         activeNotifications[chatId]?.remove(notificationId)
         notificationManager.cancel(notificationId)
 
-        if (notificationId == chatId.toInt()) {
+        if (notificationId == notificationIdForChat(chatId)) {
             messagesHistory.remove(chatId)
             activeNotifications.remove(chatId)
         } else {
             val history = messagesHistory[chatId]
             if (history != null) {
-                history.removeAll { it.first == notificationId.toLong() }
+                history.removeAll { it.messageId == notificationId.toLong() }
                 if (history.isEmpty()) {
                     messagesHistory.remove(chatId)
                     activeNotifications.remove(chatId)
@@ -573,102 +578,46 @@ class TdNotificationManager(
             else -> CHANNEL_OTHER
         }
 
-        val personBuilder = Person.Builder()
-            .setName(senderName)
-            .setKey(senderName)
-
-        if (senderBitmap != null) {
-            personBuilder.setIcon(IconCompat.createWithBitmap(getCircularBitmap(senderBitmap)))
-        }
-
-        val sender = personBuilder.build()
-
-        val styleMessage = NotificationCompat.MessagingStyle.Message(
-            text,
-            timestamp,
-            sender
-        )
-
         val history = messagesHistory.getOrPut(chatId) { mutableListOf() }
-        history.add(messageId to styleMessage)
+        history.add(
+            NotificationHistoryEntry(
+                messageId = messageId,
+                senderName = senderName,
+                text = text,
+                timestamp = timestamp
+            )
+        )
         if (history.size > 10) {
             history.removeAt(0)
         }
 
+        val notificationId = notificationIdForChat(chatId)
         Log.d(
             TAG,
-            "Notification history updated chatId=$chatId size=${history.size} notificationId=${chatId.toInt()}"
+            "Notification history updated chatId=$chatId size=${history.size} notificationId=$notificationId"
         )
 
-        val notificationId = chatId.toInt()
         activeNotifications.getOrPut(chatId) { ConcurrentHashMap.newKeySet() }.add(notificationId)
 
-        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra("chat_id", chatId)
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
-            putExtra("chat_id", chatId)
-            putExtra("notification_id", notificationId)
-        }
-        val dismissPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            dismissIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val remoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
-            .setLabel(stringProvider.getString("menu_reply"))
-            .build()
-
-        val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
-            putExtra("chat_id", chatId)
-            putExtra("notification_id", notificationId)
-        }
-        val replyPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            replyIntent,
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val readIntent = Intent(context, NotificationReadReceiver::class.java).apply {
-            putExtra("chat_id", chatId)
-            putExtra("notification_id", notificationId)
-        }
-        val readPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            readIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-
-        val replyAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send,
-            stringProvider.getString("menu_reply"),
-            replyPendingIntent
-        ).addRemoteInput(remoteInput).build()
-
-        val readAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_view,
-            stringProvider.getString("action_mark_as_read"),
-            readPendingIntent
-        ).build()
-
+        val pendingIntent = buildContentPendingIntent(chatId, notificationId)
+        val dismissPendingIntent = buildDismissPendingIntent(chatId, notificationId)
+        val replyAction = buildReplyAction(chatId, notificationId)
+        val readAction = buildReadAction(chatId, notificationId)
 
         val myself = Person.Builder().setName(stringProvider.getString("notification_person_me")).build()
         val messagingStyle = NotificationCompat.MessagingStyle(myself)
-        history.forEach { (_, msg) ->
-            messagingStyle.addMessage(msg)
+        history.forEach { entry ->
+            val person = Person.Builder()
+                .setName(entry.senderName)
+                .setKey(entry.senderName)
+                .build()
+            messagingStyle.addMessage(
+                NotificationCompat.MessagingStyle.Message(
+                    entry.text,
+                    entry.timestamp,
+                    person
+                )
+            )
         }
 
         val isGroup = chatType !is TdApi.ChatTypePrivate
@@ -684,52 +633,210 @@ class TdNotificationManager(
             2 -> NotificationCompat.PRIORITY_HIGH
             else -> NotificationCompat.PRIORITY_DEFAULT
         }
+        val posted = runCatching {
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(org.monogram.data.R.drawable.message_outline)
+                .setStyle(messagingStyle)
+                .setPriority(priority)
+                .setGroup(GROUP_CHATS)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setAutoCancel(true)
+                .setShortcutId(chatId.toString())
+                .setLocusId(androidx.core.content.LocusIdCompat(chatId.toString()))
+                .setOnlyAlertOnce(true)
 
-        val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(org.monogram.data.R.drawable.message_outline)
-            .setStyle(messagingStyle)
-            .setPriority(priority)
-            .setContentIntent(pendingIntent)
-            .setDeleteIntent(dismissPendingIntent)
-            .addAction(replyAction)
-            .addAction(readAction)
-            .setGroup(GROUP_CHATS)
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setAutoCancel(true)
-            .setShortcutId(chatId.toString())
-            .setLocusId(androidx.core.content.LocusIdCompat(chatId.toString()))
-            .setOnlyAlertOnce(true)
+            pendingIntent?.let { builder.setContentIntent(it) }
+            dismissPendingIntent?.let { builder.setDeleteIntent(it) }
+            replyAction?.let { builder.addAction(it) }
+            readAction?.let { builder.addAction(it) }
 
-        builder.setContentTitle(chatTitle)
-        builder.setContentText(text)
+            builder.setContentTitle(chatTitle)
+            builder.setContentText(text)
 
-        if (appPreferences.inAppSounds.value) {
-            builder.setDefaults(NotificationCompat.DEFAULT_SOUND)
-        } else {
-            builder.setSilent(true)
-        }
-
-        if (appPreferences.inAppVibrate.value) {
-            when (appPreferences.notificationVibrationPattern.value) {
-                "short" -> builder.setVibrate(longArrayOf(0, 100, 50, 100))
-                "long" -> builder.setVibrate(longArrayOf(0, 500, 200, 500))
-                "disabled" -> builder.setVibrate(longArrayOf(0))
-                else -> builder.setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+            if (appPreferences.inAppSounds.value) {
+                builder.setDefaults(NotificationCompat.DEFAULT_SOUND)
+            } else {
+                builder.setSilent(true)
             }
+
+            if (appPreferences.inAppVibrate.value) {
+                when (appPreferences.notificationVibrationPattern.value) {
+                    "short" -> builder.setVibrate(longArrayOf(0, 100, 50, 100))
+                    "long" -> builder.setVibrate(longArrayOf(0, 500, 200, 500))
+                    "disabled" -> builder.setVibrate(longArrayOf(0))
+                    else -> builder.setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+                }
+            }
+
+            if (!appPreferences.inAppPreview.value) {
+                builder.setContentText(stringProvider.getString("notification_new_message"))
+            }
+
+            if (chatIcon != null) {
+                runCatching { builder.setLargeIcon(getCircularBitmap(chatIcon)) }
+                    .onFailure { Log.w(TAG, "Failed to set large icon for notification", it) }
+            }
+
+            notificationManager.notify(notificationId, builder.build())
+            true
+        }.onFailure {
+            Log.e(TAG, "Failed to build rich notification, falling back", it)
+        }.getOrDefault(false)
+
+        if (!posted) {
+            postFallbackNotification(
+                chatId = chatId,
+                chatType = chatType,
+                title = chatTitle,
+                text = text,
+                channelId = channelId,
+                notificationId = notificationId,
+                pendingIntent = pendingIntent,
+                dismissPendingIntent = dismissPendingIntent
+            )
         }
 
-        if (!appPreferences.inAppPreview.value) {
-            builder.setContentText(stringProvider.getString("notification_new_message"))
-        }
-
-        if (chatIcon != null) {
-            Log.d("TdNotificationManager", "Setting chat icon to $chatTitle")
-            builder.setLargeIcon(getCircularBitmap(chatIcon))
-        }
-
-        notificationManager.notify(notificationId, builder.build())
         Log.d(TAG, "Notification posted chatId=$chatId notificationId=$notificationId")
         updateSummary()
+    }
+
+    private fun buildContentPendingIntent(chatId: Long, notificationId: Int): PendingIntent? {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                putExtra("chat_id", chatId)
+            } ?: return null
+
+        return runCatching {
+            PendingIntent.getActivity(
+                context,
+                notificationId,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }.onFailure {
+            Log.w(TAG, "Failed to create content PendingIntent", it)
+        }.getOrNull()
+    }
+
+    private fun buildDismissPendingIntent(chatId: Long, notificationId: Int): PendingIntent? {
+        val dismissIntent = Intent(context, NotificationDismissReceiver::class.java).apply {
+            putExtra("chat_id", chatId)
+            putExtra("notification_id", notificationId)
+        }
+
+        return runCatching {
+            PendingIntent.getBroadcast(
+                context,
+                notificationId,
+                dismissIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }.onFailure {
+            Log.w(TAG, "Failed to create dismiss PendingIntent", it)
+        }.getOrNull()
+    }
+
+    private fun buildReplyAction(chatId: Long, notificationId: Int): NotificationCompat.Action? {
+        val replyIntent = Intent(context, NotificationReplyReceiver::class.java).apply {
+            putExtra("chat_id", chatId)
+            putExtra("notification_id", notificationId)
+        }
+
+        val replyPendingIntent = runCatching {
+            PendingIntent.getBroadcast(
+                context,
+                notificationId,
+                replyIntent,
+                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }.getOrNull() ?: return null
+
+        val remoteInput = RemoteInput.Builder(KEY_TEXT_REPLY)
+            .setLabel(stringProvider.getString("menu_reply"))
+            .build()
+
+        return runCatching {
+            NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_send,
+                stringProvider.getString("menu_reply"),
+                replyPendingIntent
+            ).addRemoteInput(remoteInput).build()
+        }.onFailure {
+            Log.w(TAG, "Failed to build reply action", it)
+        }.getOrNull()
+    }
+
+    private fun buildReadAction(chatId: Long, notificationId: Int): NotificationCompat.Action? {
+        val readIntent = Intent(context, NotificationReadReceiver::class.java).apply {
+            putExtra("chat_id", chatId)
+            putExtra("notification_id", notificationId)
+        }
+
+        val readPendingIntent = runCatching {
+            PendingIntent.getBroadcast(
+                context,
+                notificationId,
+                readIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }.getOrNull() ?: return null
+
+        return runCatching {
+            NotificationCompat.Action.Builder(
+                android.R.drawable.ic_menu_view,
+                stringProvider.getString("action_mark_as_read"),
+                readPendingIntent
+            ).build()
+        }.onFailure {
+            Log.w(TAG, "Failed to build read action", it)
+        }.getOrNull()
+    }
+
+    private fun postFallbackNotification(
+        chatId: Long,
+        chatType: TdApi.ChatType,
+        title: String,
+        text: String,
+        channelId: String,
+        notificationId: Int,
+        pendingIntent: PendingIntent?,
+        dismissPendingIntent: PendingIntent?
+    ) {
+        runCatching {
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(org.monogram.data.R.drawable.message_outline)
+                .setContentTitle(title)
+                .setContentText(if (appPreferences.inAppPreview.value) text else stringProvider.getString("notification_new_message"))
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setGroup(GROUP_CHATS)
+                .setAutoCancel(true)
+                .setOnlyAlertOnce(true)
+                .setPriority(
+                    when (appPreferences.notificationPriority.value) {
+                        0 -> NotificationCompat.PRIORITY_LOW
+                        2 -> NotificationCompat.PRIORITY_HIGH
+                        else -> NotificationCompat.PRIORITY_DEFAULT
+                    }
+                )
+
+            pendingIntent?.let { builder.setContentIntent(it) }
+            dismissPendingIntent?.let { builder.setDeleteIntent(it) }
+
+            if (chatType !is TdApi.ChatTypePrivate) {
+                builder.setSubText(stringProvider.getString("notification_group_chats"))
+            }
+
+            notificationManager.notify(notificationId, builder.build())
+            Log.w(TAG, "Fallback notification posted chatId=$chatId notificationId=$notificationId")
+        }.onFailure {
+            Log.e(TAG, "Fallback notification failed chatId=$chatId notificationId=$notificationId", it)
+        }
+    }
+
+    private fun notificationIdForChat(chatId: Long): Int {
+        val hash = (chatId xor (chatId ushr 32)).toInt()
+        return if (hash == SUMMARY_ID) SUMMARY_ID + 1 else hash
     }
 
     private fun senderIdToDebug(senderId: TdApi.MessageSender?): String = when (senderId) {
@@ -782,7 +889,7 @@ class TdNotificationManager(
         }
 
         val allMessages = messagesHistory.flatMap { (chatId, messages) ->
-            messages.map { (_, message) ->
+            messages.map { message ->
                 Triple(chatId, message, message.timestamp)
             }
         }.sortedByDescending { it.third }
@@ -792,7 +899,7 @@ class TdNotificationManager(
 
         allMessages.take(5).forEach { (chatId, message, _) ->
             val chat = chatCache[chatId]
-            val senderName = message.person?.name ?: stringProvider.getString("unknown_user")
+            val senderName = message.senderName.ifBlank { stringProvider.getString("unknown_user") }
             val chatTitle = chat?.title ?: senderName
 
             val sb = SpannableStringBuilder()
@@ -821,18 +928,6 @@ class TdNotificationManager(
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOnlyAlertOnce(true)
             .setContentTitle(summaryTitle)
-
-        val latestMessageTriple = allMessages.firstOrNull()
-        if (latestMessageTriple != null) {
-            val (_, message, _) = latestMessageTriple
-            val iconCompat = message.person?.icon
-            if (iconCompat != null) {
-                val drawable = iconCompat.loadDrawable(context)
-                if (drawable != null) {
-                    builder.setLargeIcon(drawable.toBitmap())
-                }
-            }
-        }
 
         notificationManager.notify(SUMMARY_ID, builder.build())
     }
