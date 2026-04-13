@@ -15,7 +15,9 @@ class ExternalProxyRepositoryImpl(
     private val appPreferences: AppPreferencesProvider
 ) : ExternalProxyRepository {
 
-    override suspend fun getProxies(): List<ProxyModel> = remote.getProxies()
+    override suspend fun getProxies(): List<ProxyModel> = coRunCatching {
+        remote.getProxies()
+    }.getOrElse { emptyList() }
 
     override suspend fun addProxy(
         server: String, port: Int, enable: Boolean, type: ProxyTypeModel

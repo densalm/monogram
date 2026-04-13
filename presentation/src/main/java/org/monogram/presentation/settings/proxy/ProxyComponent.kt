@@ -23,6 +23,7 @@ import org.monogram.domain.repository.ProxySortMode
 import org.monogram.domain.repository.ProxyTestResult
 import org.monogram.domain.repository.ProxyUnavailableFallback
 import org.monogram.domain.repository.defaultProxyNetworkMode
+import org.monogram.presentation.core.util.coRunCatching
 import org.monogram.presentation.core.util.componentScope
 import org.monogram.presentation.root.AppComponentContext
 
@@ -114,7 +115,11 @@ class DefaultProxyComponent(
 
     init {
         scope.launch {
-            refreshProxies(shouldPing = true)
+            coRunCatching { refreshProxies(shouldPing = true) }
+                .onFailure {
+                    _state.update { state -> state.copy(isLoading = false) }
+                    showToastThrottled("Failed to load proxies")
+                }
         }
 
         combine(
@@ -190,8 +195,12 @@ class DefaultProxyComponent(
 
     private suspend fun refreshProxies(shouldPing: Boolean = false) {
         _state.update { it.copy(isLoading = true) }
-        val restoredProxies = restoreUserProxiesIfNeeded()
-        val allProxies = externalProxyRepository.getProxies().ifEmpty { restoredProxies }
+        val restoredProxies = coRunCatching { restoreUserProxiesIfNeeded() }
+            .getOrElse { emptyList() }
+        val allProxies = coRunCatching { externalProxyRepository.getProxies() }
+            .onFailure { showToastThrottled("Failed to load proxies") }
+            .getOrElse { emptyList() }
+            .ifEmpty { restoredProxies }
         _state.update {
             val availableIds = allProxies.mapTo(HashSet()) { proxy -> proxy.id }
             it.copy(
@@ -206,7 +215,7 @@ class DefaultProxyComponent(
                 isLoading = false
             )
         }
-        if (shouldPing) {
+        if (shouldPing && allProxies.isNotEmpty()) {
             performPingAll()
         }
     }
@@ -321,7 +330,8 @@ class DefaultProxyComponent(
             return emptyList()
         }
 
-        val existing = externalProxyRepository.getProxies()
+        val existing = coRunCatching { externalProxyRepository.getProxies() }
+            .getOrElse { emptyList() }
         if (existing.isNotEmpty()) {
             restoreAttempted = true
             return emptyList()
@@ -533,7 +543,9 @@ class DefaultProxyComponent(
 
     override fun importProxiesJson(json: String) {
         scope.launch {
-            val existing = externalProxyRepository.getProxies()
+            val existing = coRunCatching { externalProxyRepository.getProxies() }
+                .onFailure { showToastThrottled("Failed to load existing proxies") }
+                .getOrElse { emptyList() }
             val fingerprintToId = existing.associate { proxy ->
                 proxyFingerprint(proxy.server, proxy.port, proxy.type) to proxy.id
             }.toMutableMap()

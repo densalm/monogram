@@ -26,6 +26,7 @@ import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.remote.ChatRemoteSource
 import org.monogram.data.datasource.remote.ProxyRemoteDataSource
 import org.monogram.data.gateway.UpdateDispatcher
+import org.monogram.data.gateway.isExpectedProxyFailure
 import org.monogram.domain.repository.AppPreferencesProvider
 import org.monogram.domain.repository.ConnectionStatus
 import org.monogram.domain.repository.ProxyNetworkMode
@@ -200,8 +201,7 @@ class ConnectionManager(
             if (reconnectAttempts % 3 != 0) return
         }
 
-        coRunCatching { applyNetworkProxyRule("reconnect_failures") }
-            .onFailure { Log.e(tag, "Proxy fallback failed during reconnect", it) }
+        applyNetworkProxyRuleSafely("reconnect_failures")
     }
 
     private fun calculateRetryDelayMs(status: ConnectionStatus, attempts: Int): Long {
@@ -226,17 +226,17 @@ class ConnectionManager(
                 }
             }
 
-            applyNetworkProxyRule("startup")
+            applyNetworkProxyRuleSafely("startup")
 
             launch {
                 appPreferences.proxyNetworkRules.collect {
-                    applyNetworkProxyRule("rules_changed")
+                    applyNetworkProxyRuleSafely("rules_changed")
                 }
             }
 
             launch {
                 appPreferences.proxyUnavailableFallback.collect {
-                    applyNetworkProxyRule("fallback_changed")
+                    applyNetworkProxyRuleSafely("fallback_changed")
                 }
             }
 
@@ -254,10 +254,20 @@ class ConnectionManager(
 
     private fun launchAutoBestLoop(): Job = scope.launch(dispatchers.default) {
         while (isActive) {
-            coRunCatching { applyNetworkProxyRule("auto_best_loop") }
-                .onFailure { Log.e(tag, "Error applying proxy rule in auto loop", it) }
+            applyNetworkProxyRuleSafely("auto_best_loop")
             delay(300_000L)
         }
+    }
+
+    private suspend fun applyNetworkProxyRuleSafely(reason: String) {
+        coRunCatching { applyNetworkProxyRule(reason) }
+            .onFailure { error ->
+                if (error.isExpectedProxyFailure()) {
+                    Log.w(tag, "Proxy rule apply failed ($reason): ${error.message}")
+                } else {
+                    Log.e(tag, "Error applying proxy rule ($reason)", error)
+                }
+            }
     }
 
     private suspend fun applyNetworkProxyRule(reason: String) {
@@ -313,7 +323,15 @@ class ConnectionManager(
     }
 
     private suspend fun selectBestProxy(networkType: ProxyNetworkType, reason: String): Boolean {
-        val proxies = proxyRemoteSource.getProxies()
+        val proxies = coRunCatching { proxyRemoteSource.getProxies() }
+            .onFailure { error ->
+                if (error.isExpectedProxyFailure()) {
+                    Log.w(tag, "Failed to load proxies ($reason): ${error.message}")
+                } else {
+                    Log.e(tag, "Failed to load proxies ($reason)", error)
+                }
+            }
+            .getOrElse { emptyList() }
         if (proxies.isEmpty()) {
             disableProxyIfNeeded("$reason:no_proxies")
             return false
@@ -322,9 +340,25 @@ class ConnectionManager(
         val best = coroutineScope {
             proxies.map { proxy ->
                 async {
-                    val ping = withTimeoutOrNull(4_000L) {
-                        proxyRemoteSource.pingProxy(proxy.server, proxy.port, proxy.type)
-                    } ?: Long.MAX_VALUE
+                    val ping = coRunCatching {
+                        withTimeoutOrNull(4_000L) {
+                            proxyRemoteSource.pingProxy(proxy.server, proxy.port, proxy.type)
+                        } ?: Long.MAX_VALUE
+                    }.getOrElse { error ->
+                        if (error.isExpectedProxyFailure()) {
+                            Log.w(
+                                tag,
+                                "Ping failed for ${proxy.server}:${proxy.port} ($reason): ${error.message}"
+                            )
+                        } else {
+                            Log.e(
+                                tag,
+                                "Ping failed for ${proxy.server}:${proxy.port} ($reason)",
+                                error
+                            )
+                        }
+                        Long.MAX_VALUE
+                    }
                     proxy to ping
                 }
             }.awaitAll()
@@ -446,7 +480,7 @@ class ConnectionManager(
 
     private fun onNetworkChanged(reason: String) {
         scope.launch(dispatchers.default) {
-            applyNetworkProxyRule("network_$reason")
+            applyNetworkProxyRuleSafely("network_$reason")
             runReconnectAttempt("network_$reason", force = true)
             syncConnectionStateFromTdlib("network_$reason")
         }
