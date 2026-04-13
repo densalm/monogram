@@ -405,7 +405,10 @@ class DefaultRootComponent(
 
     private fun openBrowser(url: String) {
         if (!url.startsWith("http")) return
-        navigation.push(Config.WebView(url))
+        navigation.navigate { stack ->
+            val newStack = stack.filterNot { it is Config.WebView && it.url == url }
+            newStack + Config.WebView(url)
+        }
     }
 
     override fun navigateToChat(chatId: Long, messageId: Long?) {
