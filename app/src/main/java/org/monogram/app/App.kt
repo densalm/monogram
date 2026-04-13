@@ -83,20 +83,29 @@ class App : Application(), SingletonImageLoader.Factory {
 
     private fun checkPushAvailability() {
         val distrManager = get<DistrManager>()
-        val isGmsAvailable = distrManager.isGmsAvailable()
-        val isFcmAvailable = distrManager.isFcmAvailable()
-        val isUnifiedPushAvailable = distrManager.isUnifiedPushDistributorAvailable()
-
         val prefs = get<AppPreferencesProvider>()
         val currentProvider = prefs.pushProvider.value
-        if (currentProvider == PushProvider.FCM && !(isGmsAvailable && isFcmAvailable)) {
-            val fallback =
-                if (isUnifiedPushAvailable) PushProvider.UNIFIED_PUSH else PushProvider.GMS_LESS
-            prefs.setPushProvider(fallback)
-        } else if (currentProvider == PushProvider.UNIFIED_PUSH && !isUnifiedPushAvailable) {
-            val fallback =
-                if (isGmsAvailable && isFcmAvailable) PushProvider.FCM else PushProvider.GMS_LESS
-            prefs.setPushProvider(fallback)
+        val bestAvailable = resolveBestAvailablePushProvider(distrManager)
+
+        val shouldFallback = when (currentProvider) {
+            PushProvider.FCM -> bestAvailable != PushProvider.FCM
+            PushProvider.UNIFIED_PUSH -> !distrManager.isUnifiedPushDistributorAvailable()
+            PushProvider.GMS_LESS -> false
+        }
+
+        if (shouldFallback && currentProvider != bestAvailable) {
+            prefs.setPushProvider(bestAvailable)
+        }
+    }
+
+    private fun resolveBestAvailablePushProvider(distrManager: DistrManager): PushProvider {
+        val fcmAvailable = distrManager.isGmsAvailable() && distrManager.isFcmAvailable()
+        val unifiedPushAvailable = distrManager.isUnifiedPushDistributorAvailable()
+
+        return when {
+            fcmAvailable -> PushProvider.FCM
+            unifiedPushAvailable -> PushProvider.UNIFIED_PUSH
+            else -> PushProvider.GMS_LESS
         }
     }
 
