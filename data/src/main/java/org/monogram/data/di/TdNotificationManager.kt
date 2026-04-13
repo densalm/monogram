@@ -209,6 +209,24 @@ class TdNotificationManager(
         }
 
         scope.launch {
+            appPreferences.privateChatsNotifications.collect { enabled ->
+                updateScopePreferenceState(TdNotificationScope.PRIVATE_CHATS, enabled)
+            }
+        }
+
+        scope.launch {
+            appPreferences.groupsNotifications.collect { enabled ->
+                updateScopePreferenceState(TdNotificationScope.GROUPS, enabled)
+            }
+        }
+
+        scope.launch {
+            appPreferences.channelsNotifications.collect { enabled ->
+                updateScopePreferenceState(TdNotificationScope.CHANNELS, enabled)
+            }
+        }
+
+        scope.launch {
             unifiedPushManager.endpoint.collect {
                 if (appPreferences.pushProvider.value == PushProvider.UNIFIED_PUSH && !it.isNullOrBlank()) {
                     Log.d(
@@ -231,6 +249,12 @@ class TdNotificationManager(
         scope.launch(Dispatchers.IO) {
             notificationSettingDao.insert(entity)
         }
+    }
+
+    private fun updateScopePreferenceState(scope: TdNotificationScope, enabled: Boolean) {
+        if (!gateway.isAuthenticated.value) return
+        scopeNotificationsEnabled[scope] = enabled
+        loadedScopeSettings.add(scope)
     }
 
     private suspend fun updatePushRegistration() {
