@@ -157,13 +157,24 @@ internal fun DefaultChatComponent.handleSendGif(
         val currentState = _state.value
         val replyId = currentState.replyMessage?.id
         val threadId = currentState.currentTopicId
-        repositoryMessage.sendGif(
-            chatId,
-            gif.fileId.toString(),
-            replyToMsgId = replyId,
-            threadId = threadId,
-            sendOptions = sendOptions
-        )
+        val inlineQueryId = gif.inlineQueryId
+        if (inlineQueryId != null) {
+            inlineBotRepository.sendInlineBotResult(
+                chatId = chatId,
+                queryId = inlineQueryId,
+                resultId = gif.id,
+                replyToMsgId = replyId,
+                threadId = threadId
+            )
+        } else {
+            repositoryMessage.sendGif(
+                chatId,
+                gif.fileId.toString(),
+                replyToMsgId = replyId,
+                threadId = threadId,
+                sendOptions = sendOptions
+            )
+        }
         onCancelReply()
         if (!currentState.isAtBottom) {
             onScrollToBottom()

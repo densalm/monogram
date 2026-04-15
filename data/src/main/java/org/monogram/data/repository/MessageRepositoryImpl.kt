@@ -128,6 +128,10 @@ class MessageRepositoryImpl(
         }
 
         scope.launch(dispatcherProvider.io) {
+            purgeTransientMediaCacheOnStartup()
+        }
+
+        scope.launch(dispatcherProvider.io) {
             messageDownloadFlow.collect { event ->
                 if (event is MessageDownloadEvent.Completed && event.fileId != 0 && event.path.isNotBlank()) {
                     chatLocalDataSource.updateMediaPath(
@@ -154,6 +158,16 @@ class MessageRepositoryImpl(
             Log.i("MessageRepository", "One-shot hard cache reset completed")
         }.onFailure { error ->
             Log.e("MessageRepository", "Failed to perform hard cache reset", error)
+        }
+    }
+
+    private suspend fun purgeTransientMediaCacheOnStartup() {
+        coRunCatching {
+            chatLocalDataSource.clearCachedMediaPaths()
+            stickerPathDao.clearAll()
+            Log.i("MessageRepository", "Transient media cache cleared on startup")
+        }.onFailure { error ->
+            Log.e("MessageRepository", "Failed to clear transient media cache", error)
         }
     }
 

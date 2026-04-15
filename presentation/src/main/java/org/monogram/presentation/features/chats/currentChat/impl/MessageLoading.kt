@@ -249,9 +249,13 @@ internal fun DefaultChatComponent.loadMessages(force: Boolean = false) {
             val savedViewport = cacheProvider.getChatViewport(chatId, threadId)
             _state.update { it.copy(lastSavedViewport = savedViewport) }
 
-            val chat = chatListRepository.getChatById(chatId)
-            val firstUnreadId = chat?.lastReadInboxMessageId?.let { lastRead ->
-                if (chat.unreadCount > 0) {
+            val unreadSeparatorCount = currentState.unreadSeparatorCount
+            val unreadSeparatorLastReadInboxMessageId =
+                currentState.unreadSeparatorLastReadInboxMessageId
+            val firstUnreadId =
+                unreadSeparatorLastReadInboxMessageId.takeIf { unreadSeparatorCount > 0 }
+                    ?.let { lastRead ->
+                        if (unreadSeparatorCount > 0) {
                     repositoryMessage.getMessagesNewer(chatId, lastRead, 1, threadId)
                         .firstOrNull()?.id
                         ?: lastRead.takeIf { it > 0L }

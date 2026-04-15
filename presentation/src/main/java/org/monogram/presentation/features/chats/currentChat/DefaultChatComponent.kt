@@ -152,7 +152,8 @@ class DefaultChatComponent(
             lastScrollPosition = cacheProvider.getChatScrollPosition(chatId),
             lastSavedViewport = cacheProvider.getChatViewport(chatId, null),
             isInstalledFromGooglePlay = distrManager.isInstalledFromGooglePlay(),
-            lastReadInboxMessageId = 0L
+            lastReadInboxMessageId = 0L,
+            unreadSeparatorLastReadInboxMessageId = 0L
         )
     )
 
@@ -242,6 +243,16 @@ class DefaultChatComponent(
 
     private fun initialLoad() {
         scope.launch {
+            chatListRepository.getChatById(chatId)?.let { chat ->
+                if (chat.unreadCount > 0) {
+                    _state.update {
+                        it.copy(
+                            unreadSeparatorCount = chat.unreadCount,
+                            unreadSeparatorLastReadInboxMessageId = chat.lastReadInboxMessageId
+                        )
+                    }
+                }
+            }
             repositoryMessage.openChat(chatId)
             withContext(Dispatchers.Main) {
                 loadChatInfo()

@@ -234,6 +234,7 @@ interface ChatComponent {
         val memberCount: Int = 0,
         val onlineCount: Int = 0,
         val unreadCount: Int = 0,
+        val unreadSeparatorCount: Int = 0,
         val unreadMentionCount: Int = 0,
         val unreadReactionCount: Int = 0,
         val userStatus: String? = null,
@@ -336,5 +337,6 @@ interface ChatComponent {
         val attachMenuBots: List<AttachMenuBotModel> = emptyList(),
         val scheduledMessages: List<MessageModel> = emptyList(),
         val lastReadInboxMessageId: Long = 0L,
+        val unreadSeparatorLastReadInboxMessageId: Long = 0L,
     )
 }

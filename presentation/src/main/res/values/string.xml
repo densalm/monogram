@@ -1635,6 +1635,7 @@
     <string name="stickers_header_recent">Recent Stickers</string>
     <string name="stickers_header_all">Stickers</string>
     <string name="stickers_search_placeholder">Search stickers</string>
+    <string name="stickers_search_suggestions">Suggestions</string>
 
     <!-- Emojis View -->
     <string name="emojis_header_recent">Recent Emojis</string>

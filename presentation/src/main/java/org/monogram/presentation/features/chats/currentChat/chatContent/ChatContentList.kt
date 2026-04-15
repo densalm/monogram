@@ -87,7 +87,6 @@ import org.monogram.presentation.features.chats.currentChat.components.UnreadMes
 import org.monogram.presentation.features.chats.currentChat.components.channels.ChannelMessageBubbleContainer
 import org.monogram.presentation.features.stickers.ui.view.StickerImage
 import java.io.File
-import kotlin.compareTo
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -122,15 +121,16 @@ fun ChatContentList(
         isComments,
         groupedMessages,
         state.messages,
-        state.lastReadInboxMessageId
+        state.unreadSeparatorCount,
+        state.unreadSeparatorLastReadInboxMessageId
     ) {
-        if (isComments) {
+        if (isComments || state.unreadSeparatorCount <= 0) {
             null // suppress in thread/comments mode
         } else {
             val boundaryItem = findFirstUnreadBoundary(
                 messages = state.messages,
                 groupedItems = groupedMessages,
-                firstUnreadMessageId = state.lastReadInboxMessageId
+                firstUnreadMessageId = state.unreadSeparatorLastReadInboxMessageId
             )
             boundaryItem?.let { target ->
                 groupedMessages.indexOfFirst { it.firstMessageId == target.firstMessageId }
@@ -280,7 +280,7 @@ fun ChatContentList(
                     downloadUtils = downloadUtils,
                     isAnyViewerOpen = isAnyViewerOpen,
                     showUnreadSeparator = index == unreadBoundaryIndex,
-                    unreadCount = state.unreadCount
+                    unreadCount = state.unreadSeparatorCount
                 )
             }
         } else {
@@ -336,7 +336,7 @@ fun ChatContentList(
                     downloadUtils = downloadUtils,
                     isAnyViewerOpen = isAnyViewerOpen,
                     showUnreadSeparator = index == unreadBoundaryIndex,
-                    unreadCount = state.unreadCount
+                    unreadCount = state.unreadSeparatorCount
                 )
             }
         }
