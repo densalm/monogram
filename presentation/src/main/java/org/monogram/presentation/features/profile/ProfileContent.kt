@@ -81,6 +81,8 @@ import org.monogram.presentation.features.profile.components.ProfileInfoSectionS
 import org.monogram.presentation.features.profile.components.ProfilePermissionsDialog
 import org.monogram.presentation.features.profile.components.ProfileQRDialog
 import org.monogram.presentation.features.profile.components.ProfileReportDialog
+import org.monogram.presentation.features.profile.components.LocationViewer
+import org.monogram.presentation.features.profile.components.StatisticsViewer
 import org.monogram.presentation.features.profile.components.ProfileTOSDialog
 import org.monogram.presentation.features.profile.components.ProfileTopBar
 import org.monogram.presentation.features.profile.components.profileMediaSection
@@ -553,6 +555,30 @@ fun ProfileContent(component: ProfileComponent) {
                 state = state,
                 onDismiss = component::onDismissTOS,
                 onAccept = component::onAcceptTOS
+            )
+        }
+
+        if (state.isStatisticsVisible || state.isRevenueStatisticsVisible) {
+            StatisticsViewer(
+                title = if (state.isRevenueStatisticsVisible) {
+                    stringResource(R.string.revenue_title)
+                } else {
+                    stringResource(R.string.statistics_title)
+                },
+                data = if (state.isRevenueStatisticsVisible) {
+                    state.revenueStatistics
+                } else {
+                    state.statistics
+                },
+                onDismiss = component::onDismissStatistics,
+                onLoadGraph = component::onLoadStatisticsGraph
+            )
+        }
+
+        state.selectedLocation?.let { location ->
+            LocationViewer(
+                location = location,
+                onDismiss = component::onDismissLocation
             )
         }
     }
