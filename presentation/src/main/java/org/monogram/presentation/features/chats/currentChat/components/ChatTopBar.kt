@@ -175,6 +175,7 @@ fun ChatTopBar(
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
+                                .fillMaxWidth()
                                 .clickable(onClick = onClick)
                                 .semantics { contentDescription = "ChatHeaderButton" }
                                 .padding(6.dp)
@@ -195,7 +196,7 @@ fun ChatTopBar(
                                 )
                             }
                             Spacer(Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = title,
