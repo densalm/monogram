@@ -239,6 +239,9 @@
     <string name="menu_repeat">+1</string>
     <string name="menu_select">Select</string>
     <string name="menu_more">More</string>
+    <string name="menu_view_sticker_pack">Sticker Pack</string>
+    <string name="menu_view_emoji_pack">Emoji Pack</string>
+    <string name="menu_view_used_packs">Used Packs</string>
     <string name="menu_delete">Delete</string>
     <string name="menu_view_comments">View Comments</string>
     <string name="menu_save_to_downloads">Save to Downloads</string>
@@ -792,6 +795,8 @@
     <string name="no_stickers_found_format">No stickers found for \"%1$s\"</string>
     <string name="recent_emojis_header">Recent Emojis</string>
     <string name="emoji_packs_header">Emoji Packs</string>
+    <string name="sticker_pack_title">Sticker Pack</string>
+    <string name="emoji_pack_title">Emoji Pack</string>
     <string name="archived_emojis_header">Archived Emojis</string>
     <string name="add_own_emoji_title">Add own emoji</string>
     <string name="add_own_emoji_subtitle">Create your own emoji packs using @Stickers bot</string>
