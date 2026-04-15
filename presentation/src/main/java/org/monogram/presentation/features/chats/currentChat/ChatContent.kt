@@ -996,7 +996,7 @@ fun ChatContent(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(padding)
+                            .padding(bottom = padding.calculateBottomPadding())
                             .consumeWindowInsets(padding)
                             .onGloballyPositioned { coordinates ->
                                 contentRect = Rect(

@@ -4,13 +4,11 @@ import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -36,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
@@ -143,7 +140,11 @@ fun ChatInputBarComposerSection(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
-        shape = if (isTablet) RoundedCornerShape(16.dp) else RectangleShape
+        shape = if (isTablet) {
+            RoundedCornerShape(16.dp)
+        } else {
+            RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+        }
     ) {
         Column(
             modifier = Modifier
