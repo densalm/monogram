@@ -1457,6 +1457,19 @@
     <string name="settings_video_quality">Якість відео</string>
     <string name="settings_quality_auto">Авто</string>
     <string name="settings_quality_high_res">Висока</string>
+    <string name="settings_quality_medium">Середня</string>
+    <string name="settings_quality_low">Низька</string>
+    <string name="quality_status_recovering">Застосовуємо якість…</string>
+    <string name="quality_status_downgraded">YouTube знизив якість</string>
+    <string name="quality_status_unavailable_at_request">Запитана якість недоступна</string>
+    <string name="quality_status_error_video_not_found">Відео недоступне</string>
+    <string name="quality_status_error_embedding_forbidden">Відтворення в застосунку обмежене</string>
+    <string name="quality_status_error_html5">Помилка відтворення (HTML5/WebView)</string>
+    <string name="quality_status_error_unknown">Помилка відтворення (%1$d)</string>
+    <string name="action_retry_stream">Повторити потік</string>
+    <string name="action_switch_to_auto">Перемкнути на Авто</string>
+    <string name="action_use_low_quality">Використати низьку якість</string>
+    <string name="action_open_in_browser">Відкрити в браузері</string>
     <string name="settings_speed_normal">Звичайна</string>
 
     <!-- Selection: Picture-in-Picture -->

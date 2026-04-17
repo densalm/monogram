@@ -1622,8 +1622,21 @@
     <string name="settings_quality">Quality</string>
     <string name="settings_video_quality">Video Quality</string>
     <string name="settings_quality_auto">Auto</string>
-    <string name="settings_quality_high_res">High Res</string>
+    <string name="settings_quality_high_res">High</string>
+    <string name="settings_quality_medium">Medium</string>
+    <string name="settings_quality_low">Low</string>
     <string name="settings_speed_normal">Normal</string>
+    <string name="quality_status_recovering">Applying quality…</string>
+    <string name="quality_status_downgraded">Quality downgraded by YouTube</string>
+    <string name="quality_status_unavailable_at_request">Requested quality is unavailable</string>
+    <string name="quality_status_error_video_not_found">Video unavailable</string>
+    <string name="quality_status_error_embedding_forbidden">Playback in app is restricted</string>
+    <string name="quality_status_error_html5">Playback error (HTML5/WebView)</string>
+    <string name="quality_status_error_unknown">Playback error (%1$d)</string>
+    <string name="action_retry_stream">Retry stream</string>
+    <string name="action_switch_to_auto">Switch to Auto</string>
+    <string name="action_use_low_quality">Use Low quality</string>
+    <string name="action_open_in_browser">Open in browser</string>
 
     <!-- Selection: Picture-in-Picture -->
     <string name="pip_play">Play</string>

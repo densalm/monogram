@@ -1368,7 +1368,20 @@
     <string name="settings_quality">Որակ</string>
     <string name="settings_video_quality">Վիդեոյի որակը</string>
     <string name="settings_quality_auto">Ավտո</string>
-    <string name="settings_quality_high_res">Բարձր որակ</string>
+    <string name="settings_quality_high_res">Բարձր</string>
+    <string name="settings_quality_medium">Միջին</string>
+    <string name="settings_quality_low">Ցածր</string>
+    <string name="quality_status_recovering">Կիրառվում է որակը…</string>
+    <string name="quality_status_downgraded">YouTube-ը նվազեցրել է որակը</string>
+    <string name="quality_status_unavailable_at_request">Պահանջված որակը հասանելի չէ</string>
+    <string name="quality_status_error_video_not_found">Տեսանյութը հասանելի չէ</string>
+    <string name="quality_status_error_embedding_forbidden">Հավելվածում նվագարկումը սահմանափակված է</string>
+    <string name="quality_status_error_html5">Նվագարկման սխալ (HTML5/WebView)</string>
+    <string name="quality_status_error_unknown">Նվագարկման սխալ (%1$d)</string>
+    <string name="action_retry_stream">Կրկին փորձել հոսքը</string>
+    <string name="action_switch_to_auto">Փոխարկել Ավտոյի</string>
+    <string name="action_use_low_quality">Օգտագործել ցածր որակ</string>
+    <string name="action_open_in_browser">Բացել դիտարկչում</string>
     <string name="settings_speed_normal">Սովորական</string>
 
     <string name="pip_play">Նվագարկել</string>
