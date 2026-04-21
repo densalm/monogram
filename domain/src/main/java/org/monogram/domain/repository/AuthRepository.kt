@@ -32,12 +32,20 @@ sealed class AuthUiStatus {
     data class NetworkError(val stage: AuthSubmissionStage) : AuthUiStatus()
 }
 
+sealed class AuthError {
+    object InvalidCode : AuthError()
+    object InvalidPassword : AuthError()
+    object CodeExpired : AuthError()
+    object NetworkTimeout : AuthError()
+    object Unexpected : AuthError()
+}
+
 const val AUTH_NETWORK_TIMEOUT_ERROR = "__AUTH_NETWORK_TIMEOUT__"
 
 interface AuthRepository {
     val authState: StateFlow<AuthStep>
     val authUiStatus: StateFlow<AuthUiStatus>
-    val errors: SharedFlow<String>
+    val errors: SharedFlow<AuthError>
 
     fun sendPhone(phone: String)
     fun resendCode()

@@ -175,7 +175,7 @@ fun AuthContent(component: AuthComponent) {
 
             if (model.error != null) {
                 AuthErrorDialog(
-                    message = model.error!!,
+                    error = model.error!!,
                     onDismiss = component::dismissError,
                     onRetry = component::onRetry,
                     onOpenProxy = component::onProxyClicked

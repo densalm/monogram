@@ -3,20 +3,25 @@ package org.monogram.data.repository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import org.drinkless.tdlib.TdApi
 import org.monogram.data.core.coRunCatching
 import org.monogram.data.datasource.remote.AuthRemoteDataSource
 import org.monogram.data.gateway.UpdateDispatcher
-import org.monogram.data.gateway.toUserMessage
+import org.monogram.data.gateway.isUnexpectedAuthStateError
+import org.monogram.data.gateway.toAuthError
 import org.monogram.data.infra.TdLibParametersProvider
 import org.monogram.data.mapper.toDomain
-import org.monogram.domain.repository.AUTH_NETWORK_TIMEOUT_ERROR
+import org.monogram.domain.repository.AuthError
 import org.monogram.domain.repository.AuthRepository
-import org.monogram.domain.repository.AuthSubmissionStage
 import org.monogram.domain.repository.AuthStep
+import org.monogram.domain.repository.AuthSubmissionStage
 import org.monogram.domain.repository.AuthUiStatus
 
 class AuthRepositoryImpl(
@@ -41,7 +46,7 @@ class AuthRepositoryImpl(
     private val _authUiStatus = MutableStateFlow<AuthUiStatus>(AuthUiStatus.Idle)
     override val authUiStatus = _authUiStatus.asStateFlow()
 
-    private val _errors = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    private val _errors = MutableSharedFlow<AuthError>(extraBufferCapacity = 1)
     override val errors = _errors.asSharedFlow()
 
     private val initMutex = Mutex()
@@ -162,7 +167,7 @@ class AuthRepositoryImpl(
 
     private fun emitError(t: Throwable) {
         clearPendingAuthState()
-        _errors.tryEmit(t.toUserMessage())
+        _errors.tryEmit(t.toAuthError())
     }
 
     private fun submitAuthAction(
@@ -170,6 +175,8 @@ class AuthRepositoryImpl(
         payload: String,
         action: suspend () -> Unit
     ) {
+        if (!canSubmitStage(stage)) return
+
         pendingAction = PendingAuthAction(stage, payload)
         clearPendingAuthState()
         _authUiStatus.value = AuthUiStatus.Submitting(stage)
@@ -177,7 +184,14 @@ class AuthRepositoryImpl(
         scope.launch {
             coRunCatching { action() }
                 .onSuccess { startAuthWatchdog(stage) }
-                .onFailure { emitError(it) }
+                .onFailure { throwable ->
+                    if (shouldSuppressStaleAuthError(stage, throwable)) {
+                        clearPendingAuthState()
+                        pendingAction = null
+                    } else {
+                        emitError(throwable)
+                    }
+                }
         }
     }
 
@@ -192,7 +206,7 @@ class AuthRepositoryImpl(
             delay(NETWORK_ERROR_TIMEOUT_MS - SLOW_NETWORK_TIMEOUT_MS)
             if (!isWatchdogStillActive(watchdogId, stage)) return@launch
             _authUiStatus.value = AuthUiStatus.NetworkError(stage)
-            _errors.tryEmit(AUTH_NETWORK_TIMEOUT_ERROR)
+            _errors.tryEmit(AuthError.NetworkTimeout)
         }
     }
 
@@ -212,6 +226,21 @@ class AuthRepositoryImpl(
         _authUiStatus.value = AuthUiStatus.Idle
     }
 
+    private fun canSubmitStage(
+        stage: AuthSubmissionStage
+    ): Boolean {
+        val currentPendingAction = pendingAction
+        if (currentPendingAction?.stage == stage) {
+            return false
+        }
+
+        return when (stage) {
+            AuthSubmissionStage.PHONE -> _authState.value is AuthStep.InputPhone
+            AuthSubmissionStage.CODE -> _authState.value is AuthStep.InputCode
+            AuthSubmissionStage.PASSWORD -> _authState.value is AuthStep.InputPassword
+        }
+    }
+
     private fun isExpectedNextState(
         stage: AuthSubmissionStage,
         state: AuthStep
@@ -224,5 +253,23 @@ class AuthRepositoryImpl(
                     state is AuthStep.Ready
             AuthSubmissionStage.PASSWORD -> state is AuthStep.Ready
         }
+    }
+
+    private fun shouldSuppressStaleAuthError(
+        stage: AuthSubmissionStage,
+        throwable: Throwable
+    ): Boolean {
+        val functionNames = when (stage) {
+            AuthSubmissionStage.PHONE -> listOf("setAuthenticationPhoneNumber")
+            AuthSubmissionStage.CODE -> listOf(
+                "checkAuthenticationCode",
+                "checkAuthenticationEmailCode"
+            )
+
+            AuthSubmissionStage.PASSWORD -> listOf("checkAuthenticationPassword")
+        }
+
+        return isExpectedNextState(stage, _authState.value) &&
+                functionNames.any(throwable::isUnexpectedAuthStateError)
     }
 }

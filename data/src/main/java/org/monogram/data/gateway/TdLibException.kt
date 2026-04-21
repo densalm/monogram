@@ -1,6 +1,8 @@
 package org.monogram.data.gateway
 
 import org.drinkless.tdlib.TdApi
+import org.monogram.domain.repository.AUTH_NETWORK_TIMEOUT_ERROR
+import org.monogram.domain.repository.AuthError
 
 class TdLibException(val error: TdApi.Error) : Exception(error.message)
 
@@ -40,4 +42,30 @@ fun Throwable.toProxyFailureMessage(): String? {
 fun Throwable.toUserMessage(defaultMessage: String = "Unknown error"): String {
     val tdMessage = (this as? TdLibException)?.error?.message.orEmpty()
     return tdMessage.ifEmpty { message ?: defaultMessage }
+}
+
+fun Throwable.toAuthError(): AuthError {
+    if (message == AUTH_NETWORK_TIMEOUT_ERROR) return AuthError.NetworkTimeout
+
+    val tdError = (this as? TdLibException)?.error
+    val normalizedMessage = tdError?.message.orEmpty().uppercase()
+
+    return when {
+        normalizedMessage.contains("PHONE_CODE_INVALID") -> AuthError.InvalidCode
+        normalizedMessage.contains("PASSWORD_HASH_INVALID") -> AuthError.InvalidPassword
+        normalizedMessage.contains("PHONE_CODE_EXPIRED") ||
+                normalizedMessage.contains("EMAIL_CODE_EXPIRED") ||
+                normalizedMessage.contains("CODE_EXPIRED") -> AuthError.CodeExpired
+
+        else -> AuthError.Unexpected
+    }
+}
+
+fun Throwable.isUnexpectedAuthStateError(functionName: String): Boolean {
+    val tdError = (this as? TdLibException)?.error ?: return false
+    val normalizedMessage = tdError.message.orEmpty().lowercase()
+    val normalizedFunction = functionName.lowercase()
+    return tdError.code == 400 &&
+            normalizedMessage.contains("call to $normalizedFunction") &&
+            normalizedMessage.contains("unexpected")
 }

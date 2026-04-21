@@ -2026,6 +2026,7 @@
     <string name="poll_meta_closes_at">Կփակվի՝ %1$s</string>
     <string name="poll_meta_time_left">Մնացած ժամանակը՝ %1$s</string>
     <string name="auth_phone_code_invalid_error">Invalid confirmation code</string>
+    <string name="auth_code_expired_error">Confirmation code expired</string>
     <string name="auth_password_hash_invalid">Invalid password</string>
     <string name="unexpected_error">An unexpected error occurred</string>
     <string name="stickers_search_suggestions">Առաջարկներ</string>

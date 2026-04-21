@@ -2044,6 +2044,7 @@
     <string name="folder_tab_reorder">Yeniden Sırala</string>
     <string name="folder_tab_delete">Sil</string>
     <string name="auth_phone_code_invalid_error">Geçersiz onay kodu</string>
+    <string name="auth_code_expired_error">Onay kodunun süresi doldu</string>
     <string name="auth_password_hash_invalid">Geçersiz şifre</string>
     <string name="unexpected_error">Beklenmedik bir hata oluştu</string>
 

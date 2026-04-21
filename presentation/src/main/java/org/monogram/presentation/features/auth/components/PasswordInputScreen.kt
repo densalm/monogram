@@ -11,6 +11,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,8 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,6 +72,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -81,6 +85,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,8 +129,11 @@ fun PasswordInputScreen(
 ) {
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showPasteMenu by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    val localClipboard = LocalClipboard.current
+    val nativeClipboard = localClipboard.nativeClipboard
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scrollState = rememberScrollState()
@@ -190,11 +198,22 @@ fun PasswordInputScreen(
         ) {
             PasswordContent(
                 password = password,
-                onPasswordChange = {
-                    password = it.filter { c -> c != ' ' }
-                },
+                onPasswordChange = { password = it },
                 passwordVisible = passwordVisible,
                 onPasswordVisibleChange = { passwordVisible = it },
+                showPasteMenu = showPasteMenu,
+                onShowPasteMenuChange = { showPasteMenu = it },
+                canPaste = nativeClipboard.hasPrimaryClip(),
+                onPaste = {
+                    val pastedText = nativeClipboard.primaryClip
+                        ?.getItemAt(0)
+                        ?.text
+                        ?.toString()
+                        .orEmpty()
+                    if (pastedText.isNotEmpty()) {
+                        password = pastedText
+                    }
+                },
                 isFocused = isFocused,
                 onFocusChanged = { isFocused = it },
                 focusRequester = focusRequester,
@@ -219,6 +238,10 @@ private fun PasswordContent(
     onPasswordChange: (String) -> Unit,
     passwordVisible: Boolean,
     onPasswordVisibleChange: (Boolean) -> Unit,
+    showPasteMenu: Boolean,
+    onShowPasteMenuChange: (Boolean) -> Unit,
+    canPaste: Boolean,
+    onPaste: () -> Unit,
     isFocused: Boolean,
     onFocusChanged: (Boolean) -> Unit,
     focusRequester: FocusRequester,
@@ -329,13 +352,19 @@ private fun PasswordContent(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                focusRequester.requestFocus()
-                keyboardController?.show()
-            }
+                indication = null,
+                onClick = {
+                    focusRequester.requestFocus()
+                    keyboardController?.show()
+                },
+                onLongClick = {
+                    if (canPaste) {
+                        onShowPasteMenuChange(true)
+                    }
+                }
+            )
             .padding(start = 20.dp, end = 8.dp, top = 20.dp, bottom = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -384,7 +413,7 @@ private fun PasswordContent(
                     ) {
                         password.indices.forEach { index ->
                             key(index) {
-                                PasswordShape(shape = charShapeList[index].toShape())
+                                PasswordShape(shape = charShapeList[index % charShapeList.size].toShape())
                             }
                         }
                     }
@@ -412,6 +441,20 @@ private fun PasswordContent(
                 imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        DropdownMenu(
+            expanded = showPasteMenu,
+            onDismissRequest = { onShowPasteMenuChange(false) },
+            offset = DpOffset(0.dp, 0.dp)
+        ) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.paste_action)) },
+                onClick = {
+                    onPaste()
+                    onShowPasteMenuChange(false)
+                }
             )
         }
     }

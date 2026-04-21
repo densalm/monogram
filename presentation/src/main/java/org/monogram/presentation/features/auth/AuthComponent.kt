@@ -1,6 +1,7 @@
 package org.monogram.presentation.features.auth
 
 import com.arkivanov.decompose.value.Value
+import org.monogram.domain.repository.AuthError
 import org.monogram.domain.repository.AuthUiStatus
 
 interface AuthComponent {
@@ -20,7 +21,7 @@ interface AuthComponent {
         val authState: AuthState,
         val uiStatus: AuthUiStatus = AuthUiStatus.Idle,
         val isSubmitting: Boolean = false,
-        val error: String? = null,
+        val error: AuthError? = null,
         val phoneNumber: String? = null
     )
 

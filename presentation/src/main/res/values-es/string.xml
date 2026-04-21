@@ -2030,6 +2030,7 @@
     <string name="folder_tab_reorder">Reordenar</string>
     <string name="folder_tab_delete">Eliminar</string>
     <string name="auth_phone_code_invalid_error">Código de confirmación inválido</string>
+    <string name="auth_code_expired_error">El código de confirmación ha expirado</string>
     <string name="auth_password_hash_invalid">Contraseña inválida</string>
     <string name="unexpected_error">Ocurrió un error inesperado</string>
 

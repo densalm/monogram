@@ -2069,6 +2069,7 @@
     <string name="action_previous">Назад</string>
     <string name="action_next">Вперёд</string>
     <string name="auth_phone_code_invalid_error">Неверный код подтверждения</string>
+    <string name="auth_code_expired_error">Срок действия кода подтверждения истёк</string>
     <string name="auth_password_hash_invalid">Неверный пароль</string>
     <string name="unexpected_error">Произошла непредвиденная ошибка</string>
     <string name="unread_messages">%1$d непрочитанных сообщений</string>
