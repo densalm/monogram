@@ -893,6 +893,20 @@ class TdMessageRemoteDataSource(
         return safeExecute(req)
     }
 
+    override suspend fun editMessageCaption(chatId: Long, messageId: Long, caption: String, entities: List<MessageEntity>): TdApi.Message? {
+        val req = TdApi.EditMessageCaption().apply {
+            this.chatId = chatId
+            this.messageId = messageId
+            this.replyMarkup = null
+            this.caption = TdApi.FormattedText(
+                caption,
+                entities.toTdTextEntities(caption)
+            )
+            this.showCaptionAboveMedia = false
+        }
+        return safeExecute(req)
+    }
+
     private fun List<MessageEntity>.toTdTextEntities(text: String): Array<TdApi.TextEntity> {
         if (isEmpty()) return emptyArray()
 

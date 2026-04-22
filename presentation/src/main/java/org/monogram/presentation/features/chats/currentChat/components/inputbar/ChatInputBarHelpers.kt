@@ -89,10 +89,20 @@ internal fun buildEditingMessageTextValue(
     message: MessageModel,
     knownCustomEmojis: MutableMap<Long, StickerModel>
 ): TextFieldValue? {
-    val content = message.content as? MessageContent.Text ?: return null
+    val content = message.content
+    val (text, entities) = when (content) {
+        is MessageContent.Text -> content.text to content.entities
+        is MessageContent.Photo -> content.caption to content.entities
+        is MessageContent.Video -> content.caption to content.entities
+        is MessageContent.Document -> content.caption to content.entities
+        is MessageContent.Audio -> content.caption to content.entities
+        is MessageContent.Gif -> content.caption to content.entities
+        else -> return null
+    }
+
     return buildTextFieldValueFromTextAndEntities(
-        text = content.text,
-        entities = content.entities,
+        text = text,
+        entities = entities,
         knownCustomEmojis = knownCustomEmojis
     )
 }

@@ -3,6 +3,7 @@ package org.monogram.presentation.features.chats.currentChat.impl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.monogram.domain.models.MessageContent
 import org.monogram.domain.models.MessageEntity
 import org.monogram.domain.models.MessageModel
 import org.monogram.domain.models.MessageReactionModel
@@ -34,7 +35,15 @@ internal fun DefaultChatComponent.handleDeleteMessage(message: MessageModel, rev
 internal fun DefaultChatComponent.handleSaveEditedMessage(text: String, entities: List<MessageEntity>) {
     val editingMsg = _state.value.editingMessage ?: return
     scope.launch {
-        repositoryMessage.editMessage(chatId, editingMsg.id, text, entities)
+        when (editingMsg.content) {
+            is MessageContent.Photo,
+            is MessageContent.Video,
+            is MessageContent.Document,
+            is MessageContent.Audio,
+            is MessageContent.Gif -> repositoryMessage.editMessageCaption(chatId, editingMsg.id, text, entities)
+
+            else -> repositoryMessage.editMessage(chatId, editingMsg.id, text, entities)
+        }
         onCancelEdit()
     }
 }
