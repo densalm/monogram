@@ -608,6 +608,7 @@ class TdMessageRemoteDataSource(
     ): TdApi.Message? {
         val content = TdApi.InputMessageDocument().apply {
             this.document = TdApi.InputFileLocal(documentPath)
+            this.disableContentTypeDetection = true
             this.caption = TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption))
         }
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
@@ -769,15 +770,26 @@ class TdMessageRemoteDataSource(
         sendOptions: MessageSendOptions
     ): TdApi.Messages? {
         val inputMessageContents = paths.mapIndexed { index, path ->
-            val isVideo = path.endsWith(".mp4", ignoreCase = true)
-            val cap = if (index == 0) TdApi.FormattedText(caption, captionEntities.toTdTextEntities(caption)) else null
-            if (isVideo) TdApi.InputMessageVideo().apply {
-                this.video = TdApi.InputFileLocal(path)
-                this.caption = cap
-            }
-            else TdApi.InputMessagePhoto().apply {
-                this.photo = TdApi.InputFileLocal(path)
-                this.caption = cap
+            val cap = if (index == 0) TdApi.FormattedText(
+                caption,
+                captionEntities.toTdTextEntities(caption)
+            ) else null
+            if (sendOptions.sendAsDocument) {
+                TdApi.InputMessageDocument().apply {
+                    this.document = TdApi.InputFileLocal(path)
+                    this.disableContentTypeDetection = true
+                    this.caption = cap
+                }
+            } else {
+                val isVideo = path.endsWith(".mp4", ignoreCase = true)
+                if (isVideo) TdApi.InputMessageVideo().apply {
+                    this.video = TdApi.InputFileLocal(path)
+                    this.caption = cap
+                }
+                else TdApi.InputMessagePhoto().apply {
+                    this.photo = TdApi.InputFileLocal(path)
+                    this.caption = cap
+                }
             }
         }.toTypedArray()
         val replyTo = if (replyToMsgId != null && replyToMsgId != 0L) TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0, "") else null
@@ -792,6 +804,7 @@ class TdMessageRemoteDataSource(
         val result = safeExecute(req)
         result?.messages?.forEach { msg ->
             val fileId = when (val c = msg.content) {
+                is TdApi.MessageDocument -> c.document.document.id
                 is TdApi.MessagePhoto -> c.photo.sizes.lastOrNull()?.photo?.id
                 is TdApi.MessageVideo -> c.video.video.id
                 else -> null

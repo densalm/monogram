@@ -1123,6 +1123,7 @@
     <string name="typing_uploading_photo">отправляет фото</string>
     <string name="typing_uploading_video">отправляет видео</string>
     <string name="typing_uploading_document">отправляет файл</string>
+    <string name="action_send_as_document">Отправить как документ</string>
     <string name="typing_choosing_sticker">выбирает стикер</string>
     <string name="typing_playing_game">играет</string>
     <string name="typing_someone">Кто-то</string>

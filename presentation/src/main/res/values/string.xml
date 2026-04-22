@@ -1276,6 +1276,7 @@
     <string name="action_insert">Insert</string>
     <string name="action_previous">Prev</string>
     <string name="action_next">Next</string>
+    <string name="action_send_as_document">Send as document</string>
 
     <string name="rich_text_bold">Bold</string>
     <string name="rich_text_italic">Italic</string>

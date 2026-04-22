@@ -1046,20 +1046,46 @@ fun ChatContent(
                                     onTyping = { component.onTyping() },
                                     onCancelMedia = { pendingMediaPaths = emptyList() },
                                     onSendMedia = { paths, caption, captionEntities, options ->
-                                        if (paths.size > 1) component.onSendAlbum(
-                                            paths,
-                                            caption,
-                                            captionEntities,
-                                            options
-                                        )
-                                        else paths.firstOrNull()?.let {
-                                            if (it.endsWith(".mp4")) component.onSendVideo(
-                                                it,
+                                        if (options.sendAsDocument) {
+                                            if (paths.size > 1) {
+                                                component.onSendAlbum(
+                                                    paths,
+                                                    caption,
+                                                    captionEntities,
+                                                    options
+                                                )
+                                            } else {
+                                                paths.firstOrNull()?.let {
+                                                    component.onSendDocument(
+                                                        it,
+                                                        caption,
+                                                        captionEntities,
+                                                        options
+                                                    )
+                                                }
+                                            }
+                                        } else if (paths.size > 1) {
+                                            component.onSendAlbum(
+                                                paths,
                                                 caption,
                                                 captionEntities,
                                                 options
                                             )
-                                            else component.onSendPhoto(it, caption, captionEntities, options)
+                                        } else {
+                                            paths.firstOrNull()?.let {
+                                                if (it.endsWith(".mp4")) component.onSendVideo(
+                                                    it,
+                                                    caption,
+                                                    captionEntities,
+                                                    options
+                                                )
+                                                else component.onSendPhoto(
+                                                    it,
+                                                    caption,
+                                                    captionEntities,
+                                                    options
+                                                )
+                                            }
                                         }
                                         pendingMediaPaths = emptyList()
                                         pendingDocumentPaths = emptyList()

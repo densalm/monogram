@@ -80,6 +80,11 @@ import org.monogram.presentation.features.gallery.components.PollComposerSheet
 import java.util.Calendar
 import kotlin.math.ceil
 
+private enum class AttachmentPickerMode {
+    Default,
+    MediaOnly
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatInputBar(
@@ -165,6 +170,7 @@ fun ChatInputBar(
     var showPollComposer by rememberSaveable { mutableStateOf(false) }
     var showFullScreenEditor by rememberSaveable { mutableStateOf(false) }
     var showSendOptionsSheet by rememberSaveable { mutableStateOf(false) }
+    var attachmentPickerMode by remember { mutableStateOf(AttachmentPickerMode.Default) }
     var showScheduleDatePicker by rememberSaveable { mutableStateOf(false) }
     var showScheduleTimePicker by rememberSaveable { mutableStateOf(false) }
     var pendingScheduleDateMillis by rememberSaveable { mutableStateOf<Long?>(null) }
@@ -566,6 +572,7 @@ fun ChatInputBar(
             actions.onDocumentOrderChange((state.pendingDocumentPaths + localPaths).distinct())
             actions.onMediaOrderChange(emptyList())
         }
+        attachmentPickerMode = AttachmentPickerMode.Default
     }
 
     val inputBarMode by remember(
@@ -601,8 +608,12 @@ fun ChatInputBar(
                     actions.onDocumentOrderChange(emptyList())
                 }
                 showCamera = false
+                attachmentPickerMode = AttachmentPickerMode.Default
             },
-            onDismiss = { showCamera = false }
+            onDismiss = {
+                showCamera = false
+                attachmentPickerMode = AttachmentPickerMode.Default
+            }
         )
     } else {
         Box {
@@ -665,6 +676,20 @@ fun ChatInputBar(
                         onCancelReply = actions.onCancelReply,
                         onCancelMedia = actions.onCancelMedia,
                         onCancelDocuments = { actions.onDocumentOrderChange(emptyList()) },
+                        onAddMedia = {
+                            if (!canUseMediaPicker) return@ChatInputBarComposerSection
+                            openStickerMenuAfterKeyboardClosed = false
+                            openKeyboardAfterStickerMenuClosed = false
+                            closeStickerMenuWithoutSlide = false
+                            isStickerMenuVisible = false
+                            hideKeyboardAndClearFocus()
+                            attachmentPickerMode = AttachmentPickerMode.MediaOnly
+                            showGallery = true
+                        },
+                        onAddDocuments = {
+                            if (!canUseDocumentPicker) return@ChatInputBarComposerSection
+                            documentsPickerLauncher.launch(arrayOf("*/*"))
+                        },
                         onMediaOrderChange = actions.onMediaOrderChange,
                         onDocumentOrderChange = actions.onDocumentOrderChange,
                         onMediaClick = actions.onMediaClick,
@@ -711,6 +736,7 @@ fun ChatInputBar(
                             closeStickerMenuWithoutSlide = false
                             isStickerMenuVisible = false
                             hideKeyboardAndClearFocus()
+                            attachmentPickerMode = AttachmentPickerMode.Default
                             showGallery = true
                         },
                         onStickerMenuToggle = {
@@ -762,8 +788,17 @@ fun ChatInputBar(
                             closeStickerMenuWithoutSlide = false
                             isStickerMenuVisible = false
                             hideKeyboardAndClearFocus()
+                            attachmentPickerMode = if (state.pendingMediaPaths.isNotEmpty()) {
+                                AttachmentPickerMode.MediaOnly
+                            } else {
+                                AttachmentPickerMode.Default
+                            }
                             showSendOptionsSheet = true
                             actions.onRefreshScheduledMessages()
+                        },
+                        onSendAsDocument = {
+                            showSendOptionsSheet = false
+                            sendWithOptions(MessageSendOptions(sendAsDocument = true))
                         },
                         onCameraClick = {
                             hideKeyboardAndClearFocus()
@@ -914,7 +949,10 @@ fun ChatInputBar(
 
     if (showGallery && !showCamera) {
         ModalBottomSheet(
-            onDismissRequest = { showGallery = false },
+            onDismissRequest = {
+                showGallery = false
+                attachmentPickerMode = AttachmentPickerMode.Default
+            },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
             dragHandle = { BottomSheetDefaults.DragHandle() },
             containerColor = MaterialTheme.colorScheme.background
@@ -929,11 +967,16 @@ fun ChatInputBar(
                         actions.onDocumentOrderChange(emptyList())
                     }
                     showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
                 },
-                onDismiss = { showGallery = false },
+                onDismiss = {
+                    showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
+                },
                 onCameraClick = {
                     if (!canUseMediaPicker) return@GalleryScreen
                     showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
                     if (hasCameraPermission.value || ContextCompat.checkSelfPermission(
                             context,
                             Manifest.permission.CAMERA
@@ -946,16 +989,18 @@ fun ChatInputBar(
                 },
                 canSelectMedia = canUseMediaPicker,
                 canUseCamera = canUseMediaPicker,
-                canAttachFiles = canUseDocumentPicker,
-                canCreatePoll = canSendPolls && !state.isSecretChat,
+                canAttachFiles = canUseDocumentPicker && attachmentPickerMode == AttachmentPickerMode.Default,
+                canCreatePoll = canSendPolls && !state.isSecretChat && attachmentPickerMode == AttachmentPickerMode.Default,
                 onAttachFileClick = {
                     if (!canUseDocumentPicker) return@GalleryScreen
                     showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
                     documentsPickerLauncher.launch(arrayOf("*/*"))
                 },
                 onCreatePollClick = {
                     if (canSendPolls && !state.isSecretChat) {
                         showGallery = false
+                        attachmentPickerMode = AttachmentPickerMode.Default
                         showPollComposer = true
                     }
                 },
@@ -965,6 +1010,7 @@ fun ChatInputBar(
                 onPickFromOtherSources = {
                     if (!canUseMediaPicker) return@GalleryScreen
                     showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
                     actions.onAttachClick()
                 },
                 onRequestMediaAccess = {
@@ -974,6 +1020,7 @@ fun ChatInputBar(
                 },
                 onAttachBotClick = { bot ->
                     showGallery = false
+                    attachmentPickerMode = AttachmentPickerMode.Default
                     actions.onAttachBotClick(bot)
                 },
                 modifier = Modifier.fillMaxHeight()

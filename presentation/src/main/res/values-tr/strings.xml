@@ -1128,6 +1128,7 @@
     <string name="action_insert">Ekle</string>
     <string name="action_previous">Önceki</string>
     <string name="action_next">Sonraki</string>
+    <string name="action_send_as_document">Belge olarak gönder</string>
 
     <string name="rich_text_bold">Kalın</string>
     <string name="rich_text_italic">İtalik</string>

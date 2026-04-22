@@ -22,20 +22,25 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -83,6 +88,8 @@ fun InputPreviewSection(
     onCancelReply: () -> Unit,
     onCancelMedia: () -> Unit,
     onCancelDocuments: () -> Unit,
+    onAddMedia: () -> Unit,
+    onAddDocuments: () -> Unit,
     onMediaOrderChange: (List<String>) -> Unit,
     onDocumentOrderChange: (List<String>) -> Unit,
     onMediaClick: (String) -> Unit
@@ -115,6 +122,7 @@ fun InputPreviewSection(
             is InputPreviewState.Media -> MediaPreview(
                 paths = state.paths,
                 onCancel = onCancelMedia,
+                onAdd = onAddMedia,
                 onRemove = { path ->
                     val newList = pendingMediaPaths.toMutableList()
                     newList.remove(path)
@@ -130,6 +138,7 @@ fun InputPreviewSection(
             is InputPreviewState.Documents -> DocumentPreview(
                 paths = state.paths,
                 onCancel = onCancelDocuments,
+                onAdd = onAddDocuments,
                 onRemove = { path ->
                     val newList = pendingDocumentPaths.toMutableList()
                     newList.remove(path)
@@ -146,6 +155,7 @@ fun InputPreviewSection(
 private fun DocumentPreview(
     paths: List<String>,
     onCancel: () -> Unit,
+    onAdd: () -> Unit,
     onRemove: (String) -> Unit
 ) {
     Column(
@@ -153,7 +163,8 @@ private fun DocumentPreview(
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
-            .padding(12.dp),
+            .padding(12.dp)
+            .heightIn(max = 240.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
@@ -166,41 +177,57 @@ private fun DocumentPreview(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.primary
             )
-            IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.action_cancel),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onAdd) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = stringResource(R.string.action_add))
+                }
+                IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.action_cancel),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
-        paths.forEach { path ->
-            val file = File(path)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = file.name.ifBlank { "File" },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = formatFileSize(file.length()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { onRemove(path) }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.action_remove)
-                    )
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(paths, key = { it }) { path ->
+                val file = File(path)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = file.name.ifBlank { "File" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = formatFileSize(file.length()),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = { onRemove(path) }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.action_remove)
+                        )
+                    }
                 }
             }
         }
@@ -570,6 +597,7 @@ private fun MessageContent.toPreviewContent(
 private fun MediaPreview(
     paths: List<String>,
     onCancel: () -> Unit,
+    onAdd: () -> Unit,
     onRemove: (String) -> Unit,
     onMove: (Int, Int) -> Unit,
     onMediaClick: (String) -> Unit = {}
@@ -597,13 +625,24 @@ private fun MediaPreview(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(start = 4.dp)
             )
-            IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.action_cancel),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onAdd) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = stringResource(R.string.action_add))
+                }
+                IconButton(onClick = onCancel, modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.action_cancel),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 

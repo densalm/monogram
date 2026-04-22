@@ -2019,6 +2019,7 @@
     <string name="action_insert">Insert</string>
     <string name="action_previous">Prev</string>
     <string name="action_next">Next</string>
+    <string name="action_send_as_document">Ուղարկել որպես փաստաթուղթ</string>
     <string name="poll_meta_results_hidden_until_close">Արդյունքները թաքցված են մինչև փակվելը</string>
     <string name="poll_meta_revoting_enabled">Վերաքվեարկությունը միացված է</string>
     <string name="poll_meta_shuffle_enabled">Տարբերակների խառնումը միացված է</string>

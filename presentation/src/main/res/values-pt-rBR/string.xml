@@ -1147,6 +1147,7 @@
     <string name="action_insert">Inserir</string>
     <string name="action_previous">Anterior</string>
     <string name="action_next">Próximo</string>
+    <string name="action_send_as_document">Enviar como documento</string>
 
     <string name="rich_text_bold">Negrito</string>
     <string name="rich_text_italic">Itálico</string>

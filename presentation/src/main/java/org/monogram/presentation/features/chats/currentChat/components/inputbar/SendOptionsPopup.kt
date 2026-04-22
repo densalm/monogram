@@ -1,20 +1,42 @@
 package org.monogram.presentation.features.chats.currentChat.components.inputbar
 
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Subject
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.NotificationsOff
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
@@ -29,7 +51,9 @@ import org.monogram.presentation.R
 fun SendOptionsPopup(
     expanded: Boolean,
     scheduledMessagesCount: Int,
+    showSendAsDocument: Boolean,
     onDismiss: () -> Unit,
+    onSendAsDocument: () -> Unit,
     onSendSilent: () -> Unit,
     onScheduleMessage: () -> Unit,
     onOpenScheduledMessages: () -> Unit
@@ -103,6 +127,24 @@ fun SendOptionsPopup(
                     shadowElevation = 18.dp
                 ) {
                     Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        if (showSendAsDocument) {
+                            DropdownMenuItem(
+                                text = {
+                                    SendOptionsMenuLabel(
+                                        title = stringResource(R.string.action_send_as_document)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = onSendAsDocument
+                            )
+                        }
+
                         DropdownMenuItem(
                             text = { SendOptionsMenuLabel(title = stringResource(R.string.action_send_silent)) },
                             leadingIcon = {

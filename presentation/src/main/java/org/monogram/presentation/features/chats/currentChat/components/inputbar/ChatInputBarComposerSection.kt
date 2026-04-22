@@ -103,6 +103,8 @@ fun ChatInputBarComposerSection(
     onCancelReply: () -> Unit,
     onCancelMedia: () -> Unit,
     onCancelDocuments: () -> Unit,
+    onAddMedia: () -> Unit,
+    onAddDocuments: () -> Unit,
     onMediaOrderChange: (List<String>) -> Unit,
     onDocumentOrderChange: (List<String>) -> Unit,
     onMediaClick: (String) -> Unit,
@@ -122,6 +124,7 @@ fun ChatInputBarComposerSection(
     onOpenScheduledMessages: () -> Unit,
     onSendWithOptions: (MessageSendOptions) -> Unit,
     onShowSendOptionsMenu: () -> Unit,
+    onSendAsDocument: () -> Unit,
     onCameraClick: () -> Unit,
     onVideoModeToggle: () -> Unit,
     onVoiceStart: () -> Unit,
@@ -160,6 +163,8 @@ fun ChatInputBarComposerSection(
                 onCancelReply = onCancelReply,
                 onCancelMedia = onCancelMedia,
                 onCancelDocuments = onCancelDocuments,
+                onAddMedia = onAddMedia,
+                onAddDocuments = onAddDocuments,
                 onMediaOrderChange = onMediaOrderChange,
                 onDocumentOrderChange = onDocumentOrderChange,
                 onMediaClick = onMediaClick
@@ -313,7 +318,9 @@ fun ChatInputBarComposerSection(
                             SendOptionsPopup(
                                 expanded = showSendOptionsSheet,
                                 scheduledMessagesCount = scheduledMessagesCount,
+                                showSendAsDocument = pendingMediaPaths.isNotEmpty(),
                                 onDismiss = onDismissSendOptions,
+                                onSendAsDocument = onSendAsDocument,
                                 onSendSilent = onSendSilent,
                                 onScheduleMessage = onScheduleMessage,
                                 onOpenScheduledMessages = onOpenScheduledMessagesFromPopup
