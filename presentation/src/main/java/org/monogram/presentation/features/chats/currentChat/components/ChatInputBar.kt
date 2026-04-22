@@ -253,6 +253,7 @@ fun ChatInputBar(
     }
 
     var lastEditingMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var lastReplyMessageId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     var slowModeRemainingSeconds by remember {
         mutableIntStateOf(0)
@@ -457,6 +458,25 @@ fun ChatInputBar(
             textValue = TextFieldValue(state.draftText, TextRange(state.draftText.length))
             lastEditingMessageId = null
             knownCustomEmojis.clear()
+        }
+    }
+
+    LaunchedEffect(state.replyMessage) {
+        val replyMessage = state.replyMessage
+        if (replyMessage != null) {
+            if (replyMessage.id != lastReplyMessageId && state.editingMessage == null) {
+                openStickerMenuAfterKeyboardClosed = false
+                openKeyboardAfterStickerMenuClosed = false
+                if (isStickerMenuVisible) {
+                    closeStickerMenuWithoutSlide = true
+                    isStickerMenuVisible = false
+                }
+                focusRequester.requestFocus()
+                keyboardController?.show()
+                lastReplyMessageId = replyMessage.id
+            }
+        } else if (lastReplyMessageId != null) {
+            lastReplyMessageId = null
         }
     }
 
