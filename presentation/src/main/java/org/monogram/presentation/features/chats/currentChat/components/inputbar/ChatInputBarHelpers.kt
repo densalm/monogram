@@ -211,7 +211,8 @@ internal fun Context.copyUriToTempDocumentPath(uri: android.net.Uri): String? {
             mime.startsWith("application/pdf") -> "document_${System.nanoTime()}.pdf"
             else -> "document_${System.nanoTime()}.bin"
         }
-        val file = File(cacheDir, "doc_${System.nanoTime()}_$safeName")
+        val tempDir = File(cacheDir, "doc_${System.nanoTime()}").apply { mkdirs() }
+        val file = File(tempDir, safeName)
         contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(file).use { output -> input.copyTo(output) }
         } ?: return null
