@@ -213,7 +213,12 @@ interface MessageRepository :
     suspend fun getScheduledMessages(chatId: Long): List<MessageModel>
     suspend fun sendScheduledNow(chatId: Long, messageId: Long)
 
-    suspend fun forwardMessage(toChatId: Long, fromChatId: Long, messageId: Long)
+    suspend fun forwardMessage(
+        toChatId: Long,
+        fromChatId: Long,
+        messageId: Long,
+        sendCopy: Boolean = false
+    )
     suspend fun deleteMessage(chatId: Long, messageIds: List<Long>, revoke: Boolean = false)
     suspend fun editMessage(chatId: Long, messageId: Long, newText: String, entities: List<MessageEntity> = emptyList())
     suspend fun editMessageCaption(chatId: Long, messageId: Long, newCaption: String, entities: List<MessageEntity> = emptyList())

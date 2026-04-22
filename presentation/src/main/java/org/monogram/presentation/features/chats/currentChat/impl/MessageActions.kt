@@ -432,6 +432,6 @@ internal fun DefaultChatComponent.handleCopyLink(localClipboard: Clipboard) {
 
 internal fun DefaultChatComponent.handleRepeatMessage(message: MessageModel) {
     scope.launch {
-        repositoryMessage.forwardMessage(chatId, chatId, message.id)
+        repositoryMessage.forwardMessage(chatId, chatId, message.id, sendCopy = true)
     }
 }

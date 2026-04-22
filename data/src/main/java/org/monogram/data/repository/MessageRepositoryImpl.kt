@@ -435,8 +435,19 @@ class MessageRepositoryImpl(
         messageRemoteDataSource.sendVoiceNote(chatId, voicePath, duration, waveform)
     }
 
-    override suspend fun forwardMessage(toChatId: Long, fromChatId: Long, messageId: Long) {
-        messageRemoteDataSource.forwardMessages(toChatId, fromChatId, longArrayOf(messageId), false, false)
+    override suspend fun forwardMessage(
+        toChatId: Long,
+        fromChatId: Long,
+        messageId: Long,
+        sendCopy: Boolean
+    ) {
+        messageRemoteDataSource.forwardMessages(
+            toChatId,
+            fromChatId,
+            longArrayOf(messageId),
+            false,
+            sendCopy
+        )
     }
 
     override suspend fun deleteMessage(chatId: Long, messageIds: List<Long>, revoke: Boolean) {

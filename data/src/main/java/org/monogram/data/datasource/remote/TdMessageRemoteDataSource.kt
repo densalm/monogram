@@ -1461,14 +1461,15 @@ class TdMessageRemoteDataSource(
     override suspend fun forwardMessage(
         toChatId: Long,
         fromChatId: Long,
-        messageId: Long
+        messageId: Long,
+        sendCopy: Boolean
     ) {
         val request = TdApi.ForwardMessages().apply {
             this.chatId = toChatId
             this.fromChatId = fromChatId
             this.messageIds = longArrayOf(messageId)
             this.removeCaption = false
-            this.sendCopy = false
+            this.sendCopy = sendCopy
         }
         safeExecute(request)
     }

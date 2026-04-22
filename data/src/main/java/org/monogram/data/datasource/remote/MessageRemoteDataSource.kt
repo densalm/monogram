@@ -37,7 +37,12 @@ interface MessageRemoteDataSource {
     fun setChatOpened(chatId: Long)
     fun setChatClosed(chatId: Long)
     fun enqueueDownload(fileId: Int, priority: Int = 1, type: DownloadType = DownloadType.DEFAULT, offset: Long = 0, limit: Long = 0, synchronous: Boolean = false)
-    suspend fun forwardMessage(toChatId: Long, fromChatId: Long, messageId: Long)
+    suspend fun forwardMessage(
+        toChatId: Long,
+        fromChatId: Long,
+        messageId: Long,
+        sendCopy: Boolean = false
+    )
     suspend fun getMessage(chatId: Long, messageId: Long): TdApi.Message?
     suspend fun getMessageThread(chatId: Long, messageId: Long): TdApi.MessageThreadInfo?
     suspend fun getMessages(chatId: Long, fromMessageId: Long, offset: Int, limit: Int, threadId: Long?): TdApi.Messages?
